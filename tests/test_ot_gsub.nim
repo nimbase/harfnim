@@ -378,6 +378,201 @@ proc buildGsubSaltSmcp(): seq[uint8] =
   result.putU16(11u16)
   doAssert result.len == 114
 
+proc putU16At(s: var seq[uint8], pos: int, v: uint16) =
+  doAssert pos >= 0 and pos + 2 <= s.len
+  s[pos] = uint8(v shr 8)
+  s[pos + 1] = uint8(v and 0xFFu16)
+
+proc singleSubstBytes(covGlyph, substitute: uint16): seq[uint8] =
+  result = @[]
+  result.putU16(2u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(substitute)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(covGlyph)
+
+proc coverageBytes(glyphs: seq[uint16]): seq[uint8] =
+  result = @[]
+  result.putU16(1u16)
+  result.putU16(uint16(glyphs.len))
+  for g in glyphs:
+    result.putU16(g)
+
+proc classDefFormat1Bytes(start: uint16, classes: seq[uint16]): seq[uint8] =
+  result = @[]
+  result.putU16(1u16)
+  result.putU16(start)
+  result.putU16(uint16(classes.len))
+  for c in classes:
+    result.putU16(c)
+
+proc buildChainedFormat1(backtrack: seq[uint16], firstCov: uint16,
+    inputRest: seq[uint16], lookahead: seq[uint16],
+    records: seq[tuple[seqIdx, lookupIdx: uint16]]): seq[uint8] =
+  result = @[]
+  result.putU16(1u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  result.putU16(1u16)
+  let setPos = result.len
+  result.putU16(0u16)
+  let covOff = result.len
+  for b in coverageBytes(@[firstCov]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  let setOff = result.len
+  result.putU16At(setPos, uint16(setOff))
+  result.putU16(1u16)
+  result.putU16(4u16)
+  result.putU16(uint16(backtrack.len))
+  for g in backtrack:
+    result.putU16(g)
+  result.putU16(uint16(inputRest.len + 1))
+  for g in inputRest:
+    result.putU16(g)
+  result.putU16(uint16(lookahead.len))
+  for g in lookahead:
+    result.putU16(g)
+  result.putU16(uint16(records.len))
+  for r in records:
+    result.putU16(r.seqIdx)
+    result.putU16(r.lookupIdx)
+
+proc buildSeqFormat2(firstCov: uint16, classDef: seq[uint8],
+    setCount: int, ruleSetIdx: int, ruleInput: seq[uint16],
+    records: seq[tuple[seqIdx, lookupIdx: uint16]]): seq[uint8] =
+  result = @[]
+  result.putU16(2u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  let classPos = result.len
+  result.putU16(0u16)
+  result.putU16(uint16(setCount))
+  var setPoss: seq[int] = @[]
+  for _ in 0 ..< setCount:
+    setPoss.add(result.len)
+    result.putU16(0u16)
+  let covOff = result.len
+  for b in coverageBytes(@[firstCov]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  let classOff = result.len
+  for b in classDef:
+    result.add(b)
+  result.putU16At(classPos, uint16(classOff))
+  let setOff = result.len
+  result.putU16At(setPoss[ruleSetIdx], uint16(setOff))
+  result.putU16(1u16)
+  result.putU16(4u16)
+  result.putU16(uint16(ruleInput.len + 1))
+  result.putU16(uint16(records.len))
+  for g in ruleInput:
+    result.putU16(g)
+  for r in records:
+    result.putU16(r.seqIdx)
+    result.putU16(r.lookupIdx)
+
+proc buildSeqFormat3(coverages: seq[seq[uint16]],
+    records: seq[tuple[seqIdx, lookupIdx: uint16]]): seq[uint8] =
+  result = @[]
+  result.putU16(3u16)
+  result.putU16(uint16(coverages.len))
+  result.putU16(uint16(records.len))
+  var covPoss: seq[int] = @[]
+  for _ in coverages:
+    covPoss.add(result.len)
+    result.putU16(0u16)
+  for r in records:
+    result.putU16(r.seqIdx)
+    result.putU16(r.lookupIdx)
+  for i, cov in coverages:
+    let off = result.len
+    result.putU16At(covPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+
+proc buildChainedFormat3(backtrack: seq[seq[uint16]],
+    input: seq[seq[uint16]], lookahead: seq[seq[uint16]],
+    records: seq[tuple[seqIdx, lookupIdx: uint16]]): seq[uint8] =
+  result = @[]
+  result.putU16(3u16)
+  result.putU16(uint16(backtrack.len))
+  var backPoss: seq[int] = @[]
+  for _ in backtrack:
+    backPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(uint16(input.len))
+  var inPoss: seq[int] = @[]
+  for _ in input:
+    inPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(uint16(lookahead.len))
+  var lookPoss: seq[int] = @[]
+  for _ in lookahead:
+    lookPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(uint16(records.len))
+  for r in records:
+    result.putU16(r.seqIdx)
+    result.putU16(r.lookupIdx)
+  for i, cov in backtrack:
+    let off = result.len
+    result.putU16At(backPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+  for i, cov in input:
+    let off = result.len
+    result.putU16At(inPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+  for i, cov in lookahead:
+    let off = result.len
+    result.putU16At(lookPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+
+proc buildGsubTwoLookups(feature: string, lookup0type: uint16,
+    sub0: seq[uint8], lookup1type: uint16, sub1: seq[uint8]): seq[uint8] =
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(44u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putTag(feature)
+  result.putU16(8u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(2u16)
+  let off0 = 6
+  let off1 = 6 + 8 + sub0.len
+  result.putU16(uint16(off0))
+  result.putU16(uint16(off1))
+  result.putU16(lookup0type)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  for b in sub0:
+    result.add(b)
+  result.putU16(lookup1type)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  for b in sub1:
+    result.add(b)
+
 proc shapeWithFeatures(fontBytes: seq[uint8], text: string,
     feats: seq[Feature]): seq[tuple[gid, cluster: uint32]] =
   let f = parseFont(fontBytes)
@@ -563,6 +758,72 @@ test "valued and boolean features coexist":
     @[newFeature(tagFromStr("salt"), 2u32, 0u32, high(uint32)),
       globalFeature(tagFromStr("smcp"), 1)])
   check got == @[(13u32, 0u32)]
+
+test "chained backtrack triggers nested substitution":
+  let chain = buildChainedFormat1(@[3u16], 1u16, @[2u16], @[],
+    @[(1u16, 1u16)])
+  let single = singleSubstBytes(2u16, 10u16)
+  let gsub = buildGsubTwoLookups("ccmp", 6u16, chain, 1u16, single)
+  let got = shapeWithFeatures(buildFont(gsub), "CAB",
+    @[globalFeature(tagFromStr("ccmp"), 1)])
+  check got == @[(3u32, 0u32), (1u32, 1u32), (10u32, 2u32)]
+
+test "chained backtrack miss leaves buffer untouched":
+  let chain = buildChainedFormat1(@[3u16], 1u16, @[2u16], @[],
+    @[(1u16, 1u16)])
+  let single = singleSubstBytes(2u16, 10u16)
+  let gsub = buildGsubTwoLookups("ccmp", 6u16, chain, 1u16, single)
+  check shapeWithFeatures(buildFont(gsub), "AB",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (2u32, 1u32)]
+  check shapeWithFeatures(buildFont(gsub), "AAB",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (1u32, 1u32), (2u32, 2u32)]
+
+test "class-based context fires on class member":
+  let classDef = classDefFormat1Bytes(1u16, @[1u16, 2u16])
+  let ctx = buildSeqFormat2(1u16, classDef, 2, 1, @[2u16],
+    @[(1u16, 1u16)])
+  let single = singleSubstBytes(2u16, 10u16)
+  let gsub = buildGsubTwoLookups("ccmp", 5u16, ctx, 1u16, single)
+  check shapeWithFeatures(buildFont(gsub), "AB",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (10u32, 1u32)]
+
+test "coverage context format3 fires":
+  let ctx = buildSeqFormat3(@[@[1u16], @[2u16]], @[(1u16, 1u16)])
+  let single = singleSubstBytes(2u16, 10u16)
+  let gsub = buildGsubTwoLookups("ccmp", 5u16, ctx, 1u16, single)
+  check shapeWithFeatures(buildFont(gsub), "AB",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (10u32, 1u32)]
+  check shapeWithFeatures(buildFont(gsub), "CB",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(3u32, 0u32), (2u32, 1u32)]
+
+test "chained lookahead triggers nested substitution":
+  let chain = buildChainedFormat1(@[], 1u16, @[2u16], @[3u16],
+    @[(1u16, 1u16)])
+  let single = singleSubstBytes(2u16, 10u16)
+  let gsub = buildGsubTwoLookups("ccmp", 6u16, chain, 1u16, single)
+  check shapeWithFeatures(buildFont(gsub), "ABC",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (10u32, 1u32), (3u32, 2u32)]
+  check shapeWithFeatures(buildFont(gsub), "ABA",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (2u32, 1u32), (1u32, 2u32)]
+
+test "chained format3 with coverages fires":
+  let chain3 = buildChainedFormat3(@[@[3u16]], @[@[1u16], @[2u16]],
+    @[@[1u16]], @[(1u16, 1u16)])
+  let single = singleSubstBytes(2u16, 10u16)
+  let gsub = buildGsubTwoLookups("ccmp", 6u16, chain3, 1u16, single)
+  check shapeWithFeatures(buildFont(gsub), "CABA",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(3u32, 0u32), (1u32, 1u32), (10u32, 2u32), (1u32, 3u32)]
+  check shapeWithFeatures(buildFont(gsub), "CABB",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(3u32, 0u32), (1u32, 1u32), (2u32, 2u32), (2u32, 3u32)]
 
 test "font without gsub parses to none":
   let f = parseFont(buildFont(@[], false))

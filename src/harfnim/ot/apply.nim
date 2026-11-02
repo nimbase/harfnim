@@ -3,9 +3,11 @@ import std/options
 
 import ../buffer
 import ../unicode
+import ./context
 import ./gsub
 
 export gsub
+export context
 
 proc checkGlyphProperty*(info: GlyphInfo, props: uint32): bool =
   let flags = uint16(props and 0xFFFFu32)
@@ -46,9 +48,39 @@ proc lookupCovers(lookup: Lookup, gid: uint32): bool =
     of lkLigature:
       if lookup.ligatureSubsts[e.index].coverage.covers(gid):
         return true
+    of lkContext:
+      let sub = lookup.contextSubsts[e.index]
+      if sub.format == 1u16 or sub.format == 2u16:
+        if sub.coverage.covers(gid):
+          return true
+      elif sub.format == 3u16:
+        if sub.coverages.len > 0 and sub.coverages[0].covers(gid):
+          return true
+    of lkChain:
+      let sub = lookup.chainSubsts[e.index]
+      if sub.format == 1u16 or sub.format == 2u16:
+        if sub.coverage.covers(gid):
+          return true
+      elif sub.format == 3u16:
+        if sub.inputCoverages.len > 0 and
+            sub.inputCoverages[0].covers(gid):
+          return true
     of lkOther:
       discard
   false
+
+# Forward declarations for the contextual recurse (Nim is single-pass).
+proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
+  mask: uint32, nestingLeft: int = MaxNestingLevel): bool
+proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
+  parentMask: uint32, nestingLeft: int): bool
+proc applyRecords(buf: var Buffer, gsub: GsubData,
+  records: seq[LookupRecord], positions: seq[int], matchEnd: int,
+  parentMask: uint32, nestingLeft: int): bool
+proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
+  props, lookupMask: uint32, nestingLeft: int): bool
+proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
+  props, lookupMask: uint32, nestingLeft: int): bool
 
 proc outputGlyphForComponent(buf: var Buffer, gid: uint32, classGuess: uint16) =
   let cur = buf.cur(0)
@@ -218,7 +250,300 @@ proc applyLigature(buf: var Buffer, set: seq[Ligature],
     return true
   false
 
-proc applyLookup*(buf: var Buffer, lookup: Lookup, mask: uint32): bool =
+proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
+    props, lookupMask: uint32, nestingLeft: int): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  if sub.format == 1u16:
+    let ci = sub.coverage.coverageIndex(gid)
+    if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+      return false
+    for rule in sub.ruleSets[int(ci.get)]:
+      let m = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
+        noClassDef(), @[])
+      if m.isNone:
+        continue
+      if applyRecords(buf, gsub, rule.records, m.get.positions,
+          m.get.matchEnd, lookupMask, nestingLeft):
+        return true
+      if not buf.successful:
+        return false
+      return true
+    false
+  elif sub.format == 2u16:
+    if not sub.coverage.covers(gid):
+      return false
+    let cls = int(sub.classDef.classOf(gid))
+    if cls >= sub.ruleSets.len:
+      return false
+    for rule in sub.ruleSets[cls]:
+      let m = matchInputSeq(buf, props, lookupMask, rule.input, vkClass,
+        sub.classDef, @[])
+      if m.isNone:
+        continue
+      if applyRecords(buf, gsub, rule.records, m.get.positions,
+          m.get.matchEnd, lookupMask, nestingLeft):
+        return true
+      if not buf.successful:
+        return false
+      return true
+    false
+  elif sub.format == 3u16:
+    if sub.coverages.len == 0:
+      return false
+    if not sub.coverages[0].covers(gid):
+      return false
+    let rest =
+      if sub.coverages.len > 1: sub.coverages[1 .. ^1]
+      else: @[]
+    let dummy = newSeq[uint32](rest.len)
+    let m = matchInputSeq(buf, props, lookupMask, dummy, vkCoverage,
+      noClassDef(), rest)
+    if m.isNone:
+      return false
+    if applyRecords(buf, gsub, sub.records, m.get.positions,
+        m.get.matchEnd, lookupMask, nestingLeft):
+      return true
+    if not buf.successful:
+      return false
+    true
+  else:
+    false
+
+proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
+    props, lookupMask: uint32, nestingLeft: int): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  if sub.format == 1u16:
+    let ci = sub.coverage.coverageIndex(gid)
+    if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+      return false
+    for rule in sub.ruleSets[int(ci.get)]:
+      let mi = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
+        noClassDef(), @[])
+      if mi.isNone:
+        continue
+      let la = matchLookaheadSeq(buf, props, rule.lookahead, vkGlyph,
+        noClassDef(), @[], mi.get.matchEnd)
+      if la.isNone:
+        continue
+      if not matchBacktrackSeq(buf, props, rule.backtrack, vkGlyph,
+          noClassDef(), @[]):
+        continue
+      if applyRecords(buf, gsub, rule.records, mi.get.positions,
+          mi.get.matchEnd, lookupMask, nestingLeft):
+        return true
+      if not buf.successful:
+        return false
+      return true
+    false
+  elif sub.format == 2u16:
+    if not sub.coverage.covers(gid):
+      return false
+    let cls = int(sub.inputClassDef.classOf(gid))
+    if cls >= sub.ruleSets.len:
+      return false
+    for rule in sub.ruleSets[cls]:
+      let mi = matchInputSeq(buf, props, lookupMask, rule.input, vkClass,
+        sub.inputClassDef, @[])
+      if mi.isNone:
+        continue
+      let la = matchLookaheadSeq(buf, props, rule.lookahead, vkClass,
+        sub.lookaheadClassDef, @[], mi.get.matchEnd)
+      if la.isNone:
+        continue
+      if not matchBacktrackSeq(buf, props, rule.backtrack, vkClass,
+          sub.backtrackClassDef, @[]):
+        continue
+      if applyRecords(buf, gsub, rule.records, mi.get.positions,
+          mi.get.matchEnd, lookupMask, nestingLeft):
+        return true
+      if not buf.successful:
+        return false
+      return true
+    false
+  elif sub.format == 3u16:
+    if sub.inputCoverages.len == 0:
+      return false
+    if not sub.inputCoverages[0].covers(gid):
+      return false
+    let restInput =
+      if sub.inputCoverages.len > 1: sub.inputCoverages[1 .. ^1]
+      else: @[]
+    let dummyIn = newSeq[uint32](restInput.len)
+    let mi = matchInputSeq(buf, props, lookupMask, dummyIn, vkCoverage,
+      noClassDef(), restInput)
+    if mi.isNone:
+      return false
+    let dummyLa = newSeq[uint32](sub.lookaheadCoverages.len)
+    let la = matchLookaheadSeq(buf, props, dummyLa, vkCoverage, noClassDef(),
+      sub.lookaheadCoverages, mi.get.matchEnd)
+    if la.isNone:
+      return false
+    let dummyBack = newSeq[uint32](sub.backtrackCoverages.len)
+    # Silence unused warning: backtrack length drives the walk below.
+    discard dummyBack
+    if not matchBacktrackSeq(buf, props, dummyBack, vkCoverage, noClassDef(),
+        sub.backtrackCoverages):
+      return false
+    if applyRecords(buf, gsub, sub.records, mi.get.positions,
+        mi.get.matchEnd, lookupMask, nestingLeft):
+      return true
+    if not buf.successful:
+      return false
+    true
+  else:
+    false
+
+proc applyRecords(buf: var Buffer, gsub: GsubData,
+    records: seq[LookupRecord], positions: seq[int], matchEnd: int,
+    parentMask: uint32, nestingLeft: int): bool =
+  if positions.len == 0:
+    return false
+  if positions.len > MaxContextLength:
+    return false
+  let backtrackLen =
+    if buf.haveOutput: buf.outLen
+    else: buf.idx
+  let delta0 = backtrackLen - buf.idx
+  var outPositions = newSeq[int](positions.len)
+  for i, p in positions:
+    outPositions[i] = p + delta0
+  var endOut = backtrackLen + (matchEnd - buf.idx)
+  var count = positions.len
+  if records.len == 0:
+    if not buf.moveTo(endOut):
+      return false
+    return buf.successful
+  for rec in records:
+    if not buf.successful:
+      break
+    let idxRec = int(rec.seqIndex)
+    if idxRec >= count:
+      continue
+    let origLen =
+      (if buf.haveOutput: buf.outLen else: buf.idx) + (buf.len - buf.idx)
+    let target = outPositions[idxRec]
+    if target >= origLen:
+      continue
+    if not buf.moveTo(target):
+      break
+    if buf.maxOps <= 0:
+      buf.successful = false
+      break
+    buf.maxOps -= 1
+    if buf.maxOps < 0:
+      buf.successful = false
+      break
+    let applied = applyNestedAt(buf, gsub, int(rec.lookupIndex), parentMask,
+      nestingLeft - 1)
+    if not applied:
+      if not buf.successful:
+        break
+      continue
+    let newLen =
+      (if buf.haveOutput: buf.outLen else: buf.idx) + (buf.len - buf.idx)
+    var deltaLen = newLen - origLen
+    if deltaLen == 0:
+      continue
+    endOut += deltaLen
+    if endOut < outPositions[idxRec]:
+      deltaLen += outPositions[idxRec] - endOut
+      endOut = outPositions[idxRec]
+    var nextIdx = idxRec + 1
+    if deltaLen > 0:
+      if deltaLen + count > MaxContextLength:
+        break
+      let need = deltaLen + count
+      if need > outPositions.len:
+        outPositions.setLen(need)
+    else:
+      deltaLen = max(deltaLen, nextIdx - count)
+      nextIdx = nextIdx - deltaLen
+    # Shift [nextIdx .. count) to [nextIdx + deltaLen ..).
+    if deltaLen > 0:
+      for i in countdown(count - 1, nextIdx):
+        outPositions[i + deltaLen] = outPositions[i]
+    else:
+      for i in nextIdx ..< count:
+        outPositions[i + deltaLen] = outPositions[i]
+    nextIdx = nextIdx + deltaLen
+    count = count + deltaLen
+    for j in idxRec + 1 ..< nextIdx:
+      outPositions[j] = outPositions[j - 1] + 1
+    var k = nextIdx
+    while k < count:
+      outPositions[k] = outPositions[k] + deltaLen
+      inc k
+  if not buf.successful:
+    return false
+  if not buf.moveTo(endOut):
+    return false
+  buf.successful
+
+proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
+    parentMask: uint32, nestingLeft: int): bool =
+  if nestingLeft <= 0:
+    buf.indexFailed()
+    return false
+  if lookupIndex < 0 or lookupIndex >= gsub.lookups.len:
+    return false
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let lookup = gsub.lookups[lookupIndex]
+  if lookup.order.len == 0:
+    return false
+  let nestedProps = lookup.lookupProps()
+  let gid = buf.info[buf.idx].glyphId
+  for e in lookup.order:
+    case e.kind
+    of lkSingle:
+      let sub = lookup.singleSubsts[e.index]
+      let ci = sub.coverage.coverageIndex(gid)
+      if ci.isNone:
+        continue
+      let rep = sub.singleSubstitute(gid, ci.get)
+      if rep.isNone:
+        continue
+      replaceWithSubstituted(buf, rep.get)
+      return true
+    of lkMultiple:
+      let sub = lookup.multipleSubsts[e.index]
+      let ci = sub.coverage.coverageIndex(gid)
+      if ci.isNone:
+        continue
+      if applyMultiple(buf, sub, int(ci.get)):
+        return true
+    of lkAlternate:
+      let sub = lookup.alternateSubsts[e.index]
+      let ci = sub.coverage.coverageIndex(gid)
+      if ci.isNone:
+        continue
+      if applyAlternate(buf, sub, int(ci.get), parentMask):
+        return true
+    of lkLigature:
+      let sub = lookup.ligatureSubsts[e.index]
+      let ci = sub.coverage.coverageIndex(gid)
+      if ci.isNone or int(ci.get) >= sub.sets.len:
+        continue
+      if applyLigature(buf, sub.sets[int(ci.get)], nestedProps):
+        return true
+    of lkContext:
+      if applyContextSubst(buf, gsub, lookup.contextSubsts[e.index],
+          nestedProps, parentMask, nestingLeft):
+        return true
+    of lkChain:
+      if applyChainSubst(buf, gsub, lookup.chainSubsts[e.index],
+          nestedProps, parentMask, nestingLeft):
+        return true
+    of lkOther:
+      continue
+  false
+
+proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
+  mask: uint32, nestingLeft: int = MaxNestingLevel): bool =
   if lookup.order.len == 0:
     return false
   let props = lookup.lookupProps()
@@ -273,6 +598,16 @@ proc applyLookup*(buf: var Buffer, lookup: Lookup, mask: uint32): bool =
         if applyLigature(buf, sub.sets[int(ci.get)], props):
           done = true
           break
+      of lkContext:
+        if applyContextSubst(buf, gsub, lookup.contextSubsts[e.index],
+            props, mask, nestingLeft):
+          done = true
+          break
+      of lkChain:
+        if applyChainSubst(buf, gsub, lookup.chainSubsts[e.index],
+            props, mask, nestingLeft):
+          done = true
+          break
       of lkOther:
         continue
     if done:
@@ -292,7 +627,7 @@ proc applySubstLookups*(buf: var Buffer, gsub: GsubData,
       continue
     buf.clearOutput()
     buf.idx = 0
-    discard applyLookup(buf, lookup, mask)
+    discard applyLookup(buf, gsub, lookup, mask)
     discard buf.sync()
 
 proc mapGlyphsFast*(buf: var Buffer) =

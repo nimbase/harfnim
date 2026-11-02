@@ -18,6 +18,13 @@ const
   GsubMultipleSubst* = 2u16
   GsubAlternateSubst* = 3u16
   GsubLigatureSubst* = 4u16
+  GsubContextSubst* = 5u16
+  GsubChainedContextSubst* = 6u16
+  GsubExtensionSubst* = 7u16
+  GsubReverseChainSubst* = 8u16
+
+  MaxNestingLevel* = 64
+  MaxContextLength* = 64
 
 type
   LangSys* = object
@@ -61,9 +68,43 @@ type
     lkMultiple
     lkAlternate
     lkLigature
+    lkContext
+    lkChain
     lkOther
 
   LookupEntry* = tuple[kind: GsubLookupKind, index: int]
+
+  LookupRecord* = tuple[seqIndex: uint16, lookupIndex: uint16]
+
+  ContextRule* = object
+    input*: seq[uint32]
+    records*: seq[LookupRecord]
+
+  ChainRule* = object
+    backtrack*: seq[uint32]
+    input*: seq[uint32]
+    lookahead*: seq[uint32]
+    records*: seq[LookupRecord]
+
+  ContextSubst* = object
+    format*: uint16
+    coverage*: Coverage
+    classDef*: ClassDef
+    ruleSets*: seq[seq[ContextRule]]
+    coverages*: seq[Coverage]
+    records*: seq[LookupRecord]
+
+  ChainContextSubst* = object
+    format*: uint16
+    coverage*: Coverage
+    backtrackClassDef*: ClassDef
+    inputClassDef*: ClassDef
+    lookaheadClassDef*: ClassDef
+    ruleSets*: seq[seq[ChainRule]]
+    backtrackCoverages*: seq[Coverage]
+    inputCoverages*: seq[Coverage]
+    lookaheadCoverages*: seq[Coverage]
+    records*: seq[LookupRecord]
 
   Lookup* = object
     lookupType*: uint16
@@ -73,6 +114,8 @@ type
     multipleSubsts*: seq[MultipleSubst]
     alternateSubsts*: seq[AlternateSubst]
     ligatureSubsts*: seq[LigatureSubst]
+    contextSubsts*: seq[ContextSubst]
+    chainSubsts*: seq[ChainContextSubst]
     order*: seq[LookupEntry]
 
   GsubData* = object
@@ -221,6 +264,254 @@ proc parseAlternateSubst(bytes: openArray[uint8], off: int): AlternateSubst =
     sets.add(s)
   AlternateSubst(coverage: coverage, sets: sets)
 
+proc parseLookupRecords(bytes: openArray[uint8], off: int,
+    count: int): seq[LookupRecord] =
+  if off < 0 or off + count * 4 > bytes.len:
+    raise newException(FontError, "short SubstLookupRecord table")
+  result = newSeq[LookupRecord](count)
+  for i in 0 ..< count:
+    result[i] = (readU16(bytes, off + i * 4), readU16(bytes, off + i * 4 + 2))
+
+proc parseSeqValues(bytes: openArray[uint8], off: int,
+    count: int): seq[uint32] =
+  if off < 0 or off + count * 2 > bytes.len:
+    raise newException(FontError, "short sequence rule table")
+  result = newSeq[uint32](count)
+  for i in 0 ..< count:
+    result[i] = uint32(readU16(bytes, off + i * 2))
+
+proc parseContextRule(bytes: openArray[uint8], off: int): ContextRule =
+  if off + 4 > bytes.len:
+    raise newException(FontError, "short SequenceRule table")
+  let glyphCount = int(readU16(bytes, off))
+  let substCount = int(readU16(bytes, off + 2))
+  let inputCount = max(0, glyphCount - 1)
+  let inputEnd = off + 4 + inputCount * 2
+  if inputEnd + substCount * 4 > bytes.len:
+    raise newException(FontError, "short SequenceRule table")
+  ContextRule(input: parseSeqValues(bytes, off + 4, inputCount),
+    records: parseLookupRecords(bytes, inputEnd, substCount))
+
+proc parseChainRule(bytes: openArray[uint8], off: int): ChainRule =
+  if off + 2 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceRule table")
+  let backCount = int(readU16(bytes, off))
+  let backEnd = off + 2 + backCount * 2
+  if backEnd + 2 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceRule table")
+  let inputCount = int(readU16(bytes, backEnd))
+  let inputVals = max(0, inputCount - 1)
+  let inputEnd = backEnd + 2 + inputVals * 2
+  if inputEnd + 2 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceRule table")
+  let lookCount = int(readU16(bytes, inputEnd))
+  let lookEnd = inputEnd + 2 + lookCount * 2
+  if lookEnd + 2 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceRule table")
+  let substCount = int(readU16(bytes, lookEnd))
+  if lookEnd + 2 + substCount * 4 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceRule table")
+  ChainRule(backtrack: parseSeqValues(bytes, off + 2, backCount),
+    input: parseSeqValues(bytes, backEnd + 2, inputVals),
+    lookahead: parseSeqValues(bytes, inputEnd + 2, lookCount),
+    records: parseLookupRecords(bytes, lookEnd + 2, substCount))
+
+proc parseContextRuleSet(bytes: openArray[uint8],
+    setOff: int): seq[ContextRule] =
+  if setOff + 2 > bytes.len:
+    raise newException(FontError, "short SequenceRuleSet table")
+  let ruleCount = int(readU16(bytes, setOff))
+  if setOff + 2 + ruleCount * 2 > bytes.len:
+    raise newException(FontError, "short SequenceRuleSet table")
+  result = @[]
+  for i in 0 ..< ruleCount:
+    let roff = int(readU16(bytes, setOff + 2 + i * 2))
+    if roff == 0:
+      continue
+    result.add(parseContextRule(bytes, setOff + roff))
+
+proc parseChainRuleSet(bytes: openArray[uint8], setOff: int): seq[ChainRule] =
+  if setOff + 2 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceRuleSet table")
+  let ruleCount = int(readU16(bytes, setOff))
+  if setOff + 2 + ruleCount * 2 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceRuleSet table")
+  result = @[]
+  for i in 0 ..< ruleCount:
+    let roff = int(readU16(bytes, setOff + 2 + i * 2))
+    if roff == 0:
+      continue
+    result.add(parseChainRule(bytes, setOff + roff))
+
+proc parseCoverageList(bytes: openArray[uint8], base: int, off: int,
+    count: int): seq[Coverage] =
+  if off < 0 or off + count * 2 > bytes.len:
+    raise newException(FontError, "short coverage list")
+  result = newSeq[Coverage](count)
+  for i in 0 ..< count:
+    let coff = int(readU16(bytes, off + i * 2))
+    if coff == 0:
+      result[i] = noCoverage()
+    else:
+      result[i] = parseCoverage(bytes, base + coff)
+
+proc parseContextSubst(bytes: openArray[uint8], off: int): ContextSubst =
+  if off + 6 > bytes.len:
+    raise newException(FontError, "short SequenceContext table")
+  let format = readU16(bytes, off)
+  if format == 1u16:
+    let covOff = int(readU16(bytes, off + 2))
+    let coverage =
+      if covOff == 0: noCoverage()
+      else: parseCoverage(bytes, off + covOff)
+    let setCount = int(readU16(bytes, off + 4))
+    if off + 6 + setCount * 2 > bytes.len:
+      raise newException(FontError, "short SequenceContextFormat1 table")
+    var sets: seq[seq[ContextRule]] = @[]
+    for i in 0 ..< setCount:
+      let soff = int(readU16(bytes, off + 6 + i * 2))
+      if soff == 0:
+        sets.add(@[])
+      else:
+        sets.add(parseContextRuleSet(bytes, off + soff))
+    ContextSubst(format: 1u16, coverage: coverage,
+      classDef: noClassDef(), ruleSets: sets, coverages: @[], records: @[])
+  elif format == 2u16:
+    if off + 8 > bytes.len:
+      raise newException(FontError, "short SequenceContextFormat2 table")
+    let covOff = int(readU16(bytes, off + 2))
+    let coverage =
+      if covOff == 0: noCoverage()
+      else: parseCoverage(bytes, off + covOff)
+    let classOff = int(readU16(bytes, off + 4))
+    let classDef =
+      if classOff == 0: noClassDef()
+      else: parseClassDef(bytes, off + classOff)
+    let setCount = int(readU16(bytes, off + 6))
+    if off + 8 + setCount * 2 > bytes.len:
+      raise newException(FontError, "short SequenceContextFormat2 table")
+    var sets: seq[seq[ContextRule]] = @[]
+    for i in 0 ..< setCount:
+      let soff = int(readU16(bytes, off + 8 + i * 2))
+      if soff == 0:
+        sets.add(@[])
+      else:
+        sets.add(parseContextRuleSet(bytes, off + soff))
+    ContextSubst(format: 2u16, coverage: coverage, classDef: classDef,
+      ruleSets: sets, coverages: @[], records: @[])
+  elif format == 3u16:
+    let glyphCount = int(readU16(bytes, off + 2))
+    let substCount = int(readU16(bytes, off + 4))
+    if off + 6 + glyphCount * 2 + substCount * 4 > bytes.len:
+      raise newException(FontError, "short SequenceContextFormat3 table")
+    let covs = parseCoverageList(bytes, off, off + 6, glyphCount)
+    let recs = parseLookupRecords(bytes, off + 6 + glyphCount * 2, substCount)
+    ContextSubst(format: 3u16, coverage: noCoverage(),
+      classDef: noClassDef(), ruleSets: @[], coverages: covs, records: recs)
+  else:
+    # TODO: SequenceContext formats 4/5/6 (24-bit glyphs)
+    raise newException(FontError, "unsupported SequenceContext format")
+
+proc parseChainContextSubst(bytes: openArray[uint8],
+    off: int): ChainContextSubst =
+  if off + 6 > bytes.len:
+    raise newException(FontError, "short ChainedSequenceContext table")
+  let format = readU16(bytes, off)
+  if format == 1u16:
+    let covOff = int(readU16(bytes, off + 2))
+    let coverage =
+      if covOff == 0: noCoverage()
+      else: parseCoverage(bytes, off + covOff)
+    let setCount = int(readU16(bytes, off + 4))
+    if off + 6 + setCount * 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat1")
+    var sets: seq[seq[ChainRule]] = @[]
+    for i in 0 ..< setCount:
+      let soff = int(readU16(bytes, off + 6 + i * 2))
+      if soff == 0:
+        sets.add(@[])
+      else:
+        sets.add(parseChainRuleSet(bytes, off + soff))
+    ChainContextSubst(format: 1u16, coverage: coverage,
+      backtrackClassDef: noClassDef(), inputClassDef: noClassDef(),
+      lookaheadClassDef: noClassDef(), ruleSets: sets,
+      backtrackCoverages: @[], inputCoverages: @[], lookaheadCoverages: @[],
+      records: @[])
+  elif format == 2u16:
+    if off + 12 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat2")
+    let covOff = int(readU16(bytes, off + 2))
+    let coverage =
+      if covOff == 0: noCoverage()
+      else: parseCoverage(bytes, off + covOff)
+    let backOff = int(readU16(bytes, off + 4))
+    let inputOff = int(readU16(bytes, off + 6))
+    let lookOff = int(readU16(bytes, off + 8))
+    let backDef =
+      if backOff == 0: noClassDef()
+      else: parseClassDef(bytes, off + backOff)
+    let inputDef =
+      if inputOff == 0: noClassDef()
+      else: parseClassDef(bytes, off + inputOff)
+    let lookDef =
+      if lookOff == 0: noClassDef()
+      else: parseClassDef(bytes, off + lookOff)
+    let setCount = int(readU16(bytes, off + 10))
+    if off + 12 + setCount * 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat2")
+    var sets: seq[seq[ChainRule]] = @[]
+    for i in 0 ..< setCount:
+      let soff = int(readU16(bytes, off + 12 + i * 2))
+      if soff == 0:
+        sets.add(@[])
+      else:
+        sets.add(parseChainRuleSet(bytes, off + soff))
+    ChainContextSubst(format: 2u16, coverage: coverage,
+      backtrackClassDef: backDef, inputClassDef: inputDef,
+      lookaheadClassDef: lookDef, ruleSets: sets,
+      backtrackCoverages: @[], inputCoverages: @[], lookaheadCoverages: @[],
+      records: @[])
+  elif format == 3u16:
+    if off + 4 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let backCount = int(readU16(bytes, off + 2))
+    var p = off + 4
+    if p + backCount * 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let backCovs = parseCoverageList(bytes, off, p, backCount)
+    p += backCount * 2
+    if p + 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let inputCount = int(readU16(bytes, p))
+    p += 2
+    if p + inputCount * 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let inputCovs = parseCoverageList(bytes, off, p, inputCount)
+    p += inputCount * 2
+    if p + 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let lookCount = int(readU16(bytes, p))
+    p += 2
+    if p + lookCount * 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let lookCovs = parseCoverageList(bytes, off, p, lookCount)
+    p += lookCount * 2
+    if p + 2 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let substCount = int(readU16(bytes, p))
+    p += 2
+    if p + substCount * 4 > bytes.len:
+      raise newException(FontError, "short ChainedSequenceContextFormat3")
+    let recs = parseLookupRecords(bytes, p, substCount)
+    ChainContextSubst(format: 3u16, coverage: noCoverage(),
+      backtrackClassDef: noClassDef(), inputClassDef: noClassDef(),
+      lookaheadClassDef: noClassDef(), ruleSets: @[],
+      backtrackCoverages: backCovs, inputCoverages: inputCovs,
+      lookaheadCoverages: lookCovs, records: recs)
+  else:
+    # TODO: ChainedSequenceContext formats 4/5/6 (24-bit glyphs)
+    raise newException(FontError, "unsupported ChainedSequenceContext format")
+
 proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
   let base = tableOff + off
   if base + 6 > bytes.len:
@@ -238,6 +529,8 @@ proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
   var multis: seq[MultipleSubst] = @[]
   var alts: seq[AlternateSubst] = @[]
   var ligs: seq[LigatureSubst] = @[]
+  var ctxs: seq[ContextSubst] = @[]
+  var chains: seq[ChainContextSubst] = @[]
   var order: seq[LookupEntry] = @[]
   if lookupType == GsubSingleSubst:
     for i in 0 ..< subCount:
@@ -259,11 +552,28 @@ proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
       let subOff = int(readU16(bytes, base + 6 + i * 2))
       ligs.add(parseLigatureSubst(bytes, base + subOff))
       order.add((lkLigature, ligs.len - 1))
-  # TODO: other GSUB lookup types (contextual, chained, extension,
-  #   reverse-chained)
+  elif lookupType == GsubContextSubst:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        ctxs.add(parseContextSubst(bytes, base + subOff))
+        order.add((lkContext, ctxs.len - 1))
+      except FontError:
+        # Skip unreadable or unsupported (wide) subtables.
+        continue
+  elif lookupType == GsubChainedContextSubst:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        chains.add(parseChainContextSubst(bytes, base + subOff))
+        order.add((lkChain, chains.len - 1))
+      except FontError:
+        continue
+  # TODO: other GSUB lookup types (extension, reverse-chained)
   Lookup(lookupType: lookupType, lookupFlag: flag, markFilteringSet: markSet,
     singleSubsts: subs, multipleSubsts: multis, alternateSubsts: alts,
-    ligatureSubsts: ligs, order: order)
+    ligatureSubsts: ligs, contextSubsts: ctxs, chainSubsts: chains,
+    order: order)
 
 proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
   if off + 10 > bytes.len:
