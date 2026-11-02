@@ -52,10 +52,6 @@ MORX_FONTS = {"Geneva.ttf", "Helvetica.ttc"}
 
 ARABIC_MARK_TEXTS = {"بِسْمِ", "مُحَمَّد"}
 
-# Fonts whose kerning lives in the legacy `kern` table, which harfnim
-# does not parse yet (it shapes from GPOS only). hb-shape applies it.
-KERN_TABLE_FONTS = {"Verdana.ttf", "Trebuchet MS.ttf", "Helvetica.ttc"}
-
 # Arabic mark-fallback differences on fonts without usable Arabic mark
 # positioning: .notdef-only coverage (fallback runs on .notdef extents)
 # plus Tahoma, whose MarkLig-only GPOS attaches nothing and whose
@@ -75,9 +71,6 @@ def expected_failure(font, features, text, ours, hb):
     if base in MORX_FONTS and "liga" in features.replace("-liga", "") \
             and text in LIGA_TEXTS:
         return "morx-liga"
-    if base in KERN_TABLE_FONTS and features == "kern,liga" \
-            and "@" in hb and "@" not in ours:
-        return "legacy-kern-table"
     if features == "" and text in ARABIC_MARK_TEXTS \
             and (base, text) in FALLBACK_MARK_DIFFS:
         return "fallback-mark-positioning"
@@ -175,7 +168,7 @@ def main():
                                  hb.stdout.strip()[:160]))
 
     print(f"\n{npass} pass, {nfail} fail, {nxfail} expected-fail "
-          f"(morx-liga, legacy-kern-table, fallback-mark-positioning)")
+          f"(morx-liga, fallback-mark-positioning)")
     for font, text, feats, ours, hb in failures:
         print(f"FAIL: {os.path.basename(font)} {text!r} [{feats}]")
         print(f"  ours: {ours}")

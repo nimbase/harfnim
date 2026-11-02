@@ -255,10 +255,21 @@ proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
   applyMasked("clig", cligMask)
   applyMasked("mset", msetMask)
   # User features last, with fresh low bits that do not disturb arabic bits
-  # (they start above the arabic allocation).
+  # (they start above the arabic allocation). Features the arabic path
+  # already applied with joining-aware masks are skipped to avoid applying
+  # them twice (the global re-application would be redundant).
+  const arabAutoGsub = ["stch", "ccmp", "locl", "isol", "fina", "fin2",
+    "fin3", "medi", "med2", "init", "rlig", "calt", "liga", "clig", "mset"]
   var uBit = am.nextBit
   for f in userFeatures:
     if f.value == 0u32:
+      continue
+    var covered = false
+    for t in arabAutoGsub:
+      if f.tag.toU32() == tagFromStr(t).toU32():
+        covered = true
+        break
+    if covered:
       continue
     let (m, v) = allocMaskBit(uBit, f.value)
     if m == 0u32:
@@ -326,9 +337,17 @@ proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     buf.setMasks(v, m, GlobalStart, GlobalEnd)
     buf.applyPosLookups(gpos, lks, m, scale)
   # User-requested GPOS (kern etc) with shared allocation above arabic bits.
+  # Features already applied above with automatic masks are skipped.
   var uBit = nextBit
   for f in userFeatures:
     if f.value == 0u32:
+      continue
+    var covered = false
+    for t in autoTags:
+      if f.tag.toU32() == tagFromStr(t).toU32():
+        covered = true
+        break
+    if covered:
       continue
     let (m, v) = allocMaskBit(uBit, f.value)
     if m == 0u32:
@@ -487,6 +506,28 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     else:
       buf.applyGposFeatures(gposOpt.get, plan.scriptTag, plan.langTag,
         plan.features, sf.scale)
+  # Legacy `kern` table, mirroring harfrust position_by_plan: it runs
+  # after GPOS when kerning was requested but GPOS supplied no kern
+  # feature for the script.
+  let kernTag = if buf.direction.isHorizontal(): tagFromStr("kern")
+    else: tagFromStr("vkrn")
+  var kernRequested = false
+  for f in plan.features:
+    if f.tag.toU32() == kernTag.toU32() and f.value != 0u32:
+      kernRequested = true
+      break
+  if kernRequested:
+    let kernOpt = parseKern(sf.font)
+    if kernOpt.isSome and kernOpt.get.subtables.len > 0:
+      var hasGposKern = false
+      if gposOpt.isSome:
+        for (tg, _) in gposFeaturesFor(gposOpt.get, plan.scriptTag,
+            plan.langTag):
+          if tg == kernTag.toU32():
+            hasGposKern = true
+            break
+      if not hasGposKern:
+        buf.applyKernTable(kernOpt.get, KernWalkMask, sf.scale)
   # Late mark zeroing (arabic/hebrew/default) when GPOS did not attach.
   if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
     buf.zeroMarkWidths(buf.direction.isForward())

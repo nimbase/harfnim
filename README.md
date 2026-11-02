@@ -20,7 +20,7 @@ Pure Nim shaping without C bindings.
 * Three round normalizer with font callbacks
 * Font parsing: TTF, OTF, TTC, cmap 0/4/6/10/12/13, hmtx/vmtx, glyf bounds
 * GSUB substitutions: single, multiple, alternate, ligature, contextual, chained, extension, reverse chain
-* GPOS positioning: single, pair kern, mark to base, mark to ligature, mark to mark, cursive
+* GPOS positioning: single, pair kern, mark to base, mark to ligature, mark to mark, cursive, plus legacy kern table
 * Arabic joining, presentation form fallback, mark reordering, RTL reversal
 * Scaled advances, extents, anchor attachment, fallback mark positioning
 
@@ -74,10 +74,11 @@ for i in 0 ..< buf.len:
 * [x] GPOS single, pair, extension
 * [x] GPOS mark attachment and cursive
 * [x] Arabic joining, fallback, RTL
+* [x] Legacy kern table (format 0, MS and Apple layouts)
+* [x] hr-shape CLI and conformance harness
 * [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
 * [ ] GPOS contextual positioning and 24 bit formats
 * [ ] cmap 14, name table, caches, variations
-* [ ] hr-shape CLI and conformance harness
 * [ ] AAT morx
 * [ ] stch stretching and win1256 legacy fallback
 

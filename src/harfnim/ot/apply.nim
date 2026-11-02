@@ -3,15 +3,18 @@ import std/options
 
 import ../buffer
 import ../direction
+import ../feature
 import ../scale
 import ../unicode
 import ./context
 import ./gpos
 import ./gsub
+import ./kern
 
 export gsub
 export context
 export gpos
+export kern
 
 proc checkGlyphProperty*(info: GlyphInfo, props: uint32): bool =
   let flags = uint16(props and 0xFFFFu32)
@@ -1347,6 +1350,76 @@ proc applyPosLookups*(buf: var Buffer, gpos: GposData,
       continue
     buf.idx = 0
     discard applyPosLookup(buf, gpos, lookup, mask, scale)
+
+# --------------------------------------------------------------------------
+# Legacy `kern` table (mirrors harfrust aat/kern.rs machine_kern for
+# format 0; single walk per subtable, kern value split across the pair).
+# --------------------------------------------------------------------------
+
+const KernWalkMask* = 0x80000000u32
+
+proc applyKernTable*(buf: var Buffer, kern: KernData, mask: uint32,
+    scale: Scale) =
+  if buf.isEmpty() or mask == 0u32:
+    return
+  if not buf.havePositions:
+    buf.clearPositions()
+  let horiz = buf.direction.isHorizontal()
+  let needReverse = buf.direction.isBackward()
+  if needReverse:
+    buf.reverse()
+  buf.setMasks(mask, mask, GlobalStart, GlobalEnd)
+  buf.unsafeToConcatRange(none(int), none(int))
+  let props = uint32(LookupIgnoreMarks)
+  for sub in kern.subtables:
+    if sub.crossStream:
+      continue # TODO: cross-stream attachment
+    if horiz != sub.horizontal:
+      continue
+    if sub.pairs.len == 0:
+      continue
+    buf.idx = 0
+    while buf.successful:
+      var j = buf.idx
+      while j < buf.len and j < buf.info.len:
+        if (buf.info[j].mask and mask) != 0u32:
+          break
+        inc j
+      if j > buf.idx:
+        buf.nextGlyphs(j - buf.idx)
+      if buf.idx >= buf.len or buf.idx >= buf.info.len:
+        break
+      var k = buf.idx + 1
+      while k < buf.len and k < buf.info.len:
+        if contextCheckProp(buf.info[k], props):
+          break
+        inc k
+      if k >= buf.len or k >= buf.info.len:
+        break
+      let v = kernValueAt(sub, buf.info[buf.idx].glyphId,
+        buf.info[k].glyphId)
+      if v != 0i32:
+        let sv = if horiz: scale.scaleX(v) else: scale.scaleY(v)
+        let k1 = sv shr 1
+        let k2 = sv - k1
+        if horiz:
+          buf.pos[buf.idx].xAdvance =
+            saturatingAddI32(buf.pos[buf.idx].xAdvance, k1)
+          buf.pos[k].xAdvance =
+            saturatingAddI32(buf.pos[k].xAdvance, k2)
+          buf.pos[k].xOffset =
+            saturatingAddI32(buf.pos[k].xOffset, k2)
+        else:
+          buf.pos[buf.idx].yAdvance =
+            saturatingAddI32(buf.pos[buf.idx].yAdvance, k1)
+          buf.pos[k].yAdvance =
+            saturatingAddI32(buf.pos[k].yAdvance, k2)
+          buf.pos[k].yOffset =
+            saturatingAddI32(buf.pos[k].yOffset, k2)
+        buf.unsafeToBreakRange(some(buf.idx), some(k + 1))
+      buf.idx = k
+  if needReverse:
+    buf.reverse()
 
 proc mapGlyphsFast*(buf: var Buffer) =
   for i in 0 ..< buf.len:
