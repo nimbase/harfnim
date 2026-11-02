@@ -36,30 +36,39 @@ const
   TagVhea = 0x76686561u32
   TagVmtx = 0x766D7478u32
 
-proc checkBounds(bytes: seq[uint8], off, size: int) =
+proc checkBounds(bytes: openArray[uint8], off, size: int) =
   if off < 0 or size < 0 or off + size > bytes.len:
     raise newException(FontError, "font data out of bounds")
 
-proc u8at(bytes: seq[uint8], off: int): uint8 =
+proc u8at(bytes: openArray[uint8], off: int): uint8 =
   checkBounds(bytes, off, 1)
   bytes[off]
 
-proc u16be(bytes: seq[uint8], off: int): uint16 =
+proc readU16*(bytes: openArray[uint8], off: int): uint16 =
   checkBounds(bytes, off, 2)
   (uint16(bytes[off]) shl 8) or uint16(bytes[off + 1])
 
-proc i16be(bytes: seq[uint8], off: int): int16 =
-  cast[int16](u16be(bytes, off))
+proc readI16*(bytes: openArray[uint8], off: int): int16 =
+  cast[int16](readU16(bytes, off))
 
-proc u24be(bytes: seq[uint8], off: int): uint32 =
+proc readU32*(bytes: openArray[uint8], off: int): uint32 =
+  checkBounds(bytes, off, 4)
+  (uint32(bytes[off]) shl 24) or (uint32(bytes[off + 1]) shl 16) or
+    (uint32(bytes[off + 2]) shl 8) or uint32(bytes[off + 3])
+
+proc u16be(bytes: seq[uint8], off: int): uint16 {.used.} =
+  readU16(bytes, off)
+
+proc i16be(bytes: seq[uint8], off: int): int16 {.used.} =
+  readI16(bytes, off)
+
+proc u24be(bytes: seq[uint8], off: int): uint32 {.used.} =
   checkBounds(bytes, off, 3)
   (uint32(bytes[off]) shl 16) or (uint32(bytes[off + 1]) shl 8) or
     uint32(bytes[off + 2])
 
-proc u32be(bytes: seq[uint8], off: int): uint32 =
-  checkBounds(bytes, off, 4)
-  (uint32(bytes[off]) shl 24) or (uint32(bytes[off + 1]) shl 16) or
-    (uint32(bytes[off + 2]) shl 8) or uint32(bytes[off + 3])
+proc u32be(bytes: seq[uint8], off: int): uint32 {.used.} =
+  readU32(bytes, off)
 
 proc findTable(f: SfntFont, tag: uint32): int =
   for i, t in f.tables:

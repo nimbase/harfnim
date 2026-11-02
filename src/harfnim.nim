@@ -8,6 +8,7 @@ import harfnim/buffer
 import harfnim/unicode
 import harfnim/normalize
 import harfnim/font
+import harfnim/ot/map
 
 export tag
 export script
@@ -19,3 +20,4 @@ export buffer
 export unicode
 export normalize
 export font
+export map
