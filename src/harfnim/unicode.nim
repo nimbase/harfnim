@@ -437,7 +437,7 @@ proc binarySearchMaskedU64(arr: openArray[uint64], key, mask: uint64): int =
       return mid
   -1
 
-proc composeImpl(a, b: uint32): Option[uint32] =
+proc composeImpl*(a, b: uint32): Option[uint32] =
   let hangul = composeHangul(a, b)
   if hangul.isSome:
     return hangul
@@ -458,7 +458,7 @@ proc composeImpl(a, b: uint32): Option[uint32] =
       decode3_3(ucdDm2U64Map[idx])
   if u == 0u32: none(uint32) else: some(u)
 
-proc decomposeImpl(ab: uint32): Option[tuple[a, b: uint32]] =
+proc decomposeImpl*(ab: uint32): Option[tuple[a, b: uint32]] =
   let hangul = decomposeHangul(ab)
   if hangul.isSome:
     return hangul

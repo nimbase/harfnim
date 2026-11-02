@@ -368,6 +368,7 @@ proc ensure*(b: var Buffer, size: int): bool
 proc enlarge*(b: var Buffer, size: int): bool
 proc ensureOutCap(b: var Buffer, need: int)
 proc clearPositions*(b: var Buffer)
+proc substituted*(g: GlyphInfo): bool
 
 proc newBuffer*(): Buffer =
   Buffer(
@@ -655,6 +656,83 @@ proc initUnicodeProps*(g: var GlyphInfo, scratch: var uint32) =
 
 proc unhide*(g: var GlyphInfo) =
   g.setUnicodeProps(g.unicodeProps() and not UnicodePropHidden)
+
+# --- unicode_props helpers (mirror hb-ot-layout.hh getters) ---
+
+proc generalCategory*(g: GlyphInfo): GeneralCategory =
+  GeneralCategory(uint8(g.unicodeProps() and UnicodePropGeneralCategory))
+
+proc setGeneralCategory*(g: var GlyphInfo, cat: GeneralCategory) =
+  g.setUnicodeProps((g.unicodeProps() and not UnicodePropGeneralCategory) or
+    uint16(uint8(cat)))
+
+proc isUnicodeMark*(g: GlyphInfo): bool =
+  g.generalCategory().isMark()
+
+proc setModifiedCombiningClass*(g: var GlyphInfo, c: uint8) =
+  if not g.isUnicodeMark():
+    return
+  g.setUnicodeProps((uint16(c) shl 8) or (g.unicodeProps() and 0xFFu16))
+
+proc modifiedCombiningClass*(g: GlyphInfo): uint8 =
+  if g.isUnicodeMark():
+    uint8(g.unicodeProps() shr 8)
+  else:
+    0u8
+
+proc isUnicodeSpace*(g: GlyphInfo): bool =
+  g.generalCategory() == GcSpaceSeparator
+
+proc setUnicodeSpaceFallbackType*(g: var GlyphInfo, s: uint8) =
+  if not g.isUnicodeSpace():
+    return
+  g.setUnicodeProps((uint16(s) shl 8) or (g.unicodeProps() and 0xFFu16))
+
+proc unicodeSpaceFallbackType*(g: GlyphInfo): uint8 =
+  if g.isUnicodeSpace():
+    uint8(g.unicodeProps() shr 8)
+  else:
+    SpaceNotSpace
+
+proc isUnicodeFormat*(g: GlyphInfo): bool =
+  g.generalCategory() == GcFormat
+
+proc isZwnj*(g: GlyphInfo): bool =
+  g.isUnicodeFormat() and (g.unicodeProps() and UnicodePropCfZwnj) != 0u16
+
+proc isZwj*(g: GlyphInfo): bool =
+  g.isUnicodeFormat() and (g.unicodeProps() and UnicodePropCfZwj) != 0u16
+
+proc isInfoVariationSelector*(g: GlyphInfo): bool =
+  g.generalCategory() == GcFormat and
+    (g.unicodeProps() and UnicodePropCfVs) != 0u16
+
+proc setVariationSelector*(g: var GlyphInfo, customize: bool) =
+  if customize:
+    g.setGeneralCategory(GcFormat)
+    g.setUnicodeProps(g.unicodeProps() or UnicodePropCfVs)
+  else:
+    g.setGeneralCategory(GcNonSpacingMark)
+
+proc isInfoDefaultIgnorable*(g: GlyphInfo): bool =
+  let n = g.unicodeProps() and UnicodePropIgnorable
+  n != 0u16 and not g.substituted()
+
+proc clearDefaultIgnorable*(g: var GlyphInfo) =
+  g.setUnicodeProps(g.unicodeProps() and not UnicodePropIgnorable)
+
+proc isHidden*(g: GlyphInfo): bool =
+  (g.unicodeProps() and UnicodePropHidden) != 0u16
+
+proc setContinuation*(g: var GlyphInfo, scratch: var uint32) =
+  scratch = scratch or ScratchFlagHasContinuations
+  g.setUnicodeProps(g.unicodeProps() or UnicodePropContinuation)
+
+proc clearContinuation*(g: var GlyphInfo) =
+  g.setUnicodeProps(g.unicodeProps() and not UnicodePropContinuation)
+
+proc isContinuation*(g: GlyphInfo): bool =
+  (g.unicodeProps() and UnicodePropContinuation) != 0u16
 
 proc guessSegmentProperties*(b: var Buffer) =
   if b.script.isNone:
