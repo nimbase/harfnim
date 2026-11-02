@@ -140,6 +140,71 @@ proc buildFont(cmap: seq[uint8]): seq[uint8] =
     result.add(data)
     result.pad4()
 
+proc buildFontWithGlyf(cmap: seq[uint8]): seq[uint8] =
+  var head = newSeq[uint8]()
+  head.putU32(0x00010000u32)
+  head.putU32(0u32)
+  head.putU32(0u32)
+  head.putU32(0x5F0F3CF5u32)
+  head.putU16(0u16)
+  head.putU16(1000u16)
+  for _ in 0 ..< 4:
+    head.putU32(0u32)
+  for _ in 0 ..< 4:
+    head.putI16(0i16)
+  head.putU16(0u16)
+  head.putU16(0u16)
+  head.putI16(0i16)
+  head.putI16(0i16)
+  head.putU16(0u16)
+  var hhea = newSeq[uint8]()
+  hhea.putU32(0x00010000u32)
+  hhea.putI16(800i16)
+  hhea.putI16(-200i16)
+  hhea.putI16(0i16)
+  hhea.putU16(600u16)
+  for _ in 0 ..< 11:
+    hhea.putI16(0i16)
+  hhea.putU16(2u16)
+  var maxp = newSeq[uint8]()
+  maxp.putU32(0x00005000u32)
+  maxp.putU16(3u16)
+  var hmtx = newSeq[uint8]()
+  hmtx.putU16(500u16)
+  hmtx.putI16(0i16)
+  hmtx.putU16(600u16)
+  hmtx.putI16(10i16)
+  hmtx.putI16(20i16)
+  var loca = @[0u8, 0u8, 0u8, 0u8, 0u8, 5u8, 0u8, 5u8]
+  var glyf = newSeq[uint8]()
+  glyf.putU16(1u16)
+  glyf.putI16(10i16)
+  glyf.putI16(20i16)
+  glyf.putI16(30i16)
+  glyf.putI16(40i16)
+  var tables = @[
+    ("head", head), ("hhea", hhea), ("maxp", maxp), ("hmtx", hmtx),
+    ("cmap", cmap), ("loca", loca), ("glyf", glyf),
+  ]
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(uint16(tables.len))
+  result.putU16(32u16)
+  result.putU16(1u16)
+  result.putU16(16u16)
+  var off = 12 + tables.len * 16
+  for (name, data) in tables:
+    for c in name:
+      result.add(uint8(c))
+    result.putU32(0u32)
+    result.putU32(uint32(off))
+    var padded = (data.len + 3) and not 3
+    result.putU32(uint32(padded))
+    off += padded
+  for (_, data) in tables:
+    result.add(data)
+    result.pad4()
+
 proc buildTtc(fonts: seq[seq[uint8]]): seq[uint8] =
   result = @[]
   result.putTag('t', 't', 'c', 'f')
@@ -262,3 +327,13 @@ test "rejects garbage":
   except FontError:
     raised = true
   check raised
+
+test "glyph extents simple bounds":
+  let cmap = buildCmap(@[(3u16, 1u16, buildCmapFormat4())])
+  let sf = newShaperFont(parseFont(buildFontWithGlyf(cmap)))
+  check sf.glyphExtents(newGlyphId(0)) == none(GlyphExtents)
+  check sf.glyphExtents(newGlyphId(1)) ==
+    some(GlyphExtents(xBearing: 10i32, yBearing: 40i32, width: 20i32,
+      height: -20i32))
+  check sf.glyphExtents(newGlyphId(2)) == none(GlyphExtents)
+  check sf.glyphExtents(newGlyphId(9)) == none(GlyphExtents)

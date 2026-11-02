@@ -2,12 +2,16 @@ import std/bitops
 import std/options
 
 import ../buffer
+import ../direction
+import ../scale
 import ../unicode
 import ./context
+import ./gpos
 import ./gsub
 
 export gsub
 export context
+export gpos
 
 proc checkGlyphProperty*(info: GlyphInfo, props: uint32): bool =
   let flags = uint16(props and 0xFFFFu32)
@@ -727,6 +731,196 @@ proc applySubstLookups*(buf: var Buffer, gsub: GsubData,
       buf.idx = 0
       discard applyLookup(buf, gsub, lookup, mask)
       discard buf.sync()
+
+# --------------------------------------------------------------------------
+# GPOS positioning (mirrors harfrust ot/lookup/gpos.rs, static fonts only)
+# --------------------------------------------------------------------------
+
+proc saturatingAddI32(a, b: int32): int32 =
+  let s = int64(a) + int64(b)
+  if s > int64(high(int32)):
+    high(int32)
+  elif s < int64(low(int32)):
+    low(int32)
+  else:
+    int32(s)
+
+proc saturatingSubI32(a, b: int32): int32 =
+  saturatingAddI32(a, -b)
+
+proc lookupProps*(lookup: PosLookup): uint32 =
+  var props = uint32(lookup.lookupFlag)
+  if (lookup.lookupFlag and LookupUseMarkFilteringSet) != 0u16:
+    props = props or (uint32(lookup.markFilteringSet) shl 16)
+  props
+
+proc posLookupCovers(lookup: PosLookup, gid: uint32): bool =
+  for e in lookup.order:
+    case e.kind
+    of pkSingle:
+      if lookup.singlePos[e.index].coverage.covers(gid):
+        return true
+    of pkPair:
+      if lookup.pairPos[e.index].coverage.covers(gid):
+        return true
+    of pkOther:
+      discard
+  false
+
+proc applyValueRecord(buf: var Buffer, posIdx: int, value: ValueRecord,
+    scale: Scale, isHorizontal: bool): bool =
+  if posIdx < 0 or posIdx >= buf.pos.len:
+    return false
+  result = false
+  if value.xPlacement != 0i32:
+    buf.pos[posIdx].xOffset =
+      saturatingAddI32(buf.pos[posIdx].xOffset, scale.scaleX(value.xPlacement))
+    result = true
+  if value.yPlacement != 0i32:
+    buf.pos[posIdx].yOffset =
+      saturatingAddI32(buf.pos[posIdx].yOffset, scale.scaleY(value.yPlacement))
+    result = true
+  if value.xAdvance != 0i32 and isHorizontal:
+    buf.pos[posIdx].xAdvance =
+      saturatingAddI32(buf.pos[posIdx].xAdvance, scale.scaleX(value.xAdvance))
+    result = true
+  if value.yAdvance != 0i32 and not isHorizontal:
+    buf.pos[posIdx].yAdvance =
+      saturatingSubI32(buf.pos[posIdx].yAdvance, scale.scaleY(value.yAdvance))
+    result = true
+  # TODO: device tables and variation deltas (hinting/variable fonts only).
+
+proc findSecondGlyph(buf: Buffer, props, mask: uint32): Option[int] =
+  var j = buf.idx + 1
+  while j < buf.len and j < buf.info.len:
+    let g = buf.info[j]
+    if not checkGlyphProperty(g, props):
+      inc j
+      continue
+    if (g.mask and mask) == 0u32:
+      return none(int)
+    return some(j)
+  none(int)
+
+proc applySinglePos(buf: var Buffer, sub: SinglePos, scale: Scale,
+    isHorizontal: bool): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  let ci = sub.coverage.coverageIndex(gid)
+  if ci.isNone:
+    return false
+  let idx = int(ci.get)
+  if idx >= sub.values.len:
+    return false
+  discard applyValueRecord(buf, buf.idx, sub.values[idx], scale, isHorizontal)
+  buf.nextGlyph()
+  true
+
+proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
+    scale: Scale, isHorizontal: bool): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let first = buf.info[buf.idx].glyphId
+  if sub.coverage.coverageIndex(first).isNone:
+    return false
+  let secondOpt = findSecondGlyph(buf, props, mask)
+  if secondOpt.isNone:
+    return false
+  let secondIdx = secondOpt.get
+  let second = buf.info[secondIdx].glyphId
+  if sub.format == 1u16:
+    let covIdx = sub.coverage.coverageIndex(first).get
+    if int(covIdx) >= sub.pairSets.len:
+      return false
+    let set = sub.pairSets[int(covIdx)]
+    for i, s in set.seconds:
+      if uint32(s) == second:
+        let (v1, v2) = set.values[i]
+        discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal)
+        discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal)
+        if sub.format2 != 0u16:
+          buf.idx = secondIdx + 1
+        else:
+          buf.idx = secondIdx
+        return true
+    # TODO: unsafe_to_concat marking on pair miss.
+    false
+  elif sub.format == 2u16:
+    let class1 = sub.classDef1.classOf(first)
+    let class2 = sub.classDef2.classOf(second)
+    if class1 >= uint32(sub.class1Count) or class2 >= uint32(sub.class2Count):
+      return false
+    let recIdx = int(class1) * int(sub.class2Count) + int(class2)
+    if recIdx < 0 or recIdx >= sub.matrix.len:
+      return false
+    let (v1, v2) = sub.matrix[recIdx]
+    discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal)
+    discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal)
+    if sub.format2 != 0u16:
+      buf.idx = secondIdx + 1
+    else:
+      buf.idx = secondIdx
+    true
+  else:
+    false
+
+proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
+    mask: uint32, scale: Scale): bool =
+  if lookup.order.len == 0:
+    return false
+  if buf.haveOutput:
+    return false
+  if not buf.havePositions:
+    buf.clearPositions()
+  let props = lookup.lookupProps()
+  let isHorizontal = buf.direction.isHorizontal()
+  while buf.successful:
+    var j = buf.idx
+    while j < buf.len and j < buf.info.len:
+      let g = buf.info[j]
+      if (g.mask and mask) != 0u32 and checkGlyphProperty(g, props) and
+          posLookupCovers(lookup, g.glyphId):
+        break
+      inc j
+    if j > buf.idx:
+      buf.nextGlyphs(j - buf.idx)
+    if buf.idx >= buf.len or buf.idx >= buf.info.len:
+      break
+    var done = false
+    for e in lookup.order:
+      case e.kind
+      of pkSingle:
+        if applySinglePos(buf, lookup.singlePos[e.index], scale,
+            isHorizontal):
+          done = true
+          break
+      of pkPair:
+        if applyPairPos(buf, lookup.pairPos[e.index], props, mask, scale,
+            isHorizontal):
+          done = true
+          break
+      of pkOther:
+        continue
+    if done:
+      result = true
+    else:
+      buf.nextGlyph()
+
+proc applyPosLookups*(buf: var Buffer, gpos: GposData,
+    lookupIndices: openArray[uint16], mask: uint32, scale: Scale) =
+  if buf.isEmpty() or mask == 0u32:
+    return
+  if not buf.havePositions:
+    buf.clearPositions()
+  for li in lookupIndices:
+    if int(li) >= gpos.lookups.len:
+      continue
+    let lookup = gpos.lookups[int(li)]
+    if lookup.order.len == 0:
+      continue
+    buf.idx = 0
+    discard applyPosLookup(buf, gpos, lookup, mask, scale)
 
 proc mapGlyphsFast*(buf: var Buffer) =
   for i in 0 ..< buf.len:

@@ -33,6 +33,7 @@ const
   TagHmtx = 0x686D7478u32
   TagCmap = 0x636D6170u32
   TagLoca = 0x6C6F6361u32
+  TagGlyf = 0x676C7966u32
   TagVhea = 0x76686561u32
   TagVmtx = 0x766D7478u32
 
@@ -314,6 +315,56 @@ proc vAdvance*(f: SfntFont, gid: uint32): int32 =
           return int32(u16be(f.bytes, vmtx.offset + g * 4))
         return int32(u16be(f.bytes, vmtx.offset + (n - 1) * 4))
   int32(f.unitsPerEm)
+
+proc glyphOffsets(f: SfntFont): tuple[ok: bool, starts, ends: seq[int]] =
+  let loca = f.tableData(TagLoca)
+  let glyf = f.tableData(TagGlyf)
+  if not loca.ok or not glyf.ok:
+    return (false, @[], @[])
+  let n = int(f.numGlyphs)
+  if n < 0:
+    return (false, @[], @[])
+  var starts = newSeq[int](n)
+  var ends = newSeq[int](n)
+  if f.locaFormat == 0i16:
+    if loca.len < (n + 1) * 2:
+      return (false, @[], @[])
+    for i in 0 ..< n:
+      let s = int(u16be(f.bytes, loca.offset + i * 2)) * 2
+      let e = int(u16be(f.bytes, loca.offset + (i + 1) * 2)) * 2
+      if s < 0 or e < s or glyf.offset + e > f.bytes.len:
+        return (false, @[], @[])
+      starts[i] = glyf.offset + s
+      ends[i] = glyf.offset + e
+  else:
+    if loca.len < (n + 1) * 4:
+      return (false, @[], @[])
+    for i in 0 ..< n:
+      let s = int(u32be(f.bytes, loca.offset + i * 4))
+      let e = int(u32be(f.bytes, loca.offset + (i + 1) * 4))
+      if s < 0 or e < s or glyf.offset + e > f.bytes.len:
+        return (false, @[], @[])
+      starts[i] = glyf.offset + s
+      ends[i] = glyf.offset + e
+  (true, starts, ends)
+
+proc glyphBoundsUnscaled*(f: SfntFont,
+    gid: uint32): Option[tuple[xMin, yMin, xMax, yMax: int32]] =
+  let (ok, starts, ends) = f.glyphOffsets()
+  if not ok or int(gid) >= starts.len:
+    return none(tuple[xMin, yMin, xMax, yMax: int32])
+  let s = starts[int(gid)]
+  let e = ends[int(gid)]
+  if e - s < 10:
+    return none(tuple[xMin, yMin, xMax, yMax: int32])
+  let numContours = readI16(f.bytes, s)
+  if numContours == 0i16:
+    return none(tuple[xMin, yMin, xMax, yMax: int32])
+  if numContours < 0i16:
+    # TODO: composite glyph bounds (walk components).
+    return none(tuple[xMin, yMin, xMax, yMax: int32])
+  some((int32(readI16(f.bytes, s + 2)), int32(readI16(f.bytes, s + 4)),
+    int32(readI16(f.bytes, s + 6)), int32(readI16(f.bytes, s + 8))))
 
 proc numFaces*(data: openArray[uint8]): int =
   if data.len < 12:

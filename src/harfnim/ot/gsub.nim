@@ -134,7 +134,7 @@ type
 
 const TagGsub = 0x47535542u32
 
-proc parseLangSys(bytes: openArray[uint8], off: int): LangSys =
+proc parseLangSys*(bytes: openArray[uint8], off: int): LangSys =
   if off + 6 > bytes.len:
     raise newException(FontError, "short LangSys table")
   let featureCount = int(readU16(bytes, off + 4))
@@ -145,7 +145,7 @@ proc parseLangSys(bytes: openArray[uint8], off: int): LangSys =
     indices[i] = readU16(bytes, off + 6 + i * 2)
   LangSys(requiredFeature: readU16(bytes, off + 2), featureIndices: indices)
 
-proc parseScriptTable(bytes: openArray[uint8], off: int): ScriptTable =
+proc parseScriptTable*(bytes: openArray[uint8], off: int): ScriptTable =
   if off + 4 > bytes.len:
     raise newException(FontError, "short Script table")
   let defaultOff = int(readU16(bytes, off))
@@ -162,6 +162,40 @@ proc parseScriptTable(bytes: openArray[uint8], off: int): ScriptTable =
     let langOff = int(readU16(bytes, base + 4))
     langs.add((tag, parseLangSys(bytes, off + langOff)))
   ScriptTable(defaultLang: defaultLang, langSys: langs)
+
+proc parseScriptList*(bytes: openArray[uint8],
+    off: int): seq[tuple[tag: uint32, script: ScriptTable]] =
+  if off + 2 > bytes.len:
+    raise newException(FontError, "short ScriptList")
+  let scriptCount = int(readU16(bytes, off))
+  if off + 2 + scriptCount * 6 > bytes.len:
+    raise newException(FontError, "short ScriptList")
+  result = @[]
+  for i in 0 ..< scriptCount:
+    let base = off + 2 + i * 6
+    result.add((readU32(bytes, base),
+      parseScriptTable(bytes, off + int(readU16(bytes, base + 4)))))
+
+proc parseFeatureList*(bytes: openArray[uint8],
+    off: int): seq[tuple[tag: uint32, lookups: seq[uint16]]] =
+  if off + 2 > bytes.len:
+    raise newException(FontError, "short FeatureList")
+  let featureCount = int(readU16(bytes, off))
+  if off + 2 + featureCount * 6 > bytes.len:
+    raise newException(FontError, "short FeatureList")
+  result = @[]
+  for i in 0 ..< featureCount:
+    let base = off + 2 + i * 6
+    let fbase = off + int(readU16(bytes, base + 4))
+    if fbase + 4 > bytes.len:
+      raise newException(FontError, "short Feature table")
+    let lookupCount = int(readU16(bytes, fbase + 2))
+    if fbase + 4 + lookupCount * 2 > bytes.len:
+      raise newException(FontError, "short Feature table")
+    var lookups = newSeq[uint16](lookupCount)
+    for j in 0 ..< lookupCount:
+      lookups[j] = readU16(bytes, fbase + 4 + j * 2)
+    result.add((readU32(bytes, base), lookups))
 
 proc parseSingleSubst(bytes: openArray[uint8], off: int): SingleSubst =
   if off + 4 > bytes.len:
@@ -684,32 +718,8 @@ proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
   let scriptOff = int(readU16(bytes, off + 4))
   let featureOff = int(readU16(bytes, off + 6))
   let lookupOff = int(readU16(bytes, off + 8))
-  var scripts: seq[tuple[tag: uint32, script: ScriptTable]] = @[]
-  let scriptBase = off + scriptOff
-  let scriptCount = int(readU16(bytes, scriptBase))
-  if scriptBase + 2 + scriptCount * 6 > bytes.len:
-    raise newException(FontError, "short ScriptList")
-  for i in 0 ..< scriptCount:
-    let base = scriptBase + 2 + i * 6
-    scripts.add((readU32(bytes, base),
-      parseScriptTable(bytes, scriptBase + int(readU16(bytes, base + 4)))))
-  var features: seq[tuple[tag: uint32, lookups: seq[uint16]]] = @[]
-  let featureBase = off + featureOff
-  let featureCount = int(readU16(bytes, featureBase))
-  if featureBase + 2 + featureCount * 6 > bytes.len:
-    raise newException(FontError, "short FeatureList")
-  for i in 0 ..< featureCount:
-    let base = featureBase + 2 + i * 6
-    let fbase = featureBase + int(readU16(bytes, base + 4))
-    if fbase + 4 > bytes.len:
-      raise newException(FontError, "short Feature table")
-    let lookupCount = int(readU16(bytes, fbase + 2))
-    if fbase + 4 + lookupCount * 2 > bytes.len:
-      raise newException(FontError, "short Feature table")
-    var lookups = newSeq[uint16](lookupCount)
-    for j in 0 ..< lookupCount:
-      lookups[j] = readU16(bytes, fbase + 4 + j * 2)
-    features.add((readU32(bytes, base), lookups))
+  let scripts = parseScriptList(bytes, off + scriptOff)
+  let features = parseFeatureList(bytes, off + featureOff)
   var lookups: seq[Lookup] = @[]
   let lookupBase = off + lookupOff
   let lookupCount = int(readU16(bytes, lookupBase))

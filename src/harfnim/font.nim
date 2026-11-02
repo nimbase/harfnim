@@ -56,8 +56,12 @@ proc vAdvance*(f: ShaperFont, gid: GlyphId): int32 =
   if v == low(int32): high(int32) else: -v
 
 proc glyphExtents*(f: ShaperFont, gid: GlyphId): Option[GlyphExtents] =
-  # TODO: glyf/CFF outline parsing
-  none(GlyphExtents)
+  let b = f.font.glyphBoundsUnscaled(gid.value)
+  if b.isNone:
+    return none(GlyphExtents)
+  let (xMin, yMin, xMax, yMax) = b.get
+  some(f.scale.scaleExtents(GlyphExtents(xBearing: xMin, yBearing: yMax,
+    width: xMax - xMin, height: yMin - yMax)))
 
 proc hasGlyph*(f: ShaperFont, cp: uint32): bool =
   f.nominalGlyph(cp).isSome
