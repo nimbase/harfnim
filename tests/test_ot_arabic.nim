@@ -333,7 +333,8 @@ test "arabic mark base positions via GPOS":
   b.pushStr("\u0628\u064E")
   sf.shape(b, @[])
   check b.len == 2
-  # Visual order RTL: base first? BEH+mark, no joining change, reversed? Single base, mark follows in logical, reversed? BEH (D) alone? Actually BEH+FATHA: BEH isol? With no GSUB, fallback isol? No presentation forms in cmap, so no fallback. Order: logical [BEH, mark], RTL reverse -> [mark?, base?]? HarfBuzz keeps base+mark cluster together, reversed as unit? For base+mark, reverse keeps base before mark? Actually RTL reverse reverses glyphs, but base+mark cluster... Our reverse reverses all. Logical [base, mark] -> visual [mark, base]? No, HarfBuzz reverses but keeps marks with base? Hmm. For simplicity, check that one glyph has offset (-50,-50) and mark advance is 0.
+  # Grapheme cluster merging: the mark shares its base cluster.
+  check b.info[0].cluster == b.info[1].cluster
   var sawMark = false
   for i in 0 ..< b.len:
     if b.info[i].glyphId == 11u32:

@@ -60,6 +60,20 @@ proc isArabicShaperScript(b: Buffer): bool =
   let s = b.script.get
   (s == Arabic or s == Syriac) and b.direction.isHorizontal()
 
+proc formClusters(b: var Buffer) =
+  ## Merges grapheme clusters (base plus continuation marks) so marks
+  ## share their base cluster, mirroring harfrust form_clusters.
+  if (b.scratchFlags and ScratchFlagHasContinuations) == 0u32:
+    return
+  var i = 0
+  while i < b.len:
+    var j = i + 1
+    while j < b.len and j < b.info.len and b.info[j].isContinuation():
+      inc j
+    if j - i > 1 and i < b.info.len:
+      b.mergeGraphemeClusters(i, min(j, b.info.len))
+    i = j
+
 proc insertDottedCircle(b: var Buffer) =
   if b.isEmpty():
     return
@@ -427,11 +441,13 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   let sf = font
   let useArabic = isArabicShaperScript(buf)
   buf.allocateUnicodeVars()
-  var scratch = 0u32
+  var scratch = buf.scratchFlags
   for i in 0 ..< buf.len:
     if i < buf.info.len:
       buf.info[i].initUnicodeProps(scratch)
+  buf.scratchFlags = scratch
   insertDottedCircle(buf)
+  formClusters(buf)
   # TODO: form_clusters, ensure_native_direction, per-syllable matching.
   var nctx = sf.normalizeContextFor()
   buf.normalize(nmComposedDiacritics, false, nctx)

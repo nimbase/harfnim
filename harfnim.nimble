@@ -5,6 +5,7 @@ author        = "George Lemon"
 description   = "Pure Nim port of the HarfBuzz text shaping engine (harfrust reference)"
 license       = "MIT"
 srcDir        = "src"
+bin           = @["hr_shape"]
 
 
 # Dependencies

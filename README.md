@@ -81,6 +81,28 @@ for i in 0 ..< buf.len:
 * [ ] AAT morx
 * [ ] stch stretching and win1256 legacy fallback
 
+## Tools
+`hr-shape` is a small `hb-shape` compatible CLI (numeric glyph ids and
+UTF-8 byte clusters):
+
+```
+clue build src/hr_shape.nim --out:/tmp/hr-shape
+/tmp/hr-shape Arial.ttf "مرحبا" --font-size=1000
+/tmp/hr-shape Arial.ttf "AVfi" --font-size=1000 --features=kern,liga
+```
+
+`tools/conformance.py` shapes a font, text, and feature matrix with both
+`hr-shape` and the system `hb-shape` and compares exact output:
+
+```
+python3 tools/conformance.py
+python3 tools/conformance.py --only "مرحبا"
+```
+
+Known gaps are tracked as expected failures in the script
+(morx ligatures, legacy `kern` table, fallback mark positioning on fonts
+without usable Arabic mark data).
+
 ### ❤ Contributions & Support
 - 🐛 Found a bug? [Create a new Issue](https://github.com/nimbase/harfnim/issues)
 - 👋 Wanna help? [Fork it!](https://github.com/nimbase/harfnim/fork)
