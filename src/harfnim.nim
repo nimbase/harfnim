@@ -5,6 +5,7 @@ import harfnim/language
 import harfnim/error
 import harfnim/feature
 import harfnim/buffer
+import harfnim/unicode
 
 export tag
 export script
@@ -13,3 +14,4 @@ export language
 export error
 export feature
 export buffer
+export unicode

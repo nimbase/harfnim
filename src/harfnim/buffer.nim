@@ -6,6 +6,7 @@ import ./direction
 import ./language
 import ./script
 import ./tag
+import ./unicode
 
 type
   Mask* = uint32
@@ -332,8 +333,7 @@ type
     scratchFlags*: uint32
     maxLen*: int
     maxOps*: int
-    # TODO(unicode): SetDigest digest + U32Set glyphSet (need set_digest/font modules)
-    # TODO(unicode): guessSegmentProperties script auto-detect, initUnicodeProps
+    # TODO: SetDigest digest + U32Set glyphSet (need set_digest/font modules)
 
 # Forward declarations (Nim compiles each module in a single pass)
 proc mergeClusters*(b: var Buffer, start, stop: int)
@@ -623,6 +623,53 @@ proc reverseClusters*(b: var Buffer) =
 proc resetClusters*(b: var Buffer) =
   for i in 0 ..< b.len:
     b.info[i].cluster = uint32(i)
+
+# --------------------------------------------------------------------------
+# Unicode properties (require the unicode module tables)
+# --------------------------------------------------------------------------
+
+proc initUnicodeProps*(g: var GlyphInfo, scratch: var uint32) =
+  let u = g.asCodepoint()
+  let gc = generalCategoryFor(u)
+  var props = uint16(uint8(gc))
+  if u >= 0x80u32:
+    if isDefaultIgnorable(u):
+      props = props or UnicodePropIgnorable
+      scratch = scratch or ScratchFlagHasDefaultIgnorables
+      if u == 0x200Cu32:
+        props = props or UnicodePropCfZwnj
+      elif u == 0x200Du32:
+        props = props or UnicodePropCfZwj
+      elif (u >= 0x180Bu32 and u <= 0x180Du32) or u == 0x180Fu32:
+        props = props or UnicodePropHidden
+      elif u >= 0xE0020u32 and u <= 0xE007Fu32:
+        props = props or UnicodePropHidden
+      elif u == 0x034Fu32:
+        props = props or UnicodePropHidden
+        scratch = scratch or ScratchFlagHasCgj
+    if gc.isMark():
+      scratch = scratch or ScratchFlagHasContinuations
+      props = props or UnicodePropContinuation
+      props = props or (uint16(modifiedCombiningClass(u)) shl 8)
+  g.setUnicodeProps(props)
+
+proc unhide*(g: var GlyphInfo) =
+  g.setUnicodeProps(g.unicodeProps() and not UnicodePropHidden)
+
+proc guessSegmentProperties*(b: var Buffer) =
+  if b.script.isNone:
+    for i in 0 ..< b.len:
+      let s = scriptFor(b.info[i].glyphId)
+      if s != Common and s != Inherited and s != Unknown:
+        b.script = some(s)
+        break
+  if b.direction == dirInvalid:
+    if b.script.isSome:
+      let (ok, d) = directionForScript(b.script.get)
+      if ok:
+        b.direction = d
+    if b.direction == dirInvalid:
+      b.direction = dirLeftToRight
 
 # --------------------------------------------------------------------------
 # Internal shaping machinery
