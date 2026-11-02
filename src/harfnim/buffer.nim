@@ -652,6 +652,13 @@ proc initUnicodeProps*(g: var GlyphInfo, scratch: var uint32) =
       scratch = scratch or ScratchFlagHasContinuations
       props = props or UnicodePropContinuation
       props = props or (uint16(modifiedCombiningClass(u)) shl 8)
+    # Like HarfBuzz, ZWJ continues the preceding grapheme so the two
+    # merge clusters. ZWNJ is deliberately left unmerged, as is the
+    # rest of set_unicode_props continuation handling (emoji modifiers,
+    # regional indicators, variation selectors; TODO).
+    if u == 0x200Du32:
+      scratch = scratch or ScratchFlagHasContinuations
+      props = props or UnicodePropContinuation
   g.setUnicodeProps(props)
 
 proc unhide*(g: var GlyphInfo) =

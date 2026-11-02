@@ -93,12 +93,13 @@ clue build src/hr_shape.nim --out:/tmp/hr-shape
 /tmp/hr-shape Arial.ttf "AVfi" --font-size=1000 --features=kern,liga
 ```
 
-`tools/conformance.py` shapes a font, text, and feature matrix with both
+`src/conformance.nim` shapes a font, text, and feature matrix with both
 `hr-shape` and the system `hb-shape` and compares exact output:
 
 ```
-python3 tools/conformance.py
-python3 tools/conformance.py --only "مرحبا"
+clue build src/conformance.nim --out:/tmp/conformance
+/tmp/conformance --hr-shape /tmp/hr-shape
+/tmp/conformance --hr-shape /tmp/hr-shape --only "مرحبا"
 ```
 
 Known gaps are tracked as expected failures in the script

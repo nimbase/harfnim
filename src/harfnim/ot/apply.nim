@@ -917,31 +917,49 @@ proc crossOffset*(buf: Buffer, idx: int): int32 =
     inc guard
   off
 
-proc findMarkBase*(buf: var Buffer, props: uint32,
-    coverage: Coverage): Option[int] =
-  # Search back skipping marks (IGNORE_MARKS), mirroring harfrust
-  # find_mark_base without the last_base cache (TODO).
+proc acceptBase(buf: Buffer, idx: int): bool =
+  ## Whether a mark may attach to the base at idx: only the first glyph
+  ## of a multiple substitution is a base, unless a mark breaks the
+  ## sequence (harfrust accept_base).
+  if idx < 0 or idx >= buf.info.len:
+    return false
+  let info = buf.info[idx]
+  if not info.multiplied() or info.ligComp() == 0u8 or idx == 0:
+    return true
+  let prev = buf.info[idx - 1]
+  prev.isMarkGlyph() or not prev.multiplied() or
+    info.ligId() != prev.ligId() or
+    info.ligComp() != prev.ligComp() + 1u8
+
+proc acceptLigature(buf: Buffer, idx: int): bool =
+  ## Whether a mark may attach to the ligature at idx: the first glyph
+  ## of a multiple substitution may have been ligated with what precedes
+  ## it (harfrust accept_ligature).
+  if idx < 0 or idx >= buf.info.len:
+    return false
+  let info = buf.info[idx]
+  not info.multiplied() or info.ligComp() == 0u8
+
+proc findMarkBase*(buf: var Buffer, coverage: Coverage,
+    ligature: bool): Option[int] =
+  ## Searches back from the current glyph for the base a mark attaches
+  ## to, mirroring harfrust find_mark_base (without the last_base cache,
+  ## so worst case is quadratic; TODO). The walk stops at the first
+  ## non-skipped glyph that is acceptable or covered; the caller then
+  ## checks coverage on that glyph.
   var j = buf.idx
   while j > 0:
-    dec j
-    if j < 0 or j >= buf.info.len:
+    let k = j - 1
+    if k < 0 or k >= buf.info.len:
       break
-    let g = buf.info[j]
-    if not contextCheckProp(g, uint32(LookupIgnoreMarks)):
-      continue
-    if not coverage.covers(g.glyphId):
-      # Accept check: only first glyph of a multiple substitution is a
-      # base unless a mark breaks the sequence (harfrust accept_base).
-      # Simplified: require coverage hit.
-      continue
-    # Multiplied check (harfrust accept_base).
-    if g.multiplied() and g.ligComp() != 0u8 and j != 0:
-      let prev = buf.info[j - 1]
-      let breaks = prev.isMarkGlyph() or not prev.multiplied() or
-        g.ligId() != prev.ligId() or g.ligComp() != prev.ligComp() + 1u8
-      if not breaks:
-        continue
-    return some(j)
+    let g = buf.info[k]
+    if contextCheckProp(g, uint32(LookupIgnoreMarks)):
+      let accepted =
+        if ligature: acceptLigature(buf, k)
+        else: acceptBase(buf, k)
+      if accepted or coverage.covers(g.glyphId):
+        return some(k)
+    j = k
   none(int)
 
 proc attachMark*(buf: var Buffer, baseAnchor, markAnchor: Anchor,
@@ -984,7 +1002,7 @@ proc applyMarkBase*(buf: var Buffer, sub: MarkSub, props, mask: uint32,
   if ci.isNone or int(ci.get) >= sub.markClasses.len:
     return false
   let markIdx = int(ci.get)
-  let baseOpt = findMarkBase(buf, props, sub.baseCoverage)
+  let baseOpt = findMarkBase(buf, sub.baseCoverage, false)
   if baseOpt.isNone:
     buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
     return false
@@ -1073,7 +1091,7 @@ proc applyMarkLig*(buf: var Buffer, sub: LigSub, props, mask: uint32,
   if ci.isNone or int(ci.get) >= sub.markClasses.len:
     return false
   let markIdx = int(ci.get)
-  let ligOpt = findMarkBase(buf, props, sub.ligCoverage)
+  let ligOpt = findMarkBase(buf, sub.ligCoverage, true)
   if ligOpt.isNone:
     buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
     return false

@@ -388,6 +388,45 @@ proc recategorizeMarks*(buf: var Buffer) =
       else:
         discard
 
+proc hideDefaultIgnorables(buf: var Buffer, sf: ShaperFont) =
+  ## Mirrors harfrust hide_default_ignorables: default ignorables take
+  ## the space glyph when the font has one (else they are deleted),
+  ## unless preservation or removal was requested.
+  if (buf.scratchFlags and ScratchFlagHasDefaultIgnorables) == 0u32:
+    return
+  if buf.flags.contains(PreserveDefaultIgnorables):
+    return
+  if buf.flags.contains(RemoveDefaultIgnorables):
+    buf.deleteGlyphsInplace(isInfoDefaultIgnorable)
+    return
+  let space = sf.nominalGlyph(0x20u32)
+  if space.isSome:
+    for i in 0 ..< min(buf.len, buf.info.len):
+      if buf.info[i].isInfoDefaultIgnorable():
+        buf.info[i].glyphId = space.get.value
+  else:
+    buf.deleteGlyphsInplace(isInfoDefaultIgnorable)
+
+proc zeroWidthDefaultIgnorables*(buf: var Buffer) =
+  ## Mirrors harfrust zero_width_default_ignorables.
+  if (buf.scratchFlags and ScratchFlagHasDefaultIgnorables) == 0u32:
+    return
+  if buf.flags.contains(PreserveDefaultIgnorables):
+    return
+  if buf.flags.contains(RemoveDefaultIgnorables):
+    return
+  let horiz = buf.direction.isHorizontal()
+  for i in 0 ..< min(buf.len, buf.info.len):
+    if i >= buf.pos.len:
+      break
+    if buf.info[i].isInfoDefaultIgnorable():
+      buf.pos[i].xAdvance = 0i32
+      buf.pos[i].yAdvance = 0i32
+      if horiz:
+        buf.pos[i].xOffset = 0i32
+      else:
+        buf.pos[i].yOffset = 0i32
+
 proc fallbackPositionMarks*(buf: var Buffer, sf: ShaperFont) =
   ## Simplified HarfBuzz fallback mark positioning for horizontal text:
   ## center above/below marks over the previous base using extents.
@@ -467,7 +506,7 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   buf.scratchFlags = scratch
   insertDottedCircle(buf)
   formClusters(buf)
-  # TODO: form_clusters, ensure_native_direction, per-syllable matching.
+  # TODO: ensure_native_direction, per-syllable matching.
   var nctx = sf.normalizeContextFor()
   buf.normalize(nmComposedDiacritics, false, nctx)
   buf.deallocateUnicodeVars()
@@ -495,6 +534,7 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     if gsubOpt.isSome:
       buf.applyGsubFeatures(gsubOpt.get, plan.scriptTag, plan.langTag,
         plan.features)
+  buf.hideDefaultIgnorables(sf)
   buf.clearPositions()
   buf.positionStart()
   setBaseAdvances(buf, sf)
@@ -516,6 +556,8 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     if f.tag.toU32() == kernTag.toU32() and f.value != 0u32:
       kernRequested = true
       break
+  var kernRan = false
+  var hasCrossKern = false
   if kernRequested:
     let kernOpt = parseKern(sf.font)
     if kernOpt.isSome and kernOpt.get.subtables.len > 0:
@@ -527,12 +569,23 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
             hasGposKern = true
             break
       if not hasGposKern:
+        for sub in kernOpt.get.subtables:
+          if sub.crossStream:
+            hasCrossKern = true
         buf.applyKernTable(kernOpt.get, KernWalkMask, sf.scale)
+        kernRan = true
+  # Fallback mark positioning runs only when neither GPOS nor legacy
+  # kern positioning applied, mirroring harfrust position_by_plan
+  # (adjust_mark_positioning_when_zeroing).
+  let fallbackAllowed = not gposOpt.isSome and
+    (not kernRan or not hasCrossKern)
   # Late mark zeroing (arabic/hebrew/default) when GPOS did not attach.
   if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
     buf.zeroMarkWidths(buf.direction.isForward())
+  buf.zeroWidthDefaultIgnorables()
   buf.propagateAttachmentOffsets()
-  if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
+  if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32 and
+      fallbackAllowed:
     # Fallback mark positioning when no GPOS attachment happened.
     buf.fallbackPositionMarks(sf)
   else:
@@ -544,7 +597,7 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
           buf.pos[i].yAdvance = 0i32
   if buf.direction.isBackward():
     buf.reverse()
-  # TODO: zero default ignorables, fallback spaces.
+  # TODO: fallback spaces.
   buf.deallocateGsubGposVars()
 
 proc shape*(font: ShaperFont, buf: var Buffer,
