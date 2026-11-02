@@ -4,6 +4,7 @@ import harfnim/direction
 import harfnim/language
 import harfnim/error
 import harfnim/feature
+import harfnim/buffer
 
 export tag
 export script
@@ -11,3 +12,4 @@ export direction
 export language
 export error
 export feature
+export buffer
