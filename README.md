@@ -84,7 +84,8 @@ for i in 0 ..< buf.len:
 
 ## Tools
 `hr-shape` is a small `hb-shape` compatible CLI (numeric glyph ids and
-UTF-8 byte clusters):
+UTF-8 byte clusters). Like `hb-shape`, it enables the default feature
+set unless a feature is mentioned explicitly:
 
 ```
 clue build src/hr_shape.nim --out:/tmp/hr-shape
@@ -101,8 +102,8 @@ python3 tools/conformance.py --only "مرحبا"
 ```
 
 Known gaps are tracked as expected failures in the script
-(morx ligatures, legacy `kern` table, fallback mark positioning on fonts
-without usable Arabic mark data).
+(morx ligatures, fallback mark positioning on fonts without usable
+Arabic mark data).
 
 ### ❤ Contributions & Support
 - 🐛 Found a bug? [Create a new Issue](https://github.com/nimbase/harfnim/issues)
