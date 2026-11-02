@@ -1,18 +1,21 @@
 import std/options
 
 import ./buffer
+import ./draw
 import ./normalize
 import ./scale
 import ./sfnt
 
 export scale
 export sfnt
+export draw
 
 type
   ShaperFont* = object
     font*: SfntFont
     unitsPerEm*: uint16
     scale*: Scale
+    outlineCache*: OutlineCache
     # TODO: FontFuncs overrides (custom nominal/metrics callbacks)
     # TODO: OT/AAT layout caches, cmap cache, variation coordinates
 
@@ -21,6 +24,7 @@ proc newShaperFont*(font: SfntFont): ShaperFont =
     font: font,
     unitsPerEm: font.unitsPerEm,
     scale: identityScale(int32(font.unitsPerEm)),
+    outlineCache: newOutlineCache(),
   )
 
 proc setScale*(f: var ShaperFont, scale: int32) =
@@ -55,11 +59,61 @@ proc vAdvance*(f: ShaperFont, gid: GlyphId): int32 =
   let v = f.scale.clampYAdvance(f.scale.scaleY(f.font.vAdvance(gid.value)))
   if v == low(int32): high(int32) else: -v
 
+proc drawGlyph*(f: ShaperFont, gid: GlyphId,
+    cb: proc(op: DrawOp) {.closure.}): bool =
+  ## Cached outline emission. Hits replay the stored outline; misses
+  ## decode once and store the result (including failures). The cache
+  ## lives behind a ref so it works through value copies of the font.
+  let (hit, v) = cacheLookup(f.outlineCache, gid.value)
+  if hit:
+    if v.isNone:
+      return false
+    replayOutline(v.get, cb)
+    return true
+  var b = OutlineBuilder()
+  let ok = b.collectInto(proc(
+      c: proc(op: DrawOp) {.closure.}): bool =
+    f.font.drawGlyph(gid.value, c))
+  let o = b.finish()
+  cacheStore(f.outlineCache, gid.value,
+    if ok: some(o) else: none(GlyphOutline))
+  if not ok:
+    return false
+  replayOutline(o, cb)
+  true
+
+proc glyphOutline*(f: ShaperFont, gid: GlyphId): Option[GlyphOutline] =
+  ## Cached value outline.
+  let (hit, v) = cacheLookup(f.outlineCache, gid.value)
+  if hit:
+    return v
+  var b = OutlineBuilder()
+  let ok = b.collectInto(proc(
+      c: proc(op: DrawOp) {.closure.}): bool =
+    f.font.drawGlyph(gid.value, c))
+  let o = if ok: some(b.finish()) else: none(GlyphOutline)
+  cacheStore(f.outlineCache, gid.value, o)
+  o
+
+proc glyphBoundsComputedCached*(f: ShaperFont,
+    gid: GlyphId): Option[tuple[xMin, yMin, xMax, yMax: int32]] =
+  let o = f.glyphOutline(gid)
+  if o.isNone:
+    return none(tuple[xMin, yMin, xMax, yMax: int32])
+  outlineBounds(o.get)
+
 proc glyphExtents*(f: ShaperFont, gid: GlyphId): Option[GlyphExtents] =
   let b = f.font.glyphBoundsUnscaled(gid.value)
-  if b.isNone:
+  if b.isSome:
+    let (xMin, yMin, xMax, yMax) = b.get
+    return some(f.scale.scaleExtents(GlyphExtents(xBearing: xMin,
+      yBearing: yMax, width: xMax - xMin, height: yMin - yMax)))
+  # Header box unavailable (composite glyph or CFF outlines): fall back
+  # to the decoded outline bounds.
+  let cb = f.glyphBoundsComputedCached(gid)
+  if cb.isNone:
     return none(GlyphExtents)
-  let (xMin, yMin, xMax, yMax) = b.get
+  let (xMin, yMin, xMax, yMax) = cb.get
   some(f.scale.scaleExtents(GlyphExtents(xBearing: xMin, yBearing: yMax,
     width: xMax - xMin, height: yMin - yMax)))
 

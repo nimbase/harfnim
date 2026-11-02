@@ -7,6 +7,9 @@ import harfnim/feature
 import harfnim/buffer
 import harfnim/unicode
 import harfnim/normalize
+import harfnim/draw
+import harfnim/glyf
+import harfnim/cff
 import harfnim/font
 import harfnim/ot/map
 import harfnim/shape
@@ -20,6 +23,9 @@ export feature
 export buffer
 export unicode
 export normalize
+export draw
+export glyf
+export cff
 export font
 export map
 export shape

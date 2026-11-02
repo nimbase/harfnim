@@ -1,6 +1,9 @@
 import std/options
 
 import ./buffer
+import ./draw
+import ./glyf
+import ./cff
 
 type
   FontError* = object of CatchableError
@@ -36,6 +39,7 @@ const
   TagGlyf = 0x676C7966u32
   TagVhea = 0x76686561u32
   TagVmtx = 0x766D7478u32
+  TagCff = 0x43464620u32
 
 proc checkBounds(bytes: openArray[uint8], off, size: int) =
   if off < 0 or size < 0 or off + size > bytes.len:
@@ -362,7 +366,8 @@ proc glyphBoundsUnscaled*(f: SfntFont,
   if numContours == 0i16:
     return none(tuple[xMin, yMin, xMax, yMax: int32])
   if numContours < 0i16:
-    # TODO: composite glyph bounds (walk components).
+    # Composite glyphs: no header box; use glyphBoundsComputed, which
+    # walks the components.
     return none(tuple[xMin, yMin, xMax, yMax: int32])
   some((int32(readI16(f.bytes, s + 2)), int32(readI16(f.bytes, s + 4)),
     int32(readI16(f.bytes, s + 6)), int32(readI16(f.bytes, s + 8))))
@@ -379,3 +384,77 @@ proc numFaces*(data: openArray[uint8]): int =
       (uint32(data[10]) shl 8) or uint32(data[11]))
   else:
     1
+
+# ---------------------------------------------------------------------------
+# Outlines (glyf / CFF)
+# ---------------------------------------------------------------------------
+
+proc glyphDataRange*(f: SfntFont, gid: uint32): tuple[ok: bool, off,
+    len: int] =
+  ## Byte range of the `glyf` data for `gid`, or ok=false when the font
+  ## has no glyf table or the id is out of range. Empty glyphs report
+  ## len 0.
+  let (ok, starts, ends) = f.glyphOffsets()
+  if not ok or int(gid) >= starts.len:
+    return (false, 0, 0)
+  let s = starts[int(gid)]
+  let e = ends[int(gid)]
+  if e < s:
+    return (false, 0, 0)
+  (true, s, e - s)
+
+proc drawGlyf(f: SfntFont, gid: uint32,
+    cb: proc(op: DrawOp) {.closure.}): bool =
+  let (ok, starts, ends) = f.glyphOffsets()
+  if not ok or int(gid) >= starts.len:
+    return false
+  let s = starts[int(gid)]
+  let e = ends[int(gid)]
+  if e - s < 10:
+    return false
+  proc at(id: uint32): tuple[ok: bool, off: int,
+      len: int] {.closure.} =
+    if int(id) >= starts.len:
+      (false, 0, 0)
+    else:
+      (true, starts[int(id)], ends[int(id)] - starts[int(id)])
+  drawGlyfGlyph(f.bytes, s, e - s, at, cb)
+
+proc drawCff(f: SfntFont, gid: uint32,
+    cb: proc(op: DrawOp) {.closure.}): bool =
+  let t = f.tableData(TagCff)
+  if not t.ok:
+    return false
+  let c = parseCff(f.bytes, t.offset, t.len, int32(f.unitsPerEm))
+  if c.isNone:
+    return false
+  drawCffGlyph(c.get, gid, cb)
+
+proc drawGlyph*(f: SfntFont, gid: uint32,
+    cb: proc(op: DrawOp) {.closure.}): bool =
+  ## Emits the outline of `gid` as draw ops. TrueType `glyf` outlines
+  ## take precedence when present, otherwise the CFF table is used.
+  ## Returns false when the glyph has no usable outline.
+  let loca = f.tableData(TagLoca)
+  let glyf = f.tableData(TagGlyf)
+  if loca.ok and glyf.ok:
+    return f.drawGlyf(gid, cb)
+  f.drawCff(gid, cb)
+
+proc glyphOutline*(f: SfntFont, gid: uint32): Option[GlyphOutline] =
+  ## Collects `drawGlyph` into a value outline.
+  var b = OutlineBuilder()
+  if not b.collectInto(proc(
+      cb: proc(op: DrawOp) {.closure.}): bool = f.drawGlyph(gid, cb)):
+    return none(GlyphOutline)
+  some(b.finish())
+
+proc glyphBoundsComputed*(f: SfntFont,
+    gid: uint32): Option[tuple[xMin, yMin, xMax, yMax: int32]] =
+  ## Bounding box computed from the decoded outline. Covers composite
+  ## glyphs and CFF outlines, for which the `glyf` header box is
+  ## unavailable.
+  let o = f.glyphOutline(gid)
+  if o.isNone:
+    return none(tuple[xMin, yMin, xMax, yMax: int32])
+  outlineBounds(o.get)

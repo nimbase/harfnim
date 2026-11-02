@@ -18,11 +18,12 @@ Pure Nim shaping without C bindings.
 * Text buffers with clusters, directions, scripts, and languages
 * Unicode properties, Hangul algorithms, compose and decompose
 * Three round normalizer with font callbacks
-* Font parsing: TTF, OTF, TTC, cmap 0/4/6/10/12/13, hmtx/vmtx, glyf bounds
+* Font parsing: TTF, OTF, TTC, cmap 0/4/6/10/12/13, hmtx/vmtx, glyf outlines, CFF/Type 2 charstrings
 * GSUB substitutions: single, multiple, alternate, ligature, contextual, chained, extension, reverse chain
 * GPOS positioning: single, pair kern, mark to base, mark to ligature, mark to mark, cursive, plus legacy kern table
 * Arabic joining, presentation form fallback, mark reordering, RTL reversal
 * Scaled advances, extents, anchor attachment, fallback mark positioning
+* Cached glyph outlines with draw-callback iteration (move/line/quadratic/cubic/close)
 
 ## Examples
 Shape Latin text with kerning and ligatures:
