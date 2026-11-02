@@ -270,7 +270,7 @@ const
   NoClusters* = SerializeFlags(0b0000_0001u8)
   NoPositions* = SerializeFlags(0b0000_0010u8)
   NoGlyphNames* = SerializeFlags(0b0000_0100u8)
-  GlyphExtents* = SerializeFlags(0b0000_1000u8)
+  SerializeGlyphExtents* = SerializeFlags(0b0000_1000u8)
   GlyphFlagsFlag* = SerializeFlags(0b0001_0000u8)
   NoAdvances* = SerializeFlags(0b0010_0000u8)
 

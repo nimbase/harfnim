@@ -7,6 +7,7 @@ import harfnim/feature
 import harfnim/buffer
 import harfnim/unicode
 import harfnim/normalize
+import harfnim/font
 
 export tag
 export script
@@ -17,3 +18,4 @@ export feature
 export buffer
 export unicode
 export normalize
+export font
