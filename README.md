@@ -24,6 +24,7 @@ Pure Nim shaping without C bindings.
 * Arabic joining, presentation form fallback, mark reordering, RTL reversal
 * Scaled advances, extents, anchor attachment, fallback mark positioning
 * Cached glyph outlines with draw-callback iteration (move/line/quadratic/cubic/close)
+* Differential conformance against hb-shape across Latin, Arabic, CJK, emoji, and control characters
 
 ## Examples
 Shape Latin text with kerning and ligatures:
@@ -77,11 +78,14 @@ for i in 0 ..< buf.len:
 * [x] Arabic joining, fallback, RTL
 * [x] Legacy kern table (format 0, MS and Apple layouts)
 * [x] hr-shape CLI and conformance harness
+* [x] glyf outlines (simple + composite) with draw callbacks and extents fallback
+* [x] CFF / Type 2 charstrings (subrs, flex, CID FDSelect) with outline cache
 * [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
-* [ ] GPOS contextual positioning and 24 bit formats
-* [ ] cmap 14, name table, caches, variations
+* [ ] GPOS contextual positioning and 24-bit formats
+* [ ] cmap 14, name table, variations (including CFF2)
 * [ ] AAT morx
 * [ ] stch stretching and win1256 legacy fallback
+* [ ] Outline follow-ups: seac accents, bounded outline cache
 
 ## Tools
 `hr-shape` is a small `hb-shape` compatible CLI (numeric glyph ids and
