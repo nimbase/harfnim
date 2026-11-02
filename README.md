@@ -93,16 +93,16 @@ UTF-8 byte clusters). Like `hb-shape`, it enables the default feature
 set unless a feature is mentioned explicitly:
 
 ```
-clue build src/hr_shape.nim --out:/tmp/hr-shape
+clue build tools/hr_shape.nim --out:/tmp/hr-shape
 /tmp/hr-shape Arial.ttf "مرحبا" --font-size=1000
 /tmp/hr-shape Arial.ttf "AVfi" --font-size=1000 --features=kern,liga
 ```
 
-`src/conformance.nim` shapes a font, text, and feature matrix with both
+`tools/conformance.nim` shapes a font, text, and feature matrix with both
 `hr-shape` and the system `hb-shape` and compares exact output:
 
 ```
-clue build src/conformance.nim --out:/tmp/conformance
+clue build tools/conformance.nim --out:/tmp/conformance
 /tmp/conformance --hr-shape /tmp/hr-shape
 /tmp/conformance --hr-shape /tmp/hr-shape --only "مرحبا"
 ```

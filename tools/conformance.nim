@@ -142,7 +142,7 @@ if hrShape == "":
   hrShape = tmp / "hr-shape"
   echo "building hr-shape -> " & hrShape
   let (buildOut, buildCode) = run("clue",
-    @["build", "src/hr_shape.nim", "--out:" & hrShape], repo)
+    @["build", "tools/hr_shape.nim", "--out:" & hrShape], repo)
   if buildCode != 0:
     let tail = if buildOut.len > 3000: buildOut[^3000..^1] else: buildOut
     echo "build failed:\n" & tail
