@@ -206,17 +206,34 @@ proc buildFontWithGlyf(cmap: seq[uint8]): seq[uint8] =
     result.pad4()
 
 proc buildTtc(fonts: seq[seq[uint8]]): seq[uint8] =
+  # Spec-compliant TTC: each face keeps its own Offset Table, but table
+  # offsets are rewritten to be absolute from the start of the TTC file
+  # (faces may share tables, as real TTCs do).
   result = @[]
   result.putTag('t', 't', 'c', 'f')
   result.putU16(0x0001u16)
   result.putU16(0x0000u16)
   result.putU32(uint32(fonts.len))
-  var off = 12 + fonts.len * 4
+  var faceOff = 12 + fonts.len * 4
+  var faceOffs: seq[int] = @[]
   for f in fonts:
-    result.putU32(uint32(off))
-    off += f.len
-  for f in fonts:
-    result.add(f)
+    result.putU32(uint32(faceOff))
+    faceOffs.add(faceOff)
+    faceOff += f.len
+  for fi, f in fonts:
+    var patched = f
+    let numTables = int((uint16(patched[4]) shl 8) or uint16(patched[5]))
+    for i in 0 ..< numTables:
+      let base = 12 + i * 16
+      let rel = (int(patched[base + 8]) shl 24) or
+        (int(patched[base + 9]) shl 16) or (int(patched[base + 10]) shl 8) or
+        int(patched[base + 11])
+      let absOff = faceOffs[fi] + rel
+      patched[base + 8] = uint8((absOff shr 24) and 0xFF)
+      patched[base + 9] = uint8((absOff shr 16) and 0xFF)
+      patched[base + 10] = uint8((absOff shr 8) and 0xFF)
+      patched[base + 11] = uint8(absOff and 0xFF)
+    result.add(patched)
 
 # --------------------------------------------------------------------------
 # Tests

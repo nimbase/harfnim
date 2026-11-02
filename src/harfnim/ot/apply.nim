@@ -17,10 +17,15 @@ proc checkGlyphProperty*(info: GlyphInfo, props: uint32): bool =
   let flags = uint16(props and 0xFFFFu32)
   if (info.glyphProps() and flags and LookupIgnoreFlags) != 0u16:
     return false
+  if (info.glyphProps() and GlyphPropMark) == 0u16:
+    return true
+  # Marks only: GDEF mark-set and attachment-class filtering.
   if (flags and LookupUseMarkFilteringSet) != 0u16:
-    # TODO: GDEF mark glyph sets
+    # TODO: GDEF mark glyph sets; without GDEF no mark matches the set.
     return false
-  # TODO: mark attachment type filtering (needs GDEF attach classes)
+  if (flags and LookupMarkAttachmentTypeMask) != 0u16:
+    return (flags and LookupMarkAttachmentTypeMask) ==
+      (info.glyphProps() and LookupMarkAttachmentTypeMask)
   true
 
 proc lookupProps*(lookup: Lookup): uint32 =
@@ -927,6 +932,17 @@ proc mapGlyphsFast*(buf: var Buffer) =
     if i >= buf.info.len:
       break
     buf.info[i].glyphId = buf.info[i].normalizerGlyphIndex()
+    # The normalizer glyph index shares its variable word with the OT
+    # glyph props (low 16 bits), ligature props, and syllable, which
+    # would otherwise read back as garbage (the old glyph ID) and, e.g.,
+    # make IgnoreMarks lookups skip arbitrary glyphs. Without GDEF every
+    # glyph is class 0, so reset for the OT phase.
+    buf.info[i].setGlyphProps(0u16)
+    buf.info[i].setLigProps(0u8)
+    buf.info[i].setSyllable(0u8)
   if buf.haveSeparateOutput:
     for i in 0 ..< min(buf.len, buf.outInfo.len):
       buf.outInfo[i].glyphId = buf.outInfo[i].normalizerGlyphIndex()
+      buf.outInfo[i].setGlyphProps(0u16)
+      buf.outInfo[i].setLigProps(0u8)
+      buf.outInfo[i].setSyllable(0u8)

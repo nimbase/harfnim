@@ -646,6 +646,55 @@ proc buildReverseChain(firstCov: uint16, backtrack: seq[uint16],
     for b in coverageBytes(@[g]):
       result.add(b)
 
+proc buildGsubBadLookup(): seq[uint8] =
+  # feature "test" -> [lookup0 type 1 (unsupported format 3), lookup1 type 1]
+  # lookup0 must be skipped without dropping lookup1.
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(46u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putTag("test")
+  result.putU16(8u16)
+  result.putU16(0u16)
+  result.putU16(2u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putU16(6u16)
+  result.putU16(24u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  result.putU16(3u16)
+  result.putU16(4u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  result.putU16(2u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(10u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  doAssert result.len == 92
+
 proc shapeWithFeatures(fontBytes: seq[uint8], text: string,
     feats: seq[Feature]): seq[tuple[gid, cluster: uint32]] =
   let f = parseFont(fontBytes)
@@ -939,6 +988,12 @@ test "extension wraps reverse chain":
   check shapeWithFeatures(buildFont(gsub), "ABA",
     @[globalFeature(tagFromStr("ccmp"), 1)]) ==
     @[(1u32, 0u32), (2u32, 1u32), (1u32, 2u32)]
+
+test "unreadable lookup is skipped, rest of table survives":
+  let gsub = buildGsubBadLookup()
+  check shapeWithFeatures(buildFont(gsub), "A",
+    @[globalFeature(tagFromStr("test"), 1)]) ==
+    @[(10u32, 0u32)]
 
 test "font without gsub parses to none":
   let f = parseFont(buildFont(@[], false))

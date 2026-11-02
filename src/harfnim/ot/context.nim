@@ -19,10 +19,16 @@ proc contextCheckProp*(g: GlyphInfo, props: uint32): bool =
   let flags = uint16(props and 0xFFFFu32)
   if (g.glyphProps() and flags and LookupIgnoreFlags) != 0u16:
     return false
+  if (g.glyphProps() and GlyphPropMark) == 0u16:
+    return true
+  # Marks only: GDEF mark-set and attachment-class filtering.
   if (flags and LookupUseMarkFilteringSet) != 0u16:
-    # TODO: GDEF mark glyph sets
+    # TODO: GDEF mark glyph sets; without GDEF no mark matches the set.
     return false
-  # TODO: mark attachment type filtering (needs GDEF attach classes)
+  if (flags and LookupMarkAttachmentTypeMask) != 0u16:
+    # TODO: GDEF attach classes; unclassified marks carry class 0.
+    return (flags and LookupMarkAttachmentTypeMask) ==
+      (g.glyphProps() and LookupMarkAttachmentTypeMask)
   true
 
 proc isSkippable*(g: GlyphInfo, props: uint32): bool =

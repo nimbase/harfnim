@@ -125,7 +125,8 @@ proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
   for i in 0 ..< numTables:
     let base = fontOff + 12 + i * 16
     let tag = u32be(bytes, base)
-    let off = fontOff + int(u32be(bytes, base + 8))
+    # Table offsets are from the start of the file, even inside a TTC.
+    let off = int(u32be(bytes, base + 8))
     let len = int(u32be(bytes, base + 12))
     if off < 0 or len < 0 or off + len > bytes.len:
       raise newException(FontError, "table out of bounds")

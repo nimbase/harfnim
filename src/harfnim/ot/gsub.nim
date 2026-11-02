@@ -727,7 +727,16 @@ proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
     raise newException(FontError, "short LookupList")
   for i in 0 ..< lookupCount:
     let loff = int(readU16(bytes, lookupBase + 2 + i * 2))
-    lookups.add(parseLookup(bytes, lookupBase, loff))
+    try:
+      lookups.add(parseLookup(bytes, lookupBase, loff))
+    except FontError:
+      # Skip unreadable lookups but keep the slot so feature
+      # references stay aligned (mirrors harfrust lazy lookup caching).
+      lookups.add(Lookup(lookupType: 0u16, lookupFlag: 0u16,
+        markFilteringSet: 0u16, isReverse: false, singleSubsts: @[],
+        multipleSubsts: @[], alternateSubsts: @[], ligatureSubsts: @[],
+        contextSubsts: @[], chainSubsts: @[], reverseSubsts: @[],
+        order: @[]))
   GsubData(scripts: scripts, features: features, lookups: lookups)
 
 proc parseGsub*(f: SfntFont): Option[GsubData] =

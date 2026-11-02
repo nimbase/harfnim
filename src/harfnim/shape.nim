@@ -12,9 +12,7 @@ import ./buffer
 import ./direction
 import ./feature
 import ./font
-import ./language
 import ./normalize
-import ./scale
 import ./script
 import ./tag
 import ./unicode
