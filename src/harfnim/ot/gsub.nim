@@ -70,6 +70,7 @@ type
     lkLigature
     lkContext
     lkChain
+    lkReverse
     lkOther
 
   LookupEntry* = tuple[kind: GsubLookupKind, index: int]
@@ -106,16 +107,24 @@ type
     lookaheadCoverages*: seq[Coverage]
     records*: seq[LookupRecord]
 
+  ReverseChainSubst* = object
+    coverage*: Coverage
+    backtrackCoverages*: seq[Coverage]
+    lookaheadCoverages*: seq[Coverage]
+    substitutes*: seq[uint32]
+
   Lookup* = object
     lookupType*: uint16
     lookupFlag*: uint16
     markFilteringSet*: uint16
+    isReverse*: bool
     singleSubsts*: seq[SingleSubst]
     multipleSubsts*: seq[MultipleSubst]
     alternateSubsts*: seq[AlternateSubst]
     ligatureSubsts*: seq[LigatureSubst]
     contextSubsts*: seq[ContextSubst]
     chainSubsts*: seq[ChainContextSubst]
+    reverseSubsts*: seq[ReverseChainSubst]
     order*: seq[LookupEntry]
 
   GsubData* = object
@@ -512,6 +521,43 @@ proc parseChainContextSubst(bytes: openArray[uint8],
     # TODO: ChainedSequenceContext formats 4/5/6 (24-bit glyphs)
     raise newException(FontError, "unsupported ChainedSequenceContext format")
 
+proc parseReverseChainSubst(bytes: openArray[uint8],
+    off: int): ReverseChainSubst =
+  if off + 6 > bytes.len:
+    raise newException(FontError, "short ReverseChainSingleSubst table")
+  let format = readU16(bytes, off)
+  if format != 1u16:
+    # TODO: ReverseChainSingleSubstFormat2 (24-bit glyphs)
+    raise newException(FontError, "unsupported ReverseChainSingleSubst format")
+  let covOff = int(readU16(bytes, off + 2))
+  let coverage =
+    if covOff == 0: noCoverage()
+    else: parseCoverage(bytes, off + covOff)
+  let backCount = int(readU16(bytes, off + 4))
+  if off + 6 + backCount * 2 > bytes.len:
+    raise newException(FontError, "short ReverseChainSingleSubst table")
+  let backCovs = parseCoverageList(bytes, off, off + 6, backCount)
+  var p = off + 6 + backCount * 2
+  if p + 2 > bytes.len:
+    raise newException(FontError, "short ReverseChainSingleSubst table")
+  let lookCount = int(readU16(bytes, p))
+  p += 2
+  if p + lookCount * 2 > bytes.len:
+    raise newException(FontError, "short ReverseChainSingleSubst table")
+  let lookCovs = parseCoverageList(bytes, off, p, lookCount)
+  p += lookCount * 2
+  if p + 2 > bytes.len:
+    raise newException(FontError, "short ReverseChainSingleSubst table")
+  let glyphCount = int(readU16(bytes, p))
+  p += 2
+  if p + glyphCount * 2 > bytes.len:
+    raise newException(FontError, "short ReverseChainSingleSubst table")
+  var subs = newSeq[uint32](glyphCount)
+  for i in 0 ..< glyphCount:
+    subs[i] = uint32(readU16(bytes, p + i * 2))
+  ReverseChainSubst(coverage: coverage, backtrackCoverages: backCovs,
+    lookaheadCoverages: lookCovs, substitutes: subs)
+
 proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
   let base = tableOff + off
   if base + 6 > bytes.len:
@@ -531,7 +577,9 @@ proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
   var ligs: seq[LigatureSubst] = @[]
   var ctxs: seq[ContextSubst] = @[]
   var chains: seq[ChainContextSubst] = @[]
+  var revs: seq[ReverseChainSubst] = @[]
   var order: seq[LookupEntry] = @[]
+  var isReverse = lookupType == GsubReverseChainSubst
   if lookupType == GsubSingleSubst:
     for i in 0 ..< subCount:
       let subOff = int(readU16(bytes, base + 6 + i * 2))
@@ -569,11 +617,66 @@ proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
         order.add((lkChain, chains.len - 1))
       except FontError:
         continue
-  # TODO: other GSUB lookup types (extension, reverse-chained)
+  elif lookupType == GsubReverseChainSubst:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        revs.add(parseReverseChainSubst(bytes, base + subOff))
+        order.add((lkReverse, revs.len - 1))
+      except FontError:
+        continue
+  elif lookupType == GsubExtensionSubst:
+    # Extension lookups flatten their inner subtables into the
+    # corresponding sequences. A lookup is reverse if its first
+    # extension wraps type 8, mirroring harfrust's is_reversed.
+    if subCount > 0:
+      let firstOff = int(readU16(bytes, base + 6))
+      let extBase = base + firstOff
+      if extBase + 8 <= bytes.len and readU16(bytes, extBase) == 1u16:
+        isReverse = readU16(bytes, extBase + 2) == GsubReverseChainSubst
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      let extBase = base + subOff
+      try:
+        if extBase + 8 > bytes.len:
+          raise newException(FontError, "short ExtensionSubst table")
+        if readU16(bytes, extBase) != 1u16:
+          raise newException(FontError, "unsupported ExtensionSubst format")
+        let extType = readU16(bytes, extBase + 2)
+        let extOffset = int(readU32(bytes, extBase + 4))
+        if extOffset == 0 or extType == GsubExtensionSubst:
+          continue
+        let innerOff = extBase + extOffset
+        case extType
+        of GsubSingleSubst:
+          subs.add(parseSingleSubst(bytes, innerOff))
+          order.add((lkSingle, subs.len - 1))
+        of GsubMultipleSubst:
+          multis.add(parseMultipleSubst(bytes, innerOff))
+          order.add((lkMultiple, multis.len - 1))
+        of GsubAlternateSubst:
+          alts.add(parseAlternateSubst(bytes, innerOff))
+          order.add((lkAlternate, alts.len - 1))
+        of GsubLigatureSubst:
+          ligs.add(parseLigatureSubst(bytes, innerOff))
+          order.add((lkLigature, ligs.len - 1))
+        of GsubContextSubst:
+          ctxs.add(parseContextSubst(bytes, innerOff))
+          order.add((lkContext, ctxs.len - 1))
+        of GsubChainedContextSubst:
+          chains.add(parseChainContextSubst(bytes, innerOff))
+          order.add((lkChain, chains.len - 1))
+        of GsubReverseChainSubst:
+          revs.add(parseReverseChainSubst(bytes, innerOff))
+          order.add((lkReverse, revs.len - 1))
+        else:
+          continue
+      except FontError:
+        continue
   Lookup(lookupType: lookupType, lookupFlag: flag, markFilteringSet: markSet,
-    singleSubsts: subs, multipleSubsts: multis, alternateSubsts: alts,
-    ligatureSubsts: ligs, contextSubsts: ctxs, chainSubsts: chains,
-    order: order)
+    isReverse: isReverse, singleSubsts: subs, multipleSubsts: multis,
+    alternateSubsts: alts, ligatureSubsts: ligs, contextSubsts: ctxs,
+    chainSubsts: chains, reverseSubsts: revs, order: order)
 
 proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
   if off + 10 > bytes.len:

@@ -33,6 +33,17 @@ proc replaceWithSubstituted*(buf: var Buffer, gid: uint32) =
     return
   slot[].setGlyphProps(slot[].glyphProps() or GlyphPropSubstituted)
 
+proc replaceWithSubstitutedInplace*(buf: var Buffer, gid: uint32) =
+  ## Reverse-chain replacement: modifies the current glyph in place,
+  ## without touching the output buffer. Caller must ensure we are in
+  ## an in-place (backward) walk with haveOutput false.
+  if buf.idx < 0 or buf.idx >= buf.info.len:
+    buf.indexFailed()
+    return
+  buf.info[buf.idx].glyphId = gid
+  buf.info[buf.idx].setGlyphProps(
+    buf.info[buf.idx].glyphProps() or GlyphPropSubstituted)
+
 proc lookupCovers(lookup: Lookup, gid: uint32): bool =
   for e in lookup.order:
     case e.kind
@@ -65,6 +76,9 @@ proc lookupCovers(lookup: Lookup, gid: uint32): bool =
         if sub.inputCoverages.len > 0 and
             sub.inputCoverages[0].covers(gid):
           return true
+    of lkReverse:
+      if lookup.reverseSubsts[e.index].coverage.covers(gid):
+        return true
     of lkOther:
       discard
   false
@@ -81,6 +95,10 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
   props, lookupMask: uint32, nestingLeft: int): bool
 proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
   props, lookupMask: uint32, nestingLeft: int): bool
+proc applyReverseSubst(buf: var Buffer, sub: ReverseChainSubst,
+  props, lookupMask: uint32): bool
+proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
+  mask: uint32): bool
 
 proc outputGlyphForComponent(buf: var Buffer, gid: uint32, classGuess: uint16) =
   let cur = buf.cur(0)
@@ -397,6 +415,71 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
   else:
     false
 
+proc applyReverseSubst(buf: var Buffer, sub: ReverseChainSubst,
+    props, lookupMask: uint32): bool =
+  ## Reverse-chain single substitution at the current position, in place.
+  ## Backtrack and lookahead ignore the feature mask; only the current
+  ## glyph requires it (enforced by the backward scan, mirroring
+  ## harfrust's apply_backward candidate search).
+  if buf.haveOutput:
+    # Reverse lookups run in-place without an output buffer.
+    return false
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  let ci = sub.coverage.coverageIndex(gid)
+  if ci.isNone or int(ci.get) >= sub.substitutes.len:
+    return false
+  let dummyBack = newSeq[uint32](sub.backtrackCoverages.len)
+  if not matchBacktrackSeq(buf, props, dummyBack, vkCoverage, noClassDef(),
+      sub.backtrackCoverages):
+    # TODO: unsafe_to_concat_from_outbuffer marking
+    return false
+  let dummyLook = newSeq[uint32](sub.lookaheadCoverages.len)
+  let laEnd = matchLookaheadSeq(buf, props, dummyLook, vkCoverage,
+    noClassDef(), sub.lookaheadCoverages, buf.idx + 1)
+  if laEnd.isNone:
+    return false
+  # TODO: unsafe_to_break_from_outbuffer marking
+  replaceWithSubstitutedInplace(buf, sub.substitutes[int(ci.get)])
+  buf.successful
+
+proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
+    mask: uint32): bool =
+  ## In-place backward walk for reverse-chain lookups. Length never
+  ## changes, so indices stay valid while scanning from the end.
+  if lookup.order.len == 0:
+    return false
+  if buf.haveOutput:
+    return false
+  let props = lookup.lookupProps()
+  while buf.successful:
+    var candidate = -1
+    var k = buf.idx
+    while k >= 0 and k < buf.info.len:
+      let g = buf.info[k]
+      if (g.mask and mask) != 0u32 and checkGlyphProperty(g, props) and
+          lookupCovers(lookup, g.glyphId):
+        candidate = k
+        break
+      dec k
+    if candidate < 0:
+      buf.idx = 0
+      break
+    buf.idx = candidate
+    var done = false
+    for e in lookup.order:
+      if e.kind != lkReverse:
+        continue
+      if applyReverseSubst(buf, lookup.reverseSubsts[e.index], props, mask):
+        done = true
+        break
+    if done:
+      result = true
+    if candidate == 0:
+      break
+    buf.idx = candidate - 1
+
 proc applyRecords(buf: var Buffer, gsub: GsubData,
     records: seq[LookupRecord], positions: seq[int], matchEnd: int,
     parentMask: uint32, nestingLeft: int): bool =
@@ -538,6 +621,9 @@ proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
       if applyChainSubst(buf, gsub, lookup.chainSubsts[e.index],
           nestedProps, parentMask, nestingLeft):
         return true
+    of lkReverse:
+      # Reverse chaining lookups can't be nested.
+      continue
     of lkOther:
       continue
   false
@@ -608,6 +694,9 @@ proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
             props, mask, nestingLeft):
           done = true
           break
+      of lkReverse:
+        # Reverse chaining applies in a separate backward, in-place pass.
+        continue
       of lkOther:
         continue
     if done:
@@ -625,10 +714,19 @@ proc applySubstLookups*(buf: var Buffer, gsub: GsubData,
     let lookup = gsub.lookups[int(li)]
     if lookup.order.len == 0:
       continue
-    buf.clearOutput()
-    buf.idx = 0
-    discard applyLookup(buf, gsub, lookup, mask)
-    discard buf.sync()
+    if lookup.isReverse:
+      # In-place backward substitution, no output buffer.
+      if buf.haveOutput:
+        discard buf.sync()
+      if buf.isEmpty():
+        continue
+      buf.idx = buf.len - 1
+      discard applyLookupBackward(buf, gsub, lookup, mask)
+    else:
+      buf.clearOutput()
+      buf.idx = 0
+      discard applyLookup(buf, gsub, lookup, mask)
+      discard buf.sync()
 
 proc mapGlyphsFast*(buf: var Buffer) =
   for i in 0 ..< buf.len:

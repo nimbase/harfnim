@@ -573,6 +573,79 @@ proc buildGsubTwoLookups(feature: string, lookup0type: uint16,
   for b in sub1:
     result.add(b)
 
+proc buildGsubOneLookup(feature: string, lookupType: uint16,
+    sub: seq[uint8]): seq[uint8] =
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(44u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putTag(feature)
+  result.putU16(8u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(4u16)
+  result.putU16(lookupType)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  for b in sub:
+    result.add(b)
+
+proc extensionBytes(extType: uint16, inner: seq[uint8]): seq[uint8] =
+  result = @[]
+  result.putU16(1u16)
+  result.putU16(extType)
+  result.putU32(8u32)
+  for b in inner:
+    result.add(b)
+
+proc buildReverseChain(firstCov: uint16, backtrack: seq[uint16],
+    lookahead: seq[uint16], substitutes: seq[uint16]): seq[uint8] =
+  result = @[]
+  result.putU16(1u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  result.putU16(uint16(backtrack.len))
+  var backPoss: seq[int] = @[]
+  for _ in backtrack:
+    backPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(uint16(lookahead.len))
+  var lookPoss: seq[int] = @[]
+  for _ in lookahead:
+    lookPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(uint16(substitutes.len))
+  for s in substitutes:
+    result.putU16(s)
+  let covOff = result.len
+  for b in coverageBytes(@[firstCov]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  for i, g in backtrack:
+    let off = result.len
+    result.putU16At(backPoss[i], uint16(off))
+    for b in coverageBytes(@[g]):
+      result.add(b)
+  for i, g in lookahead:
+    let off = result.len
+    result.putU16At(lookPoss[i], uint16(off))
+    for b in coverageBytes(@[g]):
+      result.add(b)
+
 proc shapeWithFeatures(fontBytes: seq[uint8], text: string,
     feats: seq[Feature]): seq[tuple[gid, cluster: uint32]] =
   let f = parseFont(fontBytes)
@@ -824,6 +897,48 @@ test "chained format3 with coverages fires":
   check shapeWithFeatures(buildFont(gsub), "CABB",
     @[globalFeature(tagFromStr("ccmp"), 1)]) ==
     @[(3u32, 0u32), (1u32, 1u32), (2u32, 2u32), (2u32, 3u32)]
+
+test "extension wraps single substitution":
+  let inner = singleSubstBytes(2u16, 10u16)
+  let ext = extensionBytes(1u16, inner)
+  let gsub = buildGsubOneLookup("ccmp", 7u16, ext)
+  check shapeWithFeatures(buildFont(gsub), "B",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(10u32, 0u32)]
+  check shapeWithFeatures(buildFont(gsub), "A",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32)]
+
+test "reverse chain replaces with backtrack and lookahead":
+  let rev = buildReverseChain(2u16, @[1u16], @[3u16], @[10u16])
+  let gsub = buildGsubOneLookup("ccmp", 8u16, rev)
+  check shapeWithFeatures(buildFont(gsub), "ABC",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (10u32, 1u32), (3u32, 2u32)]
+
+test "reverse chain miss leaves untouched":
+  let rev = buildReverseChain(2u16, @[1u16], @[3u16], @[10u16])
+  let gsub = buildGsubOneLookup("ccmp", 8u16, rev)
+  check shapeWithFeatures(buildFont(gsub), "ABA",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (2u32, 1u32), (1u32, 2u32)]
+  check shapeWithFeatures(buildFont(gsub), "BC",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(2u32, 0u32), (3u32, 1u32)]
+  check shapeWithFeatures(buildFont(gsub), "B",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(2u32, 0u32)]
+
+test "extension wraps reverse chain":
+  let rev = buildReverseChain(2u16, @[1u16], @[3u16], @[10u16])
+  let ext = extensionBytes(8u16, rev)
+  let gsub = buildGsubOneLookup("ccmp", 7u16, ext)
+  check shapeWithFeatures(buildFont(gsub), "ABC",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (10u32, 1u32), (3u32, 2u32)]
+  check shapeWithFeatures(buildFont(gsub), "ABA",
+    @[globalFeature(tagFromStr("ccmp"), 1)]) ==
+    @[(1u32, 0u32), (2u32, 1u32), (1u32, 2u32)]
 
 test "font without gsub parses to none":
   let f = parseFont(buildFont(@[], false))
