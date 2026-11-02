@@ -277,6 +277,107 @@ proc buildGsubMult(): seq[uint8] =
   result.putU16(8u16)
   doAssert result.len == 96
 
+proc buildGsubAlt(feature: string, covGlyph: uint16,
+    alternates: seq[uint16]): seq[uint8] =
+  let n = alternates.len
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(44u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putTag(feature)
+  result.putU16(8u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(4u16)
+  result.putU16(3u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  result.putU16(3u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(14u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(covGlyph)
+  result.putU16(uint16(n))
+  for a in alternates:
+    result.putU16(a)
+  doAssert result.len == 72 + n * 2
+
+proc buildGsubSaltSmcp(): seq[uint8] =
+  # features: salt -> [lookup0 type 3], smcp -> [lookup1 type 1]
+  # lookup0 @62 (8): subst @70 (8), coverage @78 (6: {1}), set @84 (6: [10, 11])
+  # lookup1 @90 (8): subst @98 (8), coverage @106 (6: {11} -> [13])
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(32u16)
+  result.putU16(58u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(2u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putTag("salt")
+  result.putU16(14u16)
+  result.putTag("smcp")
+  result.putU16(20u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putU16(6u16)
+  result.putU16(34u16)
+  result.putU16(3u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  result.putU16(3u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(14u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putU16(10u16)
+  result.putU16(11u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  result.putU16(2u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(13u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(11u16)
+  doAssert result.len == 114
+
 proc shapeWithFeatures(fontBytes: seq[uint8], text: string,
     feats: seq[Feature]): seq[tuple[gid, cluster: uint32]] =
   let f = parseFont(fontBytes)
@@ -437,6 +538,31 @@ test "multiple substitution single stays in place":
   check g.glyphId == 8u32
   check g.substituted()
   check (not g.multiplied())
+
+test "salt selects alternate by value":
+  let gsub = buildGsubAlt("salt", 1u16, @[10u16, 11u16, 12u16])
+  check shapeWithFeatures(buildFont(gsub), "A",
+    @[newFeature(tagFromStr("salt"), 1u32, 0u32, high(uint32))]) ==
+    @[(10u32, 0u32)]
+  check shapeWithFeatures(buildFont(gsub), "A",
+    @[newFeature(tagFromStr("salt"), 2u32, 0u32, high(uint32))]) ==
+    @[(11u32, 0u32)]
+  check shapeWithFeatures(buildFont(gsub), "A",
+    @[newFeature(tagFromStr("salt"), 3u32, 0u32, high(uint32))]) ==
+    @[(12u32, 0u32)]
+
+test "salt value out of range is a no-op":
+  let gsub = buildGsubAlt("salt", 1u16, @[10u16, 11u16])
+  check shapeWithFeatures(buildFont(gsub), "A",
+    @[newFeature(tagFromStr("salt"), 4u32, 0u32, high(uint32))]) ==
+    @[(1u32, 0u32)]
+
+test "valued and boolean features coexist":
+  let gsub = buildGsubSaltSmcp()
+  let got = shapeWithFeatures(buildFont(gsub), "A",
+    @[newFeature(tagFromStr("salt"), 2u32, 0u32, high(uint32)),
+      globalFeature(tagFromStr("smcp"), 1)])
+  check got == @[(13u32, 0u32)]
 
 test "font without gsub parses to none":
   let f = parseFont(buildFont(@[], false))

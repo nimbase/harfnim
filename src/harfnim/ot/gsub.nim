@@ -16,6 +16,7 @@ const
 
   GsubSingleSubst* = 1u16
   GsubMultipleSubst* = 2u16
+  GsubAlternateSubst* = 3u16
   GsubLigatureSubst* = 4u16
 
 type
@@ -43,6 +44,10 @@ type
     coverage*: Coverage
     sequences*: seq[seq[uint32]]
 
+  AlternateSubst* = object
+    coverage*: Coverage
+    sets*: seq[seq[uint32]]
+
   Ligature* = object
     ligGlyph*: uint32
     components*: seq[uint32]
@@ -54,6 +59,7 @@ type
   GsubLookupKind* = enum
     lkSingle
     lkMultiple
+    lkAlternate
     lkLigature
     lkOther
 
@@ -65,6 +71,7 @@ type
     markFilteringSet*: uint16
     singleSubsts*: seq[SingleSubst]
     multipleSubsts*: seq[MultipleSubst]
+    alternateSubsts*: seq[AlternateSubst]
     ligatureSubsts*: seq[LigatureSubst]
     order*: seq[LookupEntry]
 
@@ -189,6 +196,31 @@ proc parseLigatureSubst(bytes: openArray[uint8], off: int): LigatureSubst =
     sets.add(ligs)
   LigatureSubst(coverage: coverage, sets: sets)
 
+proc parseAlternateSubst(bytes: openArray[uint8], off: int): AlternateSubst =
+  if off + 4 > bytes.len:
+    raise newException(FontError, "short AlternateSubst table")
+  let format = readU16(bytes, off)
+  if format != 3u16:
+    raise newException(FontError, "unsupported AlternateSubst format")
+  let covOff = int(readU16(bytes, off + 2))
+  let coverage = parseCoverage(bytes, off + covOff)
+  let count = int(readU16(bytes, off + 4))
+  if off + 6 + count * 2 > bytes.len:
+    raise newException(FontError, "short AlternateSubst table")
+  var sets: seq[seq[uint32]] = @[]
+  for i in 0 ..< count:
+    let soff = off + int(readU16(bytes, off + 6 + i * 2))
+    if soff + 2 > bytes.len:
+      raise newException(FontError, "short AlternateSet table")
+    let n = int(readU16(bytes, soff))
+    if soff + 2 + n * 2 > bytes.len:
+      raise newException(FontError, "short AlternateSet table")
+    var s = newSeq[uint32](n)
+    for j in 0 ..< n:
+      s[j] = uint32(readU16(bytes, soff + 2 + j * 2))
+    sets.add(s)
+  AlternateSubst(coverage: coverage, sets: sets)
+
 proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
   let base = tableOff + off
   if base + 6 > bytes.len:
@@ -204,6 +236,7 @@ proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
     markSet = readU16(bytes, base + 6 + subCount * 2)
   var subs: seq[SingleSubst] = @[]
   var multis: seq[MultipleSubst] = @[]
+  var alts: seq[AlternateSubst] = @[]
   var ligs: seq[LigatureSubst] = @[]
   var order: seq[LookupEntry] = @[]
   if lookupType == GsubSingleSubst:
@@ -216,16 +249,21 @@ proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
       let subOff = int(readU16(bytes, base + 6 + i * 2))
       multis.add(parseMultipleSubst(bytes, base + subOff))
       order.add((lkMultiple, multis.len - 1))
+  elif lookupType == GsubAlternateSubst:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      alts.add(parseAlternateSubst(bytes, base + subOff))
+      order.add((lkAlternate, alts.len - 1))
   elif lookupType == GsubLigatureSubst:
     for i in 0 ..< subCount:
       let subOff = int(readU16(bytes, base + 6 + i * 2))
       ligs.add(parseLigatureSubst(bytes, base + subOff))
       order.add((lkLigature, ligs.len - 1))
-  # TODO: other GSUB lookup types (alternate, contextual, chained,
-  #   extension, reverse-chained)
+  # TODO: other GSUB lookup types (contextual, chained, extension,
+  #   reverse-chained)
   Lookup(lookupType: lookupType, lookupFlag: flag, markFilteringSet: markSet,
-    singleSubsts: subs, multipleSubsts: multis, ligatureSubsts: ligs,
-    order: order)
+    singleSubsts: subs, multipleSubsts: multis, alternateSubsts: alts,
+    ligatureSubsts: ligs, order: order)
 
 proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
   if off + 10 > bytes.len:

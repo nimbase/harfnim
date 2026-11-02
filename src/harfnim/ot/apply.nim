@@ -1,3 +1,4 @@
+import std/bitops
 import std/options
 
 import ../buffer
@@ -38,6 +39,9 @@ proc lookupCovers(lookup: Lookup, gid: uint32): bool =
         return true
     of lkMultiple:
       if lookup.multipleSubsts[e.index].coverage.covers(gid):
+        return true
+    of lkAlternate:
+      if lookup.alternateSubsts[e.index].coverage.covers(gid):
         return true
     of lkLigature:
       if lookup.ligatureSubsts[e.index].coverage.covers(gid):
@@ -85,6 +89,28 @@ proc applyMultiple(buf: var Buffer, sub: MultipleSubst, index: int): bool =
       outputGlyphForComponent(buf, substitute, classGuess)
     buf.skipGlyph()
     true
+
+proc applyAlternate(buf: var Buffer, sub: AlternateSubst, index: int,
+    lookupMask: uint32): bool =
+  if index < 0 or index >= sub.sets.len:
+    return false
+  let alts = sub.sets[index]
+  if alts.len == 0:
+    return false
+  let cur = buf.cur(0)
+  if cur == nil:
+    buf.indexFailed()
+    return false
+  # TODO: random alternate selection (rand feature)
+  let altIndex = (lookupMask and cur[].mask) shr
+    uint32(countTrailingZeroBits(lookupMask))
+  if altIndex == 0u32:
+    return false
+  let ai = int(altIndex - 1u32)
+  if ai >= alts.len:
+    return false
+  replaceWithSubstituted(buf, alts[ai])
+  true
 
 proc matchComponents(buf: var Buffer, components: seq[uint32],
     props: uint32): Option[tuple[positions: seq[int], matchEnd: int,
@@ -229,6 +255,14 @@ proc applyLookup*(buf: var Buffer, lookup: Lookup, mask: uint32): bool =
         if ci.isNone:
           continue
         if applyMultiple(buf, sub, int(ci.get)):
+          done = true
+          break
+      of lkAlternate:
+        let sub = lookup.alternateSubsts[e.index]
+        let ci = sub.coverage.coverageIndex(gid)
+        if ci.isNone:
+          continue
+        if applyAlternate(buf, sub, int(ci.get), mask):
           done = true
           break
       of lkLigature:

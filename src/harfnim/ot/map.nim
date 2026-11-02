@@ -1,5 +1,8 @@
 import std/options
 
+import std/bitops
+import std/options
+
 import ../buffer
 import ../feature
 import ../tag
@@ -46,14 +49,21 @@ proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
   let available = gsubFeaturesFor(gsub, scriptTag, langTag)
   if available.len == 0 or features.len == 0:
     return
-  var bitNo = 0
+  # Feature mask bits start above the glyph-flag bits, mirroring
+  # harfrust's bit allocation: valued features occupy as many bits as
+  # needed to hold their value so lookups can read it back.
+  var nextBit = 8u32
   for f in features:
     if f.value == 0u32:
       continue
-    if bitNo >= 31:
+    let bitsNeeded = 32u32 - uint32(countLeadingZeroBits(f.value))
+    if nextBit + bitsNeeded > 31u32:
       break
-    let maskBit = 1u32 shl uint32(bitNo)
-    inc bitNo
+    let mask =
+      if nextBit + bitsNeeded >= 32u32: (not 0u32) shl nextBit
+      else: ((1u32 shl (nextBit + bitsNeeded)) - (1u32 shl nextBit))
+    let valueBits = f.value shl nextBit
+    nextBit += bitsNeeded
     var lookups: seq[uint16] = @[]
     for (tag, lks) in available:
       if tag == f.tag.toU32():
@@ -61,5 +71,5 @@ proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
         break
     if lookups.len == 0:
       continue
-    buf.setMasks(maskBit, maskBit, f.start, f.stop)
-    applySubstLookups(buf, gsub, lookups, maskBit)
+    buf.setMasks(valueBits, mask, f.start, f.stop)
+    applySubstLookups(buf, gsub, lookups, mask)
