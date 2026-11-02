@@ -94,7 +94,9 @@ proc buildGsubSingle(feature: string, covGlyphs: seq[uint16],
     result.putU16(g)
   doAssert result.len == 64 + covSize + subSize - 8
 
-proc buildFont(gsub: seq[uint8], withGsub: bool = true): seq[uint8] =
+proc buildFont(gsub: seq[uint8], withGsub: bool = true,
+    cmap: seq[uint8] = @[]): seq[uint8] =
+  let cmapData = if cmap.len == 0: buildCmapSingle() else: cmap
   var head = newSeq[uint8]()
   head.putU32(0x00010000u32)
   head.putU32(0u32)
@@ -131,7 +133,7 @@ proc buildFont(gsub: seq[uint8], withGsub: bool = true): seq[uint8] =
   var loca = @[0u8, 0u8, 0u8, 0u8]
   var tables = @[
     ("head", head), ("hhea", hhea), ("maxp", maxp), ("hmtx", hmtx),
-    ("cmap", buildCmapSingle()), ("loca", loca),
+    ("cmap", cmapData), ("loca", loca),
   ]
   if withGsub:
     tables.add(("GSUB", gsub))
@@ -153,6 +155,127 @@ proc buildFont(gsub: seq[uint8], withGsub: bool = true): seq[uint8] =
   for (_, data) in tables:
     result.add(data)
     result.pad4()
+
+proc buildCmapFI(): seq[uint8] =
+  result = @[]
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(3u16)
+  result.putU16(1u16)
+  result.putU32(12u32)
+  result.putU16(4u16)
+  result.putU16(40u16)
+  result.putU16(0u16)
+  result.putU16(6u16)
+  result.putU16(4u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putU16(0x66u16)
+  result.putU16(0x69u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(0u16)
+  result.putU16(0x66u16)
+  result.putU16(0x69u16)
+  result.putU16(0xFFFFu16)
+  result.putI16(-101i16)
+  result.putI16(-103i16)
+  result.putI16(1i16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+
+proc buildGsubLiga(): seq[uint8] =
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(44u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putTag("liga")
+  result.putU16(8u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(4u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(14u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(4u16)
+  result.putU16(20u16)
+  result.putU16(2u16)
+  result.putU16(2u16)
+  doAssert result.len == 80
+
+proc buildGsubMult(): seq[uint8] =
+  # lookup @48 (10 bytes, 2 subtables): sub0 @58, sub1 @78
+  # sub0 @58 (8): coverage0 @66 (6), seq @72 (6: [6, 7])
+  # sub1 @78 (8): coverage1 @86 (6: {2}), seq @92 (4: [8])
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(44u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putTag("ccmp")
+  result.putU16(8u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(4u16)
+  result.putU16(2u16)
+  result.putU16(0u16)
+  result.putU16(2u16)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(2u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(14u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putU16(6u16)
+  result.putU16(7u16)
+  result.putU16(2u16)
+  result.putU16(8u16)
+  result.putU16(1u16)
+  result.putU16(14u16)
+  result.putU16(1u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putU16(1u16)
+  result.putU16(8u16)
+  doAssert result.len == 96
 
 proc shapeWithFeatures(fontBytes: seq[uint8], text: string,
     feats: seq[Feature]): seq[tuple[gid, cluster: uint32]] =
@@ -247,6 +370,73 @@ test "unknown script or feature is a no-op":
     @[globalFeature(tagFromStr("smcp"), 0)])
   check b.glyphInfosView()[0].glyphId == 0x41u32
   b.deallocateGsubGposVars()
+
+test "fi ligature":
+  let gsub = buildGsubLiga()
+  let fontBytes = buildFont(gsub, true, buildCmapFI())
+  let f = parseFont(fontBytes)
+  let sf = newShaperFont(f)
+  let gsubOpt = parseGsub(f)
+  doAssert gsubOpt.isSome
+  var b = newBuffer()
+  b.pushStr("fi")
+  b.guessSegmentProperties()
+  var scratch = 0u32
+  for i in 0 ..< b.len:
+    b.info[i].initUnicodeProps(scratch)
+  b.allocateUnicodeVars()
+  var nctx = sf.normalizeContextFor()
+  b.normalize(nmComposedDiacritics, false, nctx)
+  b.deallocateUnicodeVars()
+  b.mapGlyphsFast()
+  b.setContentType(some(contentGlyphs))
+  b.allocateGsubGposVars()
+  b.applyGsubFeatures(gsubOpt.get, tagFromStr("latn"), tagFromStr("dflt"),
+    @[globalFeature(tagFromStr("liga"), 1)])
+  b.deallocateGsubGposVars()
+  check b.len == 1
+  let g = b.glyphInfosView()[0]
+  check g.glyphId == 20u32
+  check g.cluster == 0u32
+  check g.isLigature()
+  check g.ligated()
+  check g.ligNumComps() == 2u8
+  check g.ligId() != 0u8
+
+test "multiple substitution one to many":
+  let gsub = buildGsubMult()
+  let got = shapeWithFeatures(buildFont(gsub), "A",
+    @[globalFeature(tagFromStr("ccmp"), 1)])
+  check got == @[(6u32, 0u32), (7u32, 0u32)]
+
+test "multiple substitution single stays in place":
+  let gsub = buildGsubMult()
+  let fontBytes = buildFont(gsub)
+  let f = parseFont(fontBytes)
+  let gsubOpt = parseGsub(f)
+  doAssert gsubOpt.isSome
+  var b = newBuffer()
+  b.pushStr("B")
+  b.guessSegmentProperties()
+  var scratch = 0u32
+  for i in 0 ..< b.len:
+    b.info[i].initUnicodeProps(scratch)
+  b.allocateUnicodeVars()
+  let sf = newShaperFont(f)
+  var nctx = sf.normalizeContextFor()
+  b.normalize(nmComposedDiacritics, false, nctx)
+  b.deallocateUnicodeVars()
+  b.mapGlyphsFast()
+  b.setContentType(some(contentGlyphs))
+  b.allocateGsubGposVars()
+  b.applyGsubFeatures(gsubOpt.get, tagFromStr("latn"), tagFromStr("dflt"),
+    @[globalFeature(tagFromStr("ccmp"), 1)])
+  b.deallocateGsubGposVars()
+  check b.len == 1
+  let g = b.glyphInfosView()[0]
+  check g.glyphId == 8u32
+  check g.substituted()
+  check (not g.multiplied())
 
 test "font without gsub parses to none":
   let f = parseFont(buildFont(@[], false))

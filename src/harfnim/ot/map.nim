@@ -62,4 +62,4 @@ proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
     if lookups.len == 0:
       continue
     buf.setMasks(maskBit, maskBit, f.start, f.stop)
-    applySingleSubstLookups(buf, gsub, lookups, maskBit)
+    applySubstLookups(buf, gsub, lookups, maskBit)
