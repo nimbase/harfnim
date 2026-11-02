@@ -226,7 +226,7 @@ proc parseMultipleSubst(bytes: openArray[uint8], off: int): MultipleSubst =
   if off + 4 > bytes.len:
     raise newException(FontError, "short MultipleSubst table")
   let format = readU16(bytes, off)
-  if format != 2u16:
+  if format != 1u16:
     raise newException(FontError, "unsupported MultipleSubst format")
   let covOff = int(readU16(bytes, off + 2))
   let coverage = parseCoverage(bytes, off + covOff)
@@ -251,7 +251,7 @@ proc parseLigatureSubst(bytes: openArray[uint8], off: int): LigatureSubst =
   if off + 4 > bytes.len:
     raise newException(FontError, "short LigatureSubst table")
   let format = readU16(bytes, off)
-  if format != 4u16:
+  if format != 1u16:
     raise newException(FontError, "unsupported LigatureSubst format")
   let covOff = int(readU16(bytes, off + 2))
   let coverage = parseCoverage(bytes, off + covOff)
@@ -286,7 +286,7 @@ proc parseAlternateSubst(bytes: openArray[uint8], off: int): AlternateSubst =
   if off + 4 > bytes.len:
     raise newException(FontError, "short AlternateSubst table")
   let format = readU16(bytes, off)
-  if format != 3u16:
+  if format != 1u16:
     raise newException(FontError, "unsupported AlternateSubst format")
   let covOff = int(readU16(bytes, off + 2))
   let coverage = parseCoverage(bytes, off + covOff)

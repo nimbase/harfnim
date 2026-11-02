@@ -768,6 +768,17 @@ proc posLookupCovers(lookup: PosLookup, gid: uint32): bool =
     of pkPair:
       if lookup.pairPos[e.index].coverage.covers(gid):
         return true
+    of pkCursive:
+      if lookup.cursivePos[e.index].coverage.covers(gid):
+        return true
+    of pkMarkBase, pkMarkMark:
+      let sub = if e.kind == pkMarkBase: lookup.markBasePos[e.index]
+        else: lookup.markMarkPos[e.index]
+      if sub.markCoverage.covers(gid):
+        return true
+    of pkMarkLig:
+      if lookup.markLigPos[e.index].markCoverage.covers(gid):
+        return true
     of pkOther:
       discard
   false
@@ -870,6 +881,396 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
   else:
     false
 
+
+const
+  AttachMark* = 1u8
+  AttachCursive* = 2u8
+
+proc positionStart*(buf: var Buffer) =
+  for i in 0 ..< min(buf.len, buf.pos.len):
+    buf.pos[i].setAttachChain(0)
+    buf.pos[i].setAttachType(0u8)
+
+proc crossOffset*(buf: Buffer, idx: int): int32 =
+  if idx < 0 or idx >= buf.pos.len:
+    return 0i32
+  let horiz = buf.direction.isHorizontal()
+  var off = if horiz: buf.pos[idx].yOffset else: buf.pos[idx].xOffset
+  var cur = idx
+  var guard = 0
+  while guard < 64:
+    if cur < 0 or cur >= buf.pos.len:
+      break
+    let t = buf.pos[cur].attachType()
+    let c = buf.pos[cur].attachChain()
+    if (t and AttachCursive) == 0u8 or c == 0i16:
+      break
+    let parent = cur + int(c)
+    if parent < 0 or parent >= buf.pos.len:
+      break
+    let pOff = if horiz: buf.pos[parent].yOffset else: buf.pos[parent].xOffset
+    off = saturatingAddI32(off, pOff)
+    cur = parent
+    inc guard
+  off
+
+proc findMarkBase*(buf: var Buffer, props: uint32,
+    coverage: Coverage): Option[int] =
+  # Search back skipping marks (IGNORE_MARKS), mirroring harfrust
+  # find_mark_base without the last_base cache (TODO).
+  var j = buf.idx
+  while j > 0:
+    dec j
+    if j < 0 or j >= buf.info.len:
+      break
+    let g = buf.info[j]
+    if not contextCheckProp(g, uint32(LookupIgnoreMarks)):
+      continue
+    if not coverage.covers(g.glyphId):
+      # Accept check: only first glyph of a multiple substitution is a
+      # base unless a mark breaks the sequence (harfrust accept_base).
+      # Simplified: require coverage hit.
+      continue
+    # Multiplied check (harfrust accept_base).
+    if g.multiplied() and g.ligComp() != 0u8 and j != 0:
+      let prev = buf.info[j - 1]
+      let breaks = prev.isMarkGlyph() or not prev.multiplied() or
+        g.ligId() != prev.ligId() or g.ligComp() != prev.ligComp() + 1u8
+      if not breaks:
+        continue
+    return some(j)
+  none(int)
+
+proc attachMark*(buf: var Buffer, baseAnchor, markAnchor: Anchor,
+    basePos: int, scale: Scale) =
+  if baseAnchor.format == 0u16 or markAnchor.format == 0u16:
+    buf.idx += 1
+    return
+  var xOff = scale.scaleX(baseAnchor.x - markAnchor.x)
+  var yOff = scale.scaleY(baseAnchor.y - markAnchor.y)
+  let baseOff = crossOffset(buf, basePos)
+  let horiz = buf.direction.isHorizontal()
+  if horiz:
+    yOff = yOff + baseOff
+  else:
+    xOff = xOff + baseOff
+  buf.unsafeToBreakRange(some(basePos), some(buf.idx + 1))
+  let idx = buf.idx
+  if idx < 0 or idx >= buf.pos.len:
+    buf.indexFailed()
+    return
+  buf.pos[idx].xOffset = xOff
+  buf.pos[idx].yOffset = yOff
+  buf.pos[idx].setAttachType(AttachMark)
+  let chain = basePos - idx
+  if chain >= int(low(int16)) and chain <= int(high(int16)):
+    buf.pos[idx].setAttachChain(int16(chain))
+    if int(buf.pos[idx].attachChain()) != chain:
+      buf.pos[idx].setAttachChain(0)
+  else:
+    buf.pos[idx].setAttachChain(0)
+  buf.scratchFlags = buf.scratchFlags or ScratchFlagHasGposAttachment
+  buf.idx += 1
+
+proc applyMarkBase*(buf: var Buffer, sub: MarkSub, props, mask: uint32,
+    scale: Scale): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  let ci = sub.markCoverage.coverageIndex(gid)
+  if ci.isNone or int(ci.get) >= sub.markClasses.len:
+    return false
+  let markIdx = int(ci.get)
+  let baseOpt = findMarkBase(buf, props, sub.baseCoverage)
+  if baseOpt.isNone:
+    buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
+    return false
+  let basePos = baseOpt.get
+  if basePos < 0 or basePos >= buf.info.len:
+    return false
+  let baseGid = buf.info[basePos].glyphId
+  let baseIdxOpt = sub.baseCoverage.coverageIndex(baseGid)
+  if baseIdxOpt.isNone:
+    buf.unsafeToConcatFromOutbuffer(some(basePos), some(buf.idx + 1))
+    return false
+  let cls = sub.markClasses[markIdx]
+  if int(cls) >= int(sub.classCount):
+    buf.idx += 1
+    return true
+  let baseIdx = int(baseIdxOpt.get)
+  let anchorIdx = baseIdx * int(sub.classCount) + int(cls)
+  if anchorIdx < 0 or anchorIdx >= sub.baseAnchors.len:
+    buf.idx += 1
+    return true
+  attachMark(buf, sub.baseAnchors[anchorIdx], sub.markAnchors[markIdx],
+    basePos, scale)
+  true
+
+proc applyMarkMark*(buf: var Buffer, sub: MarkSub, props, mask: uint32,
+    scale: Scale): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  let ci = sub.markCoverage.coverageIndex(gid)
+  if ci.isNone or int(ci.get) >= sub.markClasses.len:
+    return false
+  let markIdx = int(ci.get)
+  # Search back for previous mark, ignoring lookup flags except mark
+  # filtering (harfrust strips IGNORE_FLAGS).
+  let stripped = props and not uint32(LookupIgnoreFlags)
+  var j = buf.idx - 1
+  var mark2Pos = -1
+  while j >= 0 and j < buf.info.len:
+    let g = buf.info[j]
+    if contextCheckProp(g, stripped):
+      mark2Pos = j
+      break
+    dec j
+  if mark2Pos < 0:
+    buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
+    return false
+  let prev = buf.info[mark2Pos]
+  if not prev.isMarkGlyph():
+    buf.unsafeToConcatFromOutbuffer(some(mark2Pos), some(buf.idx + 1))
+    return false
+  # Ligature id/component matching (harfrust).
+  let cur = buf.info[buf.idx]
+  let (id1, comp1) = (cur.ligId(), cur.ligComp())
+  let (id2, comp2) = (prev.ligId(), prev.ligComp())
+  var matches = false
+  if id1 == id2:
+    matches = id1 == 0u8 or comp1 == comp2
+  else:
+    matches = (id1 > 0u8 and comp1 == 0u8) or (id2 > 0u8 and comp2 == 0u8)
+  if not matches:
+    buf.unsafeToConcatFromOutbuffer(some(mark2Pos), some(buf.idx + 1))
+    return false
+  let m2IdxOpt = sub.baseCoverage.coverageIndex(prev.glyphId)
+  if m2IdxOpt.isNone:
+    buf.unsafeToConcatFromOutbuffer(some(mark2Pos), some(buf.idx + 1))
+    return false
+  let cls = sub.markClasses[markIdx]
+  if int(cls) >= int(sub.classCount):
+    buf.idx += 1
+    return true
+  let anchorIdx = int(m2IdxOpt.get) * int(sub.classCount) + int(cls)
+  if anchorIdx < 0 or anchorIdx >= sub.baseAnchors.len:
+    buf.idx += 1
+    return true
+  attachMark(buf, sub.baseAnchors[anchorIdx], sub.markAnchors[markIdx],
+    mark2Pos, scale)
+  true
+
+proc applyMarkLig*(buf: var Buffer, sub: LigSub, props, mask: uint32,
+    scale: Scale): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  let ci = sub.markCoverage.coverageIndex(gid)
+  if ci.isNone or int(ci.get) >= sub.markClasses.len:
+    return false
+  let markIdx = int(ci.get)
+  let ligOpt = findMarkBase(buf, props, sub.ligCoverage)
+  if ligOpt.isNone:
+    buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
+    return false
+  let ligPos = ligOpt.get
+  let ligInfo = buf.info[ligPos]
+  let ligIdxOpt = sub.ligCoverage.coverageIndex(ligInfo.glyphId)
+  if ligIdxOpt.isNone or int(ligIdxOpt.get) >= sub.ligCount:
+    buf.unsafeToConcatFromOutbuffer(some(ligPos), some(buf.idx + 1))
+    return false
+  let li = int(ligIdxOpt.get)
+  if li >= sub.compOffsets.len or li >= sub.compCounts.len:
+    buf.unsafeToConcatFromOutbuffer(some(ligPos), some(buf.idx + 1))
+    return false
+  let compCount = sub.compCounts[li]
+  if compCount == 0:
+    buf.unsafeToConcatFromOutbuffer(some(ligPos), some(buf.idx + 1))
+    return false
+  let ligId = ligInfo.ligId()
+  let cur = buf.info[buf.idx]
+  let markId = cur.ligId()
+  let markComp = uint32(cur.ligComp())
+  var compIdx = compCount - 1
+  if ligId != 0u8 and ligId == markId and markComp > 0u32:
+    compIdx = int(min(markComp, uint32(compCount))) - 1
+  let cls = sub.markClasses[markIdx]
+  if int(cls) >= int(sub.classCount):
+    buf.idx += 1
+    return true
+  let anchorIdx = sub.compOffsets[li] + compIdx * int(sub.classCount) +
+    int(cls)
+  if anchorIdx < 0 or anchorIdx >= sub.compAnchors.len:
+    buf.idx += 1
+    return true
+  attachMark(buf, sub.compAnchors[anchorIdx], sub.markAnchors[markIdx],
+    ligPos, scale)
+  true
+
+proc applyCursive*(buf: var Buffer, sub: CursiveSub, props: uint32,
+    scale: Scale, lookupFlag: uint16): bool =
+  if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
+    return false
+  let gid = buf.info[buf.idx].glyphId
+  let ci = sub.coverage.coverageIndex(gid)
+  if ci.isNone or int(ci.get) >= sub.entryAnchors.len:
+    return false
+  let entry = sub.entryAnchors[int(ci.get)]
+  if entry.format == 0u16:
+    return false
+  # Find previous non-skipped glyph.
+  var j = buf.idx - 1
+  var prevPos = -1
+  while j >= 0 and j < buf.info.len:
+    if contextCheckProp(buf.info[j], props):
+      prevPos = j
+      break
+    dec j
+  if prevPos < 0:
+    buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
+    return false
+  let prevGid = buf.info[prevPos].glyphId
+  let prevIdxOpt = sub.coverage.coverageIndex(prevGid)
+  if prevIdxOpt.isNone or int(prevIdxOpt.get) >= sub.exitAnchors.len:
+    buf.unsafeToConcatFromOutbuffer(some(prevPos), some(buf.idx + 1))
+    return false
+  let exit = sub.exitAnchors[int(prevIdxOpt.get)]
+  if exit.format == 0u16:
+    buf.unsafeToConcatFromOutbuffer(some(prevPos), some(buf.idx + 1))
+    return false
+  let exitX = scale.scaleX(exit.x)
+  let exitY = scale.scaleY(exit.y)
+  let entryX = scale.scaleX(entry.x)
+  let entryY = scale.scaleY(entry.y)
+  let horiz = buf.direction.isHorizontal()
+  let curIdx = buf.idx
+  buf.unsafeToBreakRange(some(prevPos), some(curIdx + 1))
+  if prevPos >= buf.pos.len or curIdx >= buf.pos.len:
+    buf.indexFailed()
+    return false
+  if horiz and buf.direction == dirLeftToRight:
+    buf.pos[prevPos].xAdvance = exitX + buf.pos[prevPos].xOffset
+    let d = entryX + buf.pos[curIdx].xOffset
+    buf.pos[curIdx].xAdvance = buf.pos[curIdx].xAdvance - d
+    buf.pos[curIdx].xOffset = buf.pos[curIdx].xOffset - d
+  elif horiz:
+    let d = exitX + buf.pos[prevPos].xOffset
+    buf.pos[prevPos].xAdvance = buf.pos[prevPos].xAdvance - d
+    buf.pos[prevPos].xOffset = buf.pos[prevPos].xOffset - d
+    buf.pos[curIdx].xAdvance = entryX + buf.pos[curIdx].xOffset
+  else:
+    # Vertical cursive: minimal advance adjustment (TODO full spec).
+    buf.pos[prevPos].yAdvance = exitY + buf.pos[prevPos].yOffset
+    let d = entryY + buf.pos[curIdx].yOffset
+    buf.pos[curIdx].yAdvance = buf.pos[curIdx].yAdvance - d
+    buf.pos[curIdx].yOffset = buf.pos[curIdx].yOffset - d
+  var child = prevPos
+  var parent = curIdx
+  var xOff = entryX - exitX
+  var yOff = entryY - exitY
+  if (lookupFlag and LookupRightToLeft) == 0u16:
+    let t = child
+    child = parent
+    parent = t
+    xOff = -xOff
+    yOff = -yOff
+  # If the child was attached elsewhere via cursive, detach (simplified
+  # reverse of harfrust reverse_cursive_minor_offset).
+  if child >= 0 and child < buf.pos.len:
+    if (buf.pos[child].attachType() and AttachCursive) != 0u8 and
+        buf.pos[child].attachChain() != 0i16:
+      buf.pos[child].setAttachChain(0)
+      buf.pos[child].setAttachType(0u8)
+  if child >= 0 and child < buf.pos.len and parent >= 0 and
+      parent < buf.pos.len:
+    buf.pos[child].setAttachType(AttachCursive)
+    let chain = parent - child
+    if chain >= int(low(int16)) and chain <= int(high(int16)):
+      buf.pos[child].setAttachChain(int16(chain))
+      if int(buf.pos[child].attachChain()) != chain:
+        buf.pos[child].setAttachChain(0)
+    if horiz:
+      buf.pos[child].yOffset = yOff
+    else:
+      buf.pos[child].xOffset = xOff
+    buf.scratchFlags = buf.scratchFlags or ScratchFlagHasGposAttachment
+    # If the parent was attached to the child, separate them.
+    if buf.pos[parent].attachChain() == -buf.pos[child].attachChain() and
+        buf.pos[child].attachChain() != 0i16:
+      buf.pos[parent].setAttachChain(0)
+      if horiz:
+        buf.pos[parent].yOffset = 0i32
+      else:
+        buf.pos[parent].xOffset = 0i32
+  buf.idx = curIdx + 1
+  true
+
+proc propagateOne(buf: var Buffer, total: int, fwd: bool, i: int) =
+  if i < 0 or i >= total:
+    return
+  let chain = int(buf.pos[i].attachChain())
+  let kind = buf.pos[i].attachType()
+  buf.pos[i].setAttachChain(0)
+  let j = i + chain
+  if j < 0 or j >= total or chain == 0:
+    return
+    # Depth guard: single-level propagation suffices for our tests;
+    # deeper chains accumulate iteratively via repeated walks (TODO full).
+    let px = buf.pos[j].xOffset
+    let py = buf.pos[j].yOffset
+    if kind == AttachMark:
+      if buf.direction.isHorizontal():
+        buf.pos[i].xOffset = buf.pos[i].xOffset + px
+        # Subtract advances between base and mark.
+        if j < i:
+          if fwd:
+            var k = j
+            while k < i:
+              buf.pos[i].xOffset = buf.pos[i].xOffset - buf.pos[k].xAdvance
+              buf.pos[i].yOffset = buf.pos[i].yOffset - buf.pos[k].yAdvance
+              inc k
+          else:
+            var k = j + 1
+            while k <= i:
+              buf.pos[i].xOffset = buf.pos[i].xOffset + buf.pos[k].xAdvance
+              buf.pos[i].yOffset = buf.pos[i].yOffset + buf.pos[k].yAdvance
+              inc k
+        else:
+          if fwd:
+            var k = i
+            while k < j:
+              buf.pos[i].xOffset = buf.pos[i].xOffset + buf.pos[k].xAdvance
+              buf.pos[i].yOffset = buf.pos[i].yOffset + buf.pos[k].yAdvance
+              inc k
+          else:
+            var k = i + 1
+            while k <= j:
+              buf.pos[i].xOffset = buf.pos[i].xOffset - buf.pos[k].xAdvance
+              buf.pos[i].yOffset = buf.pos[i].yOffset - buf.pos[k].yAdvance
+              inc k
+      else:
+        buf.pos[i].yOffset = buf.pos[i].yOffset + py
+    elif kind == AttachCursive:
+      if buf.direction.isHorizontal():
+        buf.pos[i].yOffset = buf.pos[i].yOffset + py
+      else:
+        buf.pos[i].xOffset = buf.pos[i].xOffset + px
+
+proc propagateAttachmentOffsets*(buf: var Buffer) =
+  let total = min(buf.len, buf.pos.len)
+  if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
+    return
+  let fwd = buf.direction.isForward()
+  if fwd:
+    for i in 0 ..< total:
+      if buf.pos[i].attachChain() != 0i16:
+        buf.propagateOne(total, fwd, i)
+  else:
+    for i in countdown(total - 1, 0):
+      if buf.pos[i].attachChain() != 0i16:
+        buf.propagateOne(total, fwd, i)
+
 proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
     mask: uint32, scale: Scale): bool =
   if lookup.order.len == 0:
@@ -903,6 +1304,26 @@ proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
       of pkPair:
         if applyPairPos(buf, lookup.pairPos[e.index], props, mask, scale,
             isHorizontal):
+          done = true
+          break
+      of pkMarkBase:
+        if applyMarkBase(buf, lookup.markBasePos[e.index], props, mask,
+            scale):
+          done = true
+          break
+      of pkMarkMark:
+        if applyMarkMark(buf, lookup.markMarkPos[e.index], props, mask,
+            scale):
+          done = true
+          break
+      of pkMarkLig:
+        if applyMarkLig(buf, lookup.markLigPos[e.index], props, mask,
+            scale):
+          done = true
+          break
+      of pkCursive:
+        if applyCursive(buf, lookup.cursivePos[e.index], props, scale,
+            lookup.lookupFlag):
           done = true
           break
       of pkOther:

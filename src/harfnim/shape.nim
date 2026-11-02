@@ -1,12 +1,12 @@
 ## Full shaping orchestration: ShapePlan + shape() entry.
 ##
-## Mirrors harfrust shape.rs / ot/layout.rs at a minimal Latin-first scope.
-## Complex shapers (arabic, indic, thai, hangul, hebrew, khmer, myanmar,
-## USE, syllabic), per-syllable matching, global-bit / F_HAS_FALLBACK map
-## parity, fallback mark positioning, space fallback, zero-width marks,
-## form_clusters, and native-direction handling stay TODO.
+## Mirrors harfrust shape.rs / ot/layout.rs. Arabic joining, fallback
+## presentation forms, mark/cursive GPOS, and fallback mark positioning are
+## implemented; indic-family, thai, hangul, hebrew, khmer, myanmar, USE and
+## syllabic shapers, stch stretching, and win1256 legacy fallback stay TODO.
 
 import std/options
+import std/bitops
 
 import ./buffer
 import ./direction
@@ -16,6 +16,7 @@ import ./normalize
 import ./script
 import ./tag
 import ./unicode
+import ./ot/arabic
 import ./ot/gpos
 import ./ot/gsub
 import ./ot/map
@@ -42,7 +43,7 @@ proc scriptTagForBuffer(b: Buffer): Tag =
   if b.script.isSome:
     # TODO: full ISO 15924 to OpenType script-tag mapping (harfrust
     # hb_ot_tag_from_script has special cases); lowercasing covers
-    # Latin and most scripts in our synthetic fonts.
+    # Latin, Arabic, and most scripts in our synthetic fonts.
     b.script.get.tag().toLower()
   else:
     defaultScriptTag()
@@ -52,6 +53,12 @@ proc langTagForBuffer(b: Buffer): Tag =
   # For now always the default language system.
   discard b
   defaultLanguageTag()
+
+proc isArabicShaperScript(b: Buffer): bool =
+  if b.script.isNone:
+    return false
+  let s = b.script.get
+  (s == Arabic or s == Syriac) and b.direction.isHorizontal()
 
 proc insertDottedCircle(b: var Buffer) =
   if b.isEmpty():
@@ -85,6 +92,331 @@ proc setBaseAdvances(b: var Buffer, sf: ShaperFont) =
       if i < b.info.len and i < b.pos.len:
         b.pos[i].yAdvance = sf.vAdvance(newGlyphId(b.info[i].glyphId))
 
+proc synthesizeGlyphClasses*(buf: var Buffer) =
+  ## Fallback GDEF: bases vs marks from Unicode categories, mirroring
+  ## harfrust synthesize_glyph_classes (used when the font has no GDEF).
+  for i in 0 ..< min(buf.len, buf.info.len):
+    var g = addr buf.info[i]
+    let isMark = g[].generalCategory() == GcNonSpacingMark and
+      not g[].isInfoDefaultIgnorable()
+    let cls = if isMark: GlyphPropMark else: GlyphPropBaseGlyph
+    g[].setGlyphProps((g[].glyphProps() and not GlyphPropClassMask) or cls)
+
+proc allocMaskBit(nextBit: var uint32, value: uint32): tuple[mask, val: uint32] =
+  if value == 0u32:
+    return (0u32, 0u32)
+  var bitsNeeded = 32u32 - uint32(countLeadingZeroBits(value))
+  if bitsNeeded == 0u32:
+    bitsNeeded = 1u32
+  if nextBit + bitsNeeded > 31u32:
+    return (0u32, 0u32)
+  let mask =
+    if nextBit + bitsNeeded >= 32u32: (not 0u32) shl nextBit
+    else: ((1u32 shl (nextBit + bitsNeeded)) - (1u32 shl nextBit))
+  let vb = value shl nextBit
+  nextBit += bitsNeeded
+  (mask, vb)
+
+type
+  ArabicMasks* = object
+    actions*: array[8, uint32]
+    stchMask*, stchVal*: uint32
+    ccmpMask*, ccmpVal*: uint32
+    loclMask*, loclVal*: uint32
+    rligMask*, rligVal*: uint32
+    caltMask*, caltVal*: uint32
+    ligaMask*, ligaVal*: uint32
+    cligMask*, cligVal*: uint32
+    msetMask*, msetVal*: uint32
+    nextBit*: uint32
+
+proc prepareArabicMasks*(buf: var Buffer): ArabicMasks =
+  ## Allocates arabic masks and runs joining on codepoints. Call before
+  ## mapGlyphsFast (joining needs Unicode codepoints, not glyph IDs).
+  var nextBit = 8u32
+  for i in 0 ..< 7:
+    let (m, _) = allocMaskBit(nextBit, 1u32)
+    result.actions[i] = m
+  result.actions[7] = 0u32
+  (result.stchMask, result.stchVal) = allocMaskBit(nextBit, 1u32)
+  (result.ccmpMask, result.ccmpVal) = allocMaskBit(nextBit, 1u32)
+  (result.loclMask, result.loclVal) = allocMaskBit(nextBit, 1u32)
+  (result.rligMask, result.rligVal) = allocMaskBit(nextBit, 1u32)
+  (result.caltMask, result.caltVal) = allocMaskBit(nextBit, 1u32)
+  (result.ligaMask, result.ligaVal) = allocMaskBit(nextBit, 1u32)
+  (result.cligMask, result.cligVal) = allocMaskBit(nextBit, 1u32)
+  (result.msetMask, result.msetVal) = allocMaskBit(nextBit, 1u32)
+  result.nextBit = nextBit
+  let isMong = buf.script.isSome and buf.script.get == Mongolian
+  buf.setupMasksArabic(result.actions, isMong)
+  for (m, v) in [(result.stchMask, result.stchVal),
+      (result.ccmpMask, result.ccmpVal), (result.loclMask, result.loclVal),
+      (result.rligMask, result.rligVal), (result.caltMask, result.caltVal),
+      (result.ligaMask, result.ligaVal), (result.cligMask, result.cligVal),
+      (result.msetMask, result.msetVal)]:
+    if m != 0u32:
+      buf.setMasks(v, m, GlobalStart, GlobalEnd)
+
+proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
+    langTag: Tag, userFeatures: openArray[Feature], sf: ShaperFont,
+    am: ArabicMasks) =
+  ## Ordered Arabic GSUB with precomputed masks (call after mapping).
+  let maskArray = am.actions
+  let stchMask = am.stchMask
+  let ccmpMask = am.ccmpMask
+  let loclMask = am.loclMask
+  let rligMask = am.rligMask
+  let caltMask = am.caltMask
+  let ligaMask = am.ligaMask
+  let cligMask = am.cligMask
+  let msetMask = am.msetMask
+  let available = gsubFeaturesFor(gsub, scriptTag, langTag)
+  proc lookupsForAvail(avail: seq[tuple[tag: uint32, lookups: seq[uint16]]],
+      tagStr: string): seq[uint16] =
+    let t = tagFromStr(tagStr).toU32()
+    for (tag, lks) in avail:
+      if tag == t:
+        return lks
+    @[]
+  # Order mirrors harfrust arabic collect_features (pauses between each).
+  template applyMasked(tagStr: string, mask: uint32) =
+    if mask != 0u32:
+      let lks = lookupsForAvail(available, tagStr)
+      if lks.len > 0:
+        buf.applySubstLookups(gsub, lks, mask)
+  applyMasked("stch", stchMask)
+  applyMasked("ccmp", ccmpMask)
+  applyMasked("locl", loclMask)
+  const arabTags = ["isol", "fina", "fin2", "fin3", "medi", "med2", "init"]
+  for i, t in arabTags:
+    applyMasked(t, maskArray[i])
+  # rlig with unicode fallback afterwards.
+  applyMasked("rlig", rligMask)
+  let isArab = buf.script.isSome and buf.script.get == Arabic
+  if isArab:
+    var needsFallback = true
+    for t in arabTags:
+      if lookupsForAvail(available, t).len > 0:
+        needsFallback = false
+        break
+    if needsFallback and rligMask != 0u32:
+      let nominal = proc(cp: uint32): Option[GlyphId] = sf.nominalGlyph(cp)
+      let s0 = buildFallbackSingles(nominal, 0)
+      let s1 = buildFallbackSingles(nominal, 1)
+      let s2 = buildFallbackSingles(nominal, 2)
+      let s3 = buildFallbackSingles(nominal, 3)
+      let all = [(s0, 0), (s1, 1), (s2, 2), (s3, 3)]
+      # Map init/medi/fina/isol fallback to the arabic action masks.
+      # FALLBACK_FEATURES order is init, medi, fina, isol.
+      let actionForFeat = [ArabicInit, ArabicMedi, ArabicFina, ArabicIsol]
+      for k in 0 ..< 4:
+        let (mappings, fi) = all[k]
+        # Find which arabic tag this fallback corresponds to.
+        var featTag = ""
+        case fi
+        of 0: featTag = "init"
+        of 1: featTag = "medi"
+        of 2: featTag = "fina"
+        else: featTag = "isol"
+        # Determine mask: use the arabic action mask if the font lacks the
+        # feature, else the rlig mask is irrelevant here. We apply the
+        # fallback substitutions under the arabic action mask so only
+        # correctly joined glyphs are replaced.
+        var m = 0u32
+        for ai, at in arabTags:
+          if at == featTag:
+            m = maskArray[ai]
+            break
+        discard actionForFeat
+        if m != 0u32:
+          buf.applyFallbackSingle(mappings, m)
+      let lig3 = buildFallbackLigs(nominal, true, false)
+      let lig2 = buildFallbackLigs(nominal, false, false)
+      let ligM = buildFallbackLigs(nominal, false, true)
+      buf.applyFallbackLig(lig3, rligMask, true)
+      buf.applyFallbackLig(lig2, rligMask, true)
+      buf.applyFallbackLig(ligM, rligMask, false)
+  applyMasked("calt", caltMask)
+  applyMasked("liga", ligaMask)
+  applyMasked("clig", cligMask)
+  applyMasked("mset", msetMask)
+  # User features last, with fresh low bits that do not disturb arabic bits
+  # (they start above the arabic allocation).
+  var uBit = am.nextBit
+  for f in userFeatures:
+    if f.value == 0u32:
+      continue
+    let (m, v) = allocMaskBit(uBit, f.value)
+    if m == 0u32:
+      continue
+    let lks = block:
+      var r: seq[uint16] = @[]
+      for (tag, ks) in available:
+        if tag == f.tag.toU32():
+          r = ks
+          break
+      r
+    if lks.len == 0:
+      continue
+    buf.setMasks(v, m, f.start, f.stop)
+    buf.applySubstLookups(gsub, lks, m)
+
+proc applyArabicFallback*(buf: var Buffer, sf: ShaperFont,
+    am: ArabicMasks) =
+  ## Fallback when the font has no GSUB: synthesize presentation forms.
+  let nominal = proc(cp: uint32): Option[GlyphId] = sf.nominalGlyph(cp)
+  const arabTags = ["isol", "fina", "fin2", "fin3", "medi", "med2", "init"]
+  for fi in 0 ..< 4:
+    let mappings = buildFallbackSingles(nominal, fi)
+    var featTag = ""
+    case fi
+    of 0: featTag = "init"
+    of 1: featTag = "medi"
+    of 2: featTag = "fina"
+    else: featTag = "isol"
+    var m = 0u32
+    for ai, at in arabTags:
+      if at == featTag:
+        m = am.actions[ai]
+        break
+    if m != 0u32:
+      buf.applyFallbackSingle(mappings, m)
+  let lig3 = buildFallbackLigs(nominal, true, false)
+  let lig2 = buildFallbackLigs(nominal, false, false)
+  let ligM = buildFallbackLigs(nominal, false, true)
+  buf.applyFallbackLig(lig3, am.rligMask, true)
+  buf.applyFallbackLig(lig2, am.rligMask, true)
+  buf.applyFallbackLig(ligM, am.rligMask, false)
+
+proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
+    langTag: Tag, userFeatures: openArray[Feature], scale: Scale) =
+  ## Applies mark/mkmk/curs/dist/abvm/blwm by default plus user features.
+  const autoTags = ["abvm", "blwm", "mark", "mkmk", "curs", "dist"]
+  let available = gposFeaturesFor(gpos, scriptTag, langTag)
+  var nextBit = 8u32
+  var autoMasks: array[6, tuple[mask, val: uint32]]
+  for i in 0 ..< 6:
+    autoMasks[i] = allocMaskBit(nextBit, 1u32)
+  for i, t in autoTags:
+    let (m, v) = autoMasks[i]
+    if m == 0u32:
+      continue
+    let tagU = tagFromStr(t).toU32()
+    var lks: seq[uint16] = @[]
+    for (tag, ks) in available:
+      if tag == tagU:
+        lks = ks
+        break
+    if lks.len == 0:
+      continue
+    buf.setMasks(v, m, GlobalStart, GlobalEnd)
+    buf.applyPosLookups(gpos, lks, m, scale)
+  # User-requested GPOS (kern etc) with shared allocation above arabic bits.
+  var uBit = nextBit
+  for f in userFeatures:
+    if f.value == 0u32:
+      continue
+    let (m, v) = allocMaskBit(uBit, f.value)
+    if m == 0u32:
+      continue
+    var lks: seq[uint16] = @[]
+    for (tag, ks) in available:
+      if tag == f.tag.toU32():
+        lks = ks
+        break
+    if lks.len == 0:
+      continue
+    buf.setMasks(v, m, f.start, f.stop)
+    buf.applyPosLookups(gpos, lks, m, scale)
+
+proc zeroMarkWidths*(buf: var Buffer, adjust: bool) =
+  let horiz = buf.direction.isHorizontal()
+  for i in 0 ..< min(buf.len, buf.info.len):
+    if i >= buf.pos.len:
+      break
+    if buf.info[i].isMarkGlyph():
+      if adjust:
+        if horiz:
+          buf.pos[i].xOffset -= buf.pos[i].xAdvance
+        else:
+          buf.pos[i].yOffset -= buf.pos[i].yAdvance
+      buf.pos[i].xAdvance = 0i32
+      buf.pos[i].yAdvance = 0i32
+
+proc recategorizeMarks*(buf: var Buffer) =
+  for i in 0 ..< min(buf.len, buf.info.len):
+    if buf.info[i].generalCategory() == GcNonSpacingMark:
+      var c = buf.info[i].modifiedCombiningClass()
+      case c
+      of 27u8, 28u8, 30u8, 31u8, 33u8, 34u8, 35u8, 36u8:
+        buf.info[i].setModifiedCombiningClass(CcAbove)
+      of 29u8, 32u8:
+        buf.info[i].setModifiedCombiningClass(CcBelow)
+      else:
+        discard
+
+proc fallbackPositionMarks*(buf: var Buffer, sf: ShaperFont) =
+  ## Simplified HarfBuzz fallback mark positioning for horizontal text:
+  ## center above/below marks over the previous base using extents.
+  if not buf.direction.isHorizontal():
+    return
+  let yGap = sf.scale.scaleY(int32(sf.unitsPerEm) div 16)
+  var i = 0
+  while i < min(buf.len, buf.info.len):
+    if not buf.info[i].isMarkGlyph():
+      inc i
+      continue
+    # Find base: previous non-mark glyph.
+    var b = i - 1
+    while b >= 0 and buf.info[b].isMarkGlyph():
+      dec b
+    if b < 0:
+      inc i
+      continue
+    let baseGid = newGlyphId(buf.info[b].glyphId)
+    let markGid = newGlyphId(buf.info[i].glyphId)
+    let baseExt = sf.glyphExtents(baseGid)
+    let markExt = sf.glyphExtents(markGid)
+    if baseExt.isNone or markExt.isNone:
+      buf.pos[i].xAdvance = 0i32
+      buf.pos[i].yAdvance = 0i32
+      inc i
+      continue
+    let be = baseExt.get
+    let me = markExt.get
+    let cc = buf.info[i].modifiedCombiningClass()
+    var xOff = be.xBearing + (be.width - me.width) div 2 - me.xBearing
+    # Left/right variants.
+    case cc
+    of CcAttachedBelowLeft, CcBelowLeft, CcAboveLeft:
+      xOff = be.xBearing - me.xBearing
+    of CcAttachedAboveRight, CcBelowRight, CcAboveRight:
+      xOff = be.xBearing + be.width - me.width - me.xBearing
+    of CcDoubleBelow, CcDoubleAbove:
+      if buf.direction.isForward():
+        xOff = be.xBearing + be.width - me.width div 2 - me.xBearing
+      else:
+        xOff = be.xBearing - me.width div 2 - me.xBearing
+    else:
+      discard
+    var yOff = 0i32
+    case cc
+    of CcBelowLeft, CcBelow, CcBelowRight, CcAttachedBelowLeft,
+        CcAttachedBelow, CcDoubleBelow:
+      yOff = (be.yBearing + be.height) - me.yBearing - yGap
+      if (yGap > 0) == (yOff > 0):
+        yOff = 0i32
+    of CcAboveLeft, CcAbove, CcAboveRight, CcAttachedAbove,
+        CcAttachedAboveRight, CcDoubleAbove:
+      yOff = be.yBearing - (me.yBearing + me.height) + yGap
+    else:
+      yOff = be.yBearing - (me.yBearing + me.height) + yGap
+    buf.pos[i].xOffset = xOff
+    buf.pos[i].yOffset = yOff
+    buf.pos[i].xAdvance = 0i32
+    buf.pos[i].yAdvance = 0i32
+    inc i
+
 proc shapePlan*(font: ShaperFont, buf: var Buffer,
     features: openArray[Feature]): ShapePlan =
   buf.guessSegmentProperties()
@@ -93,33 +425,69 @@ proc shapePlan*(font: ShaperFont, buf: var Buffer,
 proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   buf.guessSegmentProperties()
   let sf = font
+  let useArabic = isArabicShaperScript(buf)
   buf.allocateUnicodeVars()
   var scratch = 0u32
   for i in 0 ..< buf.len:
     if i < buf.info.len:
       buf.info[i].initUnicodeProps(scratch)
   insertDottedCircle(buf)
-  # TODO: form_clusters, ensure_native_direction, shaper preprocess,
-  #   per-syllable matching, global-bit map parity.
+  # TODO: form_clusters, ensure_native_direction, per-syllable matching.
   var nctx = sf.normalizeContextFor()
   buf.normalize(nmComposedDiacritics, false, nctx)
   buf.deallocateUnicodeVars()
+  # Arabic joining + mark reordering happen on Unicode codepoints.
+  var arabicMasks: ArabicMasks
+  var haveArabicMasks = false
+  if useArabic:
+    arabicMasks = buf.prepareArabicMasks()
+    haveArabicMasks = true
+    if buf.len > 1:
+      buf.reorderMarksArabic(0, min(buf.len, buf.info.len))
   buf.mapGlyphsFast()
   buf.setContentType(some(contentGlyphs))
   buf.allocateGsubGposVars()
+  synthesizeGlyphClasses(buf)
+  recategorizeMarks(buf)
   let gsubOpt = parseGsub(sf.font)
-  if gsubOpt.isSome:
-    buf.applyGsubFeatures(gsubOpt.get, plan.scriptTag, plan.langTag,
-      plan.features)
+  if useArabic and haveArabicMasks:
+    if gsubOpt.isSome:
+      buf.applyArabicGsub(gsubOpt.get, plan.scriptTag, plan.langTag,
+        plan.features, sf, arabicMasks)
+    else:
+      buf.applyArabicFallback(sf, arabicMasks)
+  else:
+    if gsubOpt.isSome:
+      buf.applyGsubFeatures(gsubOpt.get, plan.scriptTag, plan.langTag,
+        plan.features)
   buf.clearPositions()
+  buf.positionStart()
   setBaseAdvances(buf, sf)
-  # TODO: zero marks by GDEF, fallback spaces, zero default ignorables.
   let gposOpt = parseGpos(sf.font)
   if gposOpt.isSome:
-    buf.applyGposFeatures(gposOpt.get, plan.scriptTag, plan.langTag,
-      plan.features, sf.scale)
-  # TODO: position_finish_advances, position_finish_offsets,
-  #   fallback mark positioning.
+    if useArabic:
+      buf.applyDefaultGpos(gposOpt.get, plan.scriptTag, plan.langTag,
+        plan.features, sf.scale)
+    else:
+      buf.applyGposFeatures(gposOpt.get, plan.scriptTag, plan.langTag,
+        plan.features, sf.scale)
+  # Late mark zeroing (arabic/hebrew/default) when GPOS did not attach.
+  if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
+    buf.zeroMarkWidths(buf.direction.isForward())
+  buf.propagateAttachmentOffsets()
+  if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
+    # Fallback mark positioning when no GPOS attachment happened.
+    buf.fallbackPositionMarks(sf)
+  else:
+    # Marks without GPOS attachment still get zero advances.
+    for i in 0 ..< min(buf.len, buf.info.len):
+      if i < buf.pos.len and buf.info[i].isMarkGlyph():
+        if buf.pos[i].attachChain() == 0i16:
+          buf.pos[i].xAdvance = 0i32
+          buf.pos[i].yAdvance = 0i32
+  if buf.direction.isBackward():
+    buf.reverse()
+  # TODO: zero default ignorables, fallback spaces.
   buf.deallocateGsubGposVars()
 
 proc shape*(font: ShaperFont, buf: var Buffer,

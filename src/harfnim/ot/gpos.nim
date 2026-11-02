@@ -2,9 +2,9 @@
 ##
 ## Scope: static (non-variable) fonts. ValueRecord device tables and
 ## variation deltas are skipped (TODO); anchors ignore contour points and
-## device tables (TODO). Mark-to-base/mark-to-ligature/mark-to-mark,
-## cursive, contextual positioning, and wide (24-bit) formats are deferred
-## with TODO. Extension (type 9) flattens inner SinglePos/PairPos.
+## device tables (TODO). Contextual positioning and wide (24-bit) formats
+## are deferred with TODO. Extension (type 9) flattens inner SinglePos,
+## PairPos, cursive, and mark attachments.
 
 import std/options
 
@@ -74,9 +74,41 @@ type
   GposLookupKind* = enum
     pkSingle
     pkPair
+    pkCursive
+    pkMarkBase
+    pkMarkLig
+    pkMarkMark
     pkOther
 
   PosLookupEntry* = tuple[kind: GposLookupKind, index: int]
+
+  MarkSub* = object
+    ## Mark-to-base / mark-to-mark shared layout: mark coverage drives the
+    ## index, base coverage selects the attachment target.
+    markCoverage*: Coverage
+    baseCoverage*: Coverage
+    classCount*: uint16
+    markClasses*: seq[uint16]
+    markAnchors*: seq[Anchor]
+    baseCount*: int
+    baseAnchors*: seq[Anchor]
+
+  LigSub* = object
+    markCoverage*: Coverage
+    ligCoverage*: Coverage
+    classCount*: uint16
+    markClasses*: seq[uint16]
+    markAnchors*: seq[Anchor]
+    ligCount*: int
+    # Per-ligature component anchor rows, flattened with offsets.
+    compOffsets*: seq[int]
+    compCounts*: seq[int]
+    compAnchors*: seq[Anchor]
+
+  CursiveSub* = object
+    coverage*: Coverage
+    entryAnchors*: seq[Anchor]
+    exitAnchors*: seq[Anchor]
 
   PosLookup* = object
     lookupType*: uint16
@@ -84,6 +116,10 @@ type
     markFilteringSet*: uint16
     singlePos*: seq[SinglePos]
     pairPos*: seq[PairPos]
+    cursivePos*: seq[CursiveSub]
+    markBasePos*: seq[MarkSub]
+    markLigPos*: seq[LigSub]
+    markMarkPos*: seq[MarkSub]
     order*: seq[PosLookupEntry]
 
   GposData* = object
@@ -253,6 +289,188 @@ proc parsePairPos*(bytes: openArray[uint8], off: int): PairPos =
     # TODO: PairPos formats 3/4 (24-bit glyphs)
     raise newException(FontError, "unsupported PairPos format")
 
+proc parseMarkArray(bytes: openArray[uint8], off: int,
+    markClasses, markAnchorOffs: var seq[uint16],
+    outCount: var int) =
+  if off + 2 > bytes.len:
+    raise newException(FontError, "short MarkArray table")
+  let count = int(readU16(bytes, off))
+  if off + 2 + count * 4 > bytes.len:
+    raise newException(FontError, "short MarkArray table")
+  markClasses.setLen(count)
+  markAnchorOffs.setLen(count)
+  for i in 0 ..< count:
+    markClasses[i] = readU16(bytes, off + 2 + i * 4)
+    markAnchorOffs[i] = readU16(bytes, off + 4 + i * 4)
+  outCount = count
+
+proc parseMarkBase*(bytes: openArray[uint8], off: int): MarkSub =
+  if off + 10 > bytes.len:
+    raise newException(FontError, "short MarkBasePos table")
+  if readU16(bytes, off) != 1u16:
+    raise newException(FontError, "unsupported MarkBasePos format")
+  let markCovOff = int(readU16(bytes, off + 2))
+  let baseCovOff = int(readU16(bytes, off + 4))
+  let classCount = readU16(bytes, off + 6)
+  let markArrayOff = int(readU16(bytes, off + 8))
+  let baseArrayOff = int(readU16(bytes, off + 10))
+  let markCov = parseCoverage(bytes, off + markCovOff)
+  let baseCov = parseCoverage(bytes, off + baseCovOff)
+  if markArrayOff == 0 or baseArrayOff == 0:
+    raise newException(FontError, "short MarkBasePos table")
+  let markBase = off + markArrayOff
+  var markClasses: seq[uint16] = @[]
+  var markOffs: seq[uint16] = @[]
+  var markCount = 0
+  parseMarkArray(bytes, markBase, markClasses, markOffs, markCount)
+  var markAnchors = newSeq[Anchor](markCount)
+  for i in 0 ..< markCount:
+    if markOffs[i] == 0u16:
+      markAnchors[i] = Anchor(format: 0u16)
+    else:
+      markAnchors[i] = parseAnchor(bytes, markBase + int(markOffs[i]))
+  let baseOff = off + baseArrayOff
+  if baseOff + 2 > bytes.len:
+    raise newException(FontError, "short BaseArray table")
+  let baseCount = int(readU16(bytes, baseOff))
+  let total = baseCount * int(classCount)
+  if baseOff + 2 + total * 2 > bytes.len:
+    raise newException(FontError, "short BaseArray table")
+  var baseAnchors = newSeq[Anchor](total)
+  for i in 0 ..< total:
+    let aoff = int(readU16(bytes, baseOff + 2 + i * 2))
+    if aoff == 0:
+      baseAnchors[i] = Anchor(format: 0u16)
+    else:
+      baseAnchors[i] = parseAnchor(bytes, baseOff + aoff)
+  MarkSub(markCoverage: markCov, baseCoverage: baseCov,
+    classCount: classCount, markClasses: markClasses,
+    markAnchors: markAnchors, baseCount: baseCount, baseAnchors: baseAnchors)
+
+proc parseMarkMark*(bytes: openArray[uint8], off: int): MarkSub =
+  if off + 10 > bytes.len:
+    raise newException(FontError, "short MarkMarkPos table")
+  if readU16(bytes, off) != 1u16:
+    raise newException(FontError, "unsupported MarkMarkPos format")
+  # Layout mirrors MarkBase: mark1 array attaches to mark2 array.
+  let mark1CovOff = int(readU16(bytes, off + 2))
+  let mark2CovOff = int(readU16(bytes, off + 4))
+  let classCount = readU16(bytes, off + 6)
+  let mark1Off = int(readU16(bytes, off + 8))
+  let mark2Off = int(readU16(bytes, off + 10))
+  let markCov = parseCoverage(bytes, off + mark1CovOff)
+  let baseCov = parseCoverage(bytes, off + mark2CovOff)
+  if mark1Off == 0 or mark2Off == 0:
+    raise newException(FontError, "short MarkMarkPos table")
+  let markBase = off + mark1Off
+  var markClasses: seq[uint16] = @[]
+  var markOffs: seq[uint16] = @[]
+  var markCount = 0
+  parseMarkArray(bytes, markBase, markClasses, markOffs, markCount)
+  var markAnchors = newSeq[Anchor](markCount)
+  for i in 0 ..< markCount:
+    if markOffs[i] == 0u16:
+      markAnchors[i] = Anchor(format: 0u16)
+    else:
+      markAnchors[i] = parseAnchor(bytes, markBase + int(markOffs[i]))
+  let baseOff = off + mark2Off
+  if baseOff + 2 > bytes.len:
+    raise newException(FontError, "short Mark2Array table")
+  let baseCount = int(readU16(bytes, baseOff))
+  let total = baseCount * int(classCount)
+  if baseOff + 2 + total * 2 > bytes.len:
+    raise newException(FontError, "short Mark2Array table")
+  var baseAnchors = newSeq[Anchor](total)
+  for i in 0 ..< total:
+    let aoff = int(readU16(bytes, baseOff + 2 + i * 2))
+    if aoff == 0:
+      baseAnchors[i] = Anchor(format: 0u16)
+    else:
+      baseAnchors[i] = parseAnchor(bytes, baseOff + aoff)
+  MarkSub(markCoverage: markCov, baseCoverage: baseCov,
+    classCount: classCount, markClasses: markClasses,
+    markAnchors: markAnchors, baseCount: baseCount, baseAnchors: baseAnchors)
+
+proc parseMarkLig*(bytes: openArray[uint8], off: int): LigSub =
+  if off + 10 > bytes.len:
+    raise newException(FontError, "short MarkLigPos table")
+  if readU16(bytes, off) != 1u16:
+    raise newException(FontError, "unsupported MarkLigPos format")
+  let markCovOff = int(readU16(bytes, off + 2))
+  let ligCovOff = int(readU16(bytes, off + 4))
+  let classCount = readU16(bytes, off + 6)
+  let markArrayOff = int(readU16(bytes, off + 8))
+  let ligArrayOff = int(readU16(bytes, off + 10))
+  let markCov = parseCoverage(bytes, off + markCovOff)
+  let ligCov = parseCoverage(bytes, off + ligCovOff)
+  if markArrayOff == 0 or ligArrayOff == 0:
+    raise newException(FontError, "short MarkLigPos table")
+  let markBase = off + markArrayOff
+  var markClasses: seq[uint16] = @[]
+  var markOffs: seq[uint16] = @[]
+  var markCount = 0
+  parseMarkArray(bytes, markBase, markClasses, markOffs, markCount)
+  var markAnchors = newSeq[Anchor](markCount)
+  for i in 0 ..< markCount:
+    if markOffs[i] == 0u16:
+      markAnchors[i] = Anchor(format: 0u16)
+    else:
+      markAnchors[i] = parseAnchor(bytes, markBase + int(markOffs[i]))
+  let ligBase = off + ligArrayOff
+  if ligBase + 2 > bytes.len:
+    raise newException(FontError, "short LigatureArray table")
+  let ligCount = int(readU16(bytes, ligBase))
+  if ligBase + 2 + ligCount * 2 > bytes.len:
+    raise newException(FontError, "short LigatureArray table")
+  var compOffsets: seq[int] = @[]
+  var compCounts: seq[int] = @[]
+  var compAnchors: seq[Anchor] = @[]
+  for li in 0 ..< ligCount:
+    let attachOff = int(readU16(bytes, ligBase + 2 + li * 2))
+    if attachOff == 0:
+      compOffsets.add(compAnchors.len)
+      compCounts.add(0)
+      continue
+    let compBase = ligBase + attachOff
+    if compBase + 2 > bytes.len:
+      raise newException(FontError, "short LigatureAttach table")
+    let compCount = int(readU16(bytes, compBase))
+    if compBase + 2 + compCount * int(classCount) * 2 > bytes.len:
+      raise newException(FontError, "short LigatureAttach table")
+    compOffsets.add(compAnchors.len)
+    compCounts.add(compCount)
+    for ci in 0 ..< compCount * int(classCount):
+      let aoff = int(readU16(bytes, compBase + 2 + ci * 2))
+      if aoff == 0:
+        compAnchors.add(Anchor(format: 0u16))
+      else:
+        compAnchors.add(parseAnchor(bytes, compBase + aoff))
+  LigSub(markCoverage: markCov, ligCoverage: ligCov, classCount: classCount,
+    markClasses: markClasses, markAnchors: markAnchors, ligCount: ligCount,
+    compOffsets: compOffsets, compCounts: compCounts,
+    compAnchors: compAnchors)
+
+proc parseCursive*(bytes: openArray[uint8], off: int): CursiveSub =
+  if off + 6 > bytes.len:
+    raise newException(FontError, "short CursivePos table")
+  if readU16(bytes, off) != 1u16:
+    raise newException(FontError, "unsupported CursivePos format")
+  let covOff = int(readU16(bytes, off + 2))
+  let cov = parseCoverage(bytes, off + covOff)
+  let entryExitCount = int(readU16(bytes, off + 4))
+  if off + 6 + entryExitCount * 4 > bytes.len:
+    raise newException(FontError, "short CursivePos table")
+  var entries = newSeq[Anchor](entryExitCount)
+  var exits = newSeq[Anchor](entryExitCount)
+  for i in 0 ..< entryExitCount:
+    let entryOff = int(readU16(bytes, off + 6 + i * 4))
+    let exitOff = int(readU16(bytes, off + 8 + i * 4))
+    entries[i] = if entryOff == 0: Anchor(format: 0u16)
+      else: parseAnchor(bytes, off + entryOff)
+    exits[i] = if exitOff == 0: Anchor(format: 0u16)
+      else: parseAnchor(bytes, off + exitOff)
+  CursiveSub(coverage: cov, entryAnchors: entries, exitAnchors: exits)
+
 proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
   let base = tableOff + off
   if base + 6 > bytes.len:
@@ -268,6 +486,10 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
     markSet = readU16(bytes, base + 6 + subCount * 2)
   var singles: seq[SinglePos] = @[]
   var pairs: seq[PairPos] = @[]
+  var cursives: seq[CursiveSub] = @[]
+  var markBases: seq[MarkSub] = @[]
+  var markLigs: seq[LigSub] = @[]
+  var markMarks: seq[MarkSub] = @[]
   var order: seq[PosLookupEntry] = @[]
   if lookupType == GposSinglePos:
     for i in 0 ..< subCount:
@@ -283,6 +505,38 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
       try:
         pairs.add(parsePairPos(bytes, base + subOff))
         order.add((pkPair, pairs.len - 1))
+      except FontError:
+        continue
+  elif lookupType == GposCursivePos:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        cursives.add(parseCursive(bytes, base + subOff))
+        order.add((pkCursive, cursives.len - 1))
+      except FontError:
+        continue
+  elif lookupType == GposMarkBasePos:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        markBases.add(parseMarkBase(bytes, base + subOff))
+        order.add((pkMarkBase, markBases.len - 1))
+      except FontError:
+        continue
+  elif lookupType == GposMarkLigPos:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        markLigs.add(parseMarkLig(bytes, base + subOff))
+        order.add((pkMarkLig, markLigs.len - 1))
+      except FontError:
+        continue
+  elif lookupType == GposMarkMarkPos:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        markMarks.add(parseMarkMark(bytes, base + subOff))
+        order.add((pkMarkMark, markMarks.len - 1))
       except FontError:
         continue
   elif lookupType == GposExtensionPos:
@@ -306,17 +560,30 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
         of GposPairPos:
           pairs.add(parsePairPos(bytes, innerOff))
           order.add((pkPair, pairs.len - 1))
+        of GposCursivePos:
+          cursives.add(parseCursive(bytes, innerOff))
+          order.add((pkCursive, cursives.len - 1))
+        of GposMarkBasePos:
+          markBases.add(parseMarkBase(bytes, innerOff))
+          order.add((pkMarkBase, markBases.len - 1))
+        of GposMarkLigPos:
+          markLigs.add(parseMarkLig(bytes, innerOff))
+          order.add((pkMarkLig, markLigs.len - 1))
+        of GposMarkMarkPos:
+          markMarks.add(parseMarkMark(bytes, innerOff))
+          order.add((pkMarkMark, markMarks.len - 1))
         else:
-          # TODO: cursive, marks, contextual positioning
+          # TODO: contextual positioning (7/8)
           continue
       except FontError:
         continue
   else:
-    # TODO: cursive (3), marks (4/5/6), contextual (7/8) positioning
+    # TODO: contextual (7/8) positioning
     discard
   PosLookup(lookupType: lookupType, lookupFlag: flag,
     markFilteringSet: markSet, singlePos: singles, pairPos: pairs,
-    order: order)
+    cursivePos: cursives, markBasePos: markBases, markLigPos: markLigs,
+    markMarkPos: markMarks, order: order)
 
 proc parseGposTable*(bytes: openArray[uint8], off: int): GposData =
   if off + 10 > bytes.len:
