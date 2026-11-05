@@ -398,7 +398,7 @@ proc parseCoverageList(bytes: openArray[uint8], base: int, off: int,
     else:
       result[i] = parseCoverage(bytes, base + coff)
 
-proc parseContextSubst(bytes: openArray[uint8], off: int): ContextSubst =
+proc parseContextSubst*(bytes: openArray[uint8], off: int): ContextSubst =
   if off + 6 > bytes.len:
     raise newException(FontError, "short SequenceContext table")
   let format = readU16(bytes, off)
@@ -455,7 +455,7 @@ proc parseContextSubst(bytes: openArray[uint8], off: int): ContextSubst =
     # TODO: SequenceContext formats 4/5/6 (24-bit glyphs)
     raise newException(FontError, "unsupported SequenceContext format")
 
-proc parseChainContextSubst(bytes: openArray[uint8],
+proc parseChainContextSubst*(bytes: openArray[uint8],
     off: int): ChainContextSubst =
   if off + 6 > bytes.len:
     raise newException(FontError, "short ChainedSequenceContext table")

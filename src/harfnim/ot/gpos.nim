@@ -2,9 +2,10 @@
 ##
 ## Scope: static (non-variable) fonts. ValueRecord device tables and
 ## variation deltas are skipped (TODO); anchors ignore contour points and
-## device tables (TODO). Contextual positioning and wide (24-bit) formats
-## are deferred with TODO. Extension (type 9) flattens inner SinglePos,
-## PairPos, cursive, and mark attachments.
+## device tables (TODO). Wide (24-bit) formats are deferred with TODO.
+## Extension (type 9) flattens inner SinglePos, PairPos, cursive, mark
+## attachments, and contextual positioning (types 7/8 share the GSUB
+## SequenceContext/ChainedSequenceContext layouts and rule engine).
 
 import std/options
 
@@ -78,6 +79,8 @@ type
     pkMarkBase
     pkMarkLig
     pkMarkMark
+    pkContext
+    pkChain
     pkOther
 
   PosLookupEntry* = tuple[kind: GposLookupKind, index: int]
@@ -120,6 +123,8 @@ type
     markBasePos*: seq[MarkSub]
     markLigPos*: seq[LigSub]
     markMarkPos*: seq[MarkSub]
+    contextPos*: seq[ContextSubst]
+    chainPos*: seq[ChainContextSubst]
     order*: seq[PosLookupEntry]
 
   GposData* = object
@@ -490,6 +495,8 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
   var markBases: seq[MarkSub] = @[]
   var markLigs: seq[LigSub] = @[]
   var markMarks: seq[MarkSub] = @[]
+  var ctxs: seq[ContextSubst] = @[]
+  var chains: seq[ChainContextSubst] = @[]
   var order: seq[PosLookupEntry] = @[]
   if lookupType == GposSinglePos:
     for i in 0 ..< subCount:
@@ -539,6 +546,23 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
         order.add((pkMarkMark, markMarks.len - 1))
       except FontError:
         continue
+  elif lookupType == GposContextPos:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        ctxs.add(parseContextSubst(bytes, base + subOff))
+        order.add((pkContext, ctxs.len - 1))
+      except FontError:
+        # Skip unreadable or unsupported (wide) subtables.
+        continue
+  elif lookupType == GposChainedContextPos:
+    for i in 0 ..< subCount:
+      let subOff = int(readU16(bytes, base + 6 + i * 2))
+      try:
+        chains.add(parseChainContextSubst(bytes, base + subOff))
+        order.add((pkChain, chains.len - 1))
+      except FontError:
+        continue
   elif lookupType == GposExtensionPos:
     for i in 0 ..< subCount:
       let subOff = int(readU16(bytes, base + 6 + i * 2))
@@ -572,18 +596,23 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
         of GposMarkMarkPos:
           markMarks.add(parseMarkMark(bytes, innerOff))
           order.add((pkMarkMark, markMarks.len - 1))
+        of GposContextPos:
+          ctxs.add(parseContextSubst(bytes, innerOff))
+          order.add((pkContext, ctxs.len - 1))
+        of GposChainedContextPos:
+          chains.add(parseChainContextSubst(bytes, innerOff))
+          order.add((pkChain, chains.len - 1))
         else:
-          # TODO: contextual positioning (7/8)
           continue
       except FontError:
         continue
   else:
-    # TODO: contextual (7/8) positioning
     discard
   PosLookup(lookupType: lookupType, lookupFlag: flag,
     markFilteringSet: markSet, singlePos: singles, pairPos: pairs,
     cursivePos: cursives, markBasePos: markBases, markLigPos: markLigs,
-    markMarkPos: markMarks, order: order)
+    markMarkPos: markMarks, contextPos: ctxs, chainPos: chains,
+    order: order)
 
 proc parseGposTable*(bytes: openArray[uint8], off: int): GposData =
   if off + 10 > bytes.len:

@@ -341,6 +341,228 @@ test "pairpos format2 class kerns":
     @[globalFeature(tagFromStr("kern"), 1)]) ==
     @[(2u32, 600i32, 0i32, 0i32, 0i32), (1u32, 600i32, 0i32, 0i32, 0i32)]
 
+proc buildGposTwoLookups(feature: string, lookupType0: uint16,
+    sub0: seq[uint8], lookupType1: uint16, sub1: seq[uint8]): seq[uint8] =
+  ## Feature enables lookup 0 only; lookup 1 is reachable as a nested
+  ## target via its lookup-list index 1.
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(30u16)
+  result.putU16(44u16)
+  result.putU16(1u16)
+  result.putTag("latn")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putTag(feature)
+  result.putU16(8u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(0u16)
+  # LookupList with 2 lookups.
+  result.putU16(2u16)
+  result.putU16(6u16) # lookup0 at list+6
+  result.putU16(14u16) # lookup1 at list+14
+  # Lookup0 header (at list+6).
+  result.putU16(lookupType0)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(16u16) # sub after both headers (8+8)
+  # Lookup1 header (at list+14).
+  result.putU16(lookupType1)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  let sub1OffPos = result.len
+  result.putU16(0u16) # patched below
+  let sub0Off = result.len
+  for b in sub0:
+    result.add(b)
+  let sub1Off = result.len
+  for b in sub1:
+    result.add(b)
+  # Patch lookup1 sub offset: headers are 16 bytes, sub0 follows.
+  let l1Base = 44 + 14
+  result.putU16At(l1Base + 6, uint16(sub1Off - l1Base))
+  doAssert sub0Off == 44 + 6 + 16
+
+proc buildSeqRule(input: seq[uint16], seqIndex, lookupIndex: uint16): seq[
+    uint8] =
+  result = @[]
+  result.putU16(uint16(input.len + 1))
+  result.putU16(1u16)
+  for g in input:
+    result.putU16(g)
+  result.putU16(seqIndex)
+  result.putU16(lookupIndex)
+
+proc buildSeqRuleSet(rules: seq[seq[uint8]]): seq[uint8] =
+  result = @[]
+  result.putU16(uint16(rules.len))
+  var offs: seq[int] = @[]
+  for _ in rules:
+    offs.add(result.len)
+    result.putU16(0u16)
+  for i, r in rules:
+    let off = result.len
+    result.putU16At(offs[i], uint16(off))
+    for b in r:
+      result.add(b)
+
+proc buildContextPos1(firstCov: uint16, inputRest: seq[uint16], seqIndex,
+    lookupIndex: uint16): seq[uint8] =
+  ## SequenceContextFormat1 (GPOS type 7): first glyph covered, rest in rule.
+  let rule = buildSeqRule(inputRest, seqIndex, lookupIndex)
+  let ruleSet = buildSeqRuleSet(@[rule])
+  result = @[]
+  result.putU16(1u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  result.putU16(1u16) # one ruleset
+  let setPos = result.len
+  result.putU16(0u16)
+  let covOff = result.len
+  for b in coverageBytes(@[firstCov]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  let setOff = result.len
+  for b in ruleSet:
+    result.add(b)
+  result.putU16At(setPos, uint16(setOff))
+
+proc buildContextPos3(coverages: seq[seq[uint16]], seqIndex,
+    lookupIndex: uint16): seq[uint8] =
+  ## SequenceContextFormat3: one coverage per input position.
+  result = @[]
+  result.putU16(3u16)
+  result.putU16(uint16(coverages.len))
+  result.putU16(1u16)
+  var covPoss: seq[int] = @[]
+  for _ in coverages:
+    covPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(seqIndex)
+  result.putU16(lookupIndex)
+  for i, cov in coverages:
+    let off = result.len
+    result.putU16At(covPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+
+proc buildChainRule(backtrack, inputRest, lookahead: seq[uint16], seqIndex,
+    lookupIndex: uint16): seq[uint8] =
+  result = @[]
+  result.putU16(uint16(backtrack.len))
+  for g in backtrack:
+    result.putU16(g)
+  result.putU16(uint16(inputRest.len + 1))
+  for g in inputRest:
+    result.putU16(g)
+  result.putU16(uint16(lookahead.len))
+  for g in lookahead:
+    result.putU16(g)
+  result.putU16(1u16)
+  result.putU16(seqIndex)
+  result.putU16(lookupIndex)
+
+proc buildChainedContextPos1(firstCov: uint16, backtrack,
+    inputRest, lookahead: seq[uint16], seqIndex,
+    lookupIndex: uint16): seq[uint8] =
+  let rule = buildChainRule(backtrack, inputRest, lookahead, seqIndex,
+    lookupIndex)
+  let ruleSet = buildSeqRuleSet(@[rule])
+  result = @[]
+  result.putU16(1u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  result.putU16(1u16)
+  let setPos = result.len
+  result.putU16(0u16)
+  let covOff = result.len
+  for b in coverageBytes(@[firstCov]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  let setOff = result.len
+  for b in ruleSet:
+    result.add(b)
+  result.putU16At(setPos, uint16(setOff))
+
+proc buildChainedContextPos3(backtrack, input,
+    lookahead: seq[seq[uint16]], seqIndex,
+    lookupIndex: uint16): seq[uint8] =
+  result = @[]
+  result.putU16(3u16)
+  result.putU16(uint16(backtrack.len))
+  var backPoss: seq[int] = @[]
+  for _ in backtrack:
+    backPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(uint16(input.len))
+  var inPoss: seq[int] = @[]
+  for _ in input:
+    inPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(uint16(lookahead.len))
+  var lookPoss: seq[int] = @[]
+  for _ in lookahead:
+    lookPoss.add(result.len)
+    result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(seqIndex)
+  result.putU16(lookupIndex)
+  for i, cov in backtrack:
+    let off = result.len
+    result.putU16At(backPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+  for i, cov in input:
+    let off = result.len
+    result.putU16At(inPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+  for i, cov in lookahead:
+    let off = result.len
+    result.putU16At(lookPoss[i], uint16(off))
+    for b in coverageBytes(cov):
+      result.add(b)
+
+proc buildContextPos2(firstCov: uint16, classDef: seq[uint8],
+    ruleSets: seq[seq[seq[uint8]]]): seq[uint8] =
+  ## SequenceContextFormat2 with explicit rule sets per class.
+  ## ruleSets[i] holds the rules for input class i.
+  result = @[]
+  result.putU16(2u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  let cdPos = result.len
+  result.putU16(0u16)
+  result.putU16(uint16(ruleSets.len))
+  var setPoss: seq[int] = @[]
+  for _ in ruleSets:
+    setPoss.add(result.len)
+    result.putU16(0u16)
+  let covOff = result.len
+  for b in coverageBytes(@[firstCov]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  let cdOff = result.len
+  for b in classDef:
+    result.add(b)
+  result.putU16At(cdPos, uint16(cdOff))
+  for i, rules in ruleSets:
+    if rules.len == 0:
+      continue
+    let setOff = result.len
+    result.putU16At(setPoss[i], uint16(setOff))
+    let ruleSet = buildSeqRuleSet(rules)
+    for b in ruleSet:
+      result.add(b)
+
 test "extension wraps singlepos":
   let inner = buildSinglePos1(1u16, 0x0001u16, @[50i16])
   let ext = extensionBytes(1u16, inner)
@@ -355,3 +577,84 @@ test "unsupported gpos types are skipped":
     @[globalFeature(tagFromStr("kern"), 1)])
   check got == @[(1u32, 600i32, 0i32, 0i32, 0i32),
     (2u32, 600i32, 0i32, 0i32, 0i32)]
+
+test "contextpos format1 positions in context":
+  let single = buildSinglePos1(1u16, 0x0001u16, @[50i16])
+  let ctx = buildContextPos1(1u16, @[2u16], 0u16, 1u16)
+  let gpos = buildGposTwoLookups("kern", 7u16, ctx, 1u16, single)
+  let got = shapeWithGpos(buildFontTables(gpos), "AB",
+    @[globalFeature(tagFromStr("kern"), 1)])
+  check got[0].xOff == 50i32
+  check got[1].xOff == 0i32
+  # Second glyph mismatch: no positioning.
+  check shapeWithGpos(buildFontTables(gpos), "AA",
+    @[globalFeature(tagFromStr("kern"), 1)]) ==
+    @[(1u32, 600i32, 0i32, 0i32, 0i32), (1u32, 600i32, 0i32, 0i32, 0i32)]
+
+test "contextpos format3 positions in context":
+  let single = buildSinglePos1(1u16, 0x0004u16, @[-80i16])
+  let ctx = buildContextPos3(@[@[1u16], @[2u16]], 0u16, 1u16)
+  let gpos = buildGposTwoLookups("kern", 7u16, ctx, 1u16, single)
+  let got = shapeWithGpos(buildFontTables(gpos), "AB",
+    @[globalFeature(tagFromStr("kern"), 1)])
+  check got == @[(1u32, 520i32, 0i32, 0i32, 0i32),
+    (2u32, 600i32, 0i32, 0i32, 0i32)]
+  check shapeWithGpos(buildFontTables(gpos), "BA",
+    @[globalFeature(tagFromStr("kern"), 1)]) ==
+    @[(2u32, 600i32, 0i32, 0i32, 0i32), (1u32, 600i32, 0i32, 0i32, 0i32)]
+
+test "chained contextpos format1 uses lookahead":
+  let single = buildSinglePos1(1u16, 0x0001u16, @[50i16])
+  # Input A with lookahead B.
+  let ctx = buildChainedContextPos1(1u16, @[], @[], @[2u16], 0u16, 1u16)
+  let gpos = buildGposTwoLookups("kern", 8u16, ctx, 1u16, single)
+  check shapeWithGpos(buildFontTables(gpos), "AB",
+    @[globalFeature(tagFromStr("kern"), 1)])[0].xOff == 50i32
+  check shapeWithGpos(buildFontTables(gpos), "AA",
+    @[globalFeature(tagFromStr("kern"), 1)])[0].xOff == 0i32
+
+test "chained contextpos format3 uses backtrack":
+  let single = buildSinglePos1(2u16, 0x0001u16, @[30i16])
+  # Input B with backtrack A.
+  let ctx = buildChainedContextPos3(@[@[1u16]], @[@[2u16]], @[], 0u16, 1u16)
+  let gpos = buildGposTwoLookups("kern", 8u16, ctx, 1u16, single)
+  check shapeWithGpos(buildFontTables(gpos), "AB",
+    @[globalFeature(tagFromStr("kern"), 1)])[1].xOff == 30i32
+  # Without the backtrack glyph, the second B is untouched.
+  check shapeWithGpos(buildFontTables(gpos), "BB",
+    @[globalFeature(tagFromStr("kern"), 1)])[1].xOff == 0i32
+
+test "contextpos via extension":
+  let single = buildSinglePos1(1u16, 0x0001u16, @[50i16])
+  let inner = buildContextPos1(1u16, @[2u16], 0u16, 1u16)
+  let ext = extensionBytes(7u16, inner)
+  # Lookup0 is extension wrapping context; lookup1 is the nested single.
+  # Extension inner references lookup index 1, which follows the ext table.
+  let gpos = buildGposTwoLookups("kern", 9u16, ext, 1u16, single)
+  check shapeWithGpos(buildFontTables(gpos), "AB",
+    @[globalFeature(tagFromStr("kern"), 1)])[0].xOff == 50i32
+
+test "contextpos format2 class input":
+  let single = buildSinglePos1(1u16, 0x0001u16, @[50i16])
+  # gid1 -> class 1, gid2 -> class 2. Rule for class 1 expects class 2 next.
+  let cd = classDefFormat1Bytes(1u16, @[1u16, 2u16])
+  let rule = buildSeqRule(@[2u16], 0u16, 1u16)
+  let ctx = buildContextPos2(1u16, cd, @[@[], @[rule]])
+  let gpos = buildGposTwoLookups("kern", 7u16, ctx, 1u16, single)
+  check shapeWithGpos(buildFontTables(gpos), "AB",
+    @[globalFeature(tagFromStr("kern"), 1)])[0].xOff == 50i32
+  check shapeWithGpos(buildFontTables(gpos), "AA",
+    @[globalFeature(tagFromStr("kern"), 1)])[0].xOff == 0i32
+
+test "contextpos nested pair":
+  let pair = buildPairPos1(1u16, 0x0004u16, 0u16,
+    @[@[(2u16, @[-80i16], newSeq[int16]())]])
+  let ctx = buildContextPos1(1u16, @[2u16], 0u16, 1u16)
+  let gpos = buildGposTwoLookups("kern", 7u16, ctx, 2u16, pair)
+  let got = shapeWithGpos(buildFontTables(gpos), "AB",
+    @[globalFeature(tagFromStr("kern"), 1)])
+  check got == @[(1u32, 520i32, 0i32, 0i32, 0i32),
+    (2u32, 600i32, 0i32, 0i32, 0i32)]
+  check shapeWithGpos(buildFontTables(gpos), "AA",
+    @[globalFeature(tagFromStr("kern"), 1)]) ==
+    @[(1u32, 600i32, 0i32, 0i32, 0i32), (1u32, 600i32, 0i32, 0i32, 0i32)]
