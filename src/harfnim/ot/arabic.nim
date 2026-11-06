@@ -290,13 +290,14 @@ proc applyFallbackSingle*(buf: var Buffer, mappings: seq[FallbackSingle],
     mask: uint32) =
   if mappings.len == 0 or mask == 0u32:
     return
-  var glyphs = newSeq[uint16](mappings.len)
+  var glyphs = newSeq[uint32](mappings.len)
   var subs = newSeq[uint32](mappings.len)
   for i, m in mappings:
-    glyphs[i] = m.fromGid
+    glyphs[i] = uint32(m.fromGid)
     subs[i] = uint32(m.toGid)
   let cov = Coverage(glyphs: glyphs, ranges: @[], present: true)
-  let sub = SingleSubst(coverage: cov, kind: ssArray, substitutes: subs)
+  let sub = SingleSubst(coverage: cov, wide: false, kind: ssArray,
+    substitutes: subs)
   let lookup = Lookup(lookupType: GsubSingleSubst,
     lookupFlag: LookupIgnoreMarks, markFilteringSet: 0u16, isReverse: false,
     singleSubsts: @[sub], multipleSubsts: @[], alternateSubsts: @[],
@@ -309,10 +310,10 @@ proc applyFallbackLig*(buf: var Buffer, ligs: seq[FallbackLig], mask: uint32,
     ignoreMarks: bool) =
   if ligs.len == 0 or mask == 0u32:
     return
-  var firsts: seq[uint16] = @[]
+  var firsts: seq[uint32] = @[]
   for l in ligs:
-    if firsts.len == 0 or firsts[^1] != l.first:
-      firsts.add(l.first)
+    if firsts.len == 0 or firsts[^1] != uint32(l.first):
+      firsts.add(uint32(l.first))
   let cov = Coverage(glyphs: firsts, ranges: @[], present: true)
   var sets = newSeq[seq[Ligature]](firsts.len)
   for i in 0 ..< sets.len:

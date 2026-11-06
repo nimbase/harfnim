@@ -19,8 +19,8 @@ Pure Nim shaping without C bindings.
 * Unicode properties, Hangul algorithms, compose and decompose
 * Three round normalizer with font callbacks
 * Font parsing: TTF, OTF, TTC, cmap 0/4/6/10/12/13, hmtx/vmtx, glyf outlines, CFF/Type 2 charstrings
-* GSUB substitutions: single, multiple, alternate, ligature, contextual, chained, extension, reverse chain
-* GPOS positioning: single, pair kern, mark to base, mark to ligature, mark to mark, cursive, contextual, chained, plus legacy kern table
+* GSUB substitutions: single, multiple, alternate, ligature, contextual, chained, extension, reverse chain (including 24-bit beyond-64K formats 3/4)
+* GPOS positioning: single, pair kern, mark to base, mark to ligature, mark to mark, cursive, contextual, chained, plus legacy kern table (including 24-bit formats)
 * Arabic joining, presentation form fallback, mark reordering, RTL reversal
 * Scaled advances, extents, anchor attachment, fallback mark positioning
 * Cached glyph outlines with draw-callback iteration (move/line/quadratic/cubic/close)
@@ -76,13 +76,13 @@ for i in 0 ..< buf.len:
 * [x] GPOS single, pair, extension
 * [x] GPOS mark attachment and cursive
 * [x] GPOS contextual positioning (types 7/8, including extension)
+* [x] Wide 24-bit formats (Coverage/ClassDef 3/4, GSUB/GPOS 3/4, contextual 4/5/6)
 * [x] Arabic joining, fallback, RTL
 * [x] Legacy kern table (format 0, MS and Apple layouts)
 * [x] hr-shape CLI and conformance harness
 * [x] glyf outlines (simple + composite) with draw callbacks and extents fallback
 * [x] CFF / Type 2 charstrings (subrs, flex, CID FDSelect) with outline cache
 * [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
-* [ ] GPOS 24-bit formats
 * [ ] cmap 14, name table, variations (including CFF2)
 * [ ] AAT morx
 * [ ] stch stretching and win1256 legacy fallback

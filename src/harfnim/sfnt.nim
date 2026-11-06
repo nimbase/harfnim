@@ -61,6 +61,24 @@ proc readU32*(bytes: openArray[uint8], off: int): uint32 =
   (uint32(bytes[off]) shl 24) or (uint32(bytes[off + 1]) shl 16) or
     (uint32(bytes[off + 2]) shl 8) or uint32(bytes[off + 3])
 
+proc readU24*(bytes: openArray[uint8], off: int): uint32 =
+  checkBounds(bytes, off, 3)
+  (uint32(bytes[off]) shl 16) or (uint32(bytes[off + 1]) shl 8) or
+    uint32(bytes[off + 2])
+
+proc readI24*(bytes: openArray[uint8], off: int): int32 =
+  let u = readU24(bytes, off)
+  if (u and 0x800000u32) != 0u32:
+    int32(u or 0xFF000000u32)
+  else:
+    int32(u)
+
+proc readOffset24*(bytes: openArray[uint8], off: int): int =
+  int(readU24(bytes, off))
+
+proc readOffset32*(bytes: openArray[uint8], off: int): int =
+  int(readU32(bytes, off))
+
 proc u16be(bytes: seq[uint8], off: int): uint16 {.used.} =
   readU16(bytes, off)
 

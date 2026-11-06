@@ -73,15 +73,17 @@ proc lookupCovers(lookup: Lookup, gid: uint32): bool =
         return true
     of lkContext:
       let sub = lookup.contextSubsts[e.index]
-      if sub.format == 1u16 or sub.format == 2u16:
+      if sub.format == 1u16 or sub.format == 2u16 or sub.format == 4u16 or
+          sub.format == 5u16:
         if sub.coverage.covers(gid):
           return true
-      elif sub.format == 3u16:
+      elif sub.format == 3u16 or sub.format == 6u16:
         if sub.coverages.len > 0 and sub.coverages[0].covers(gid):
           return true
     of lkChain:
       let sub = lookup.chainSubsts[e.index]
-      if sub.format == 1u16 or sub.format == 2u16:
+      if sub.format == 1u16 or sub.format == 2u16 or sub.format == 4u16 or
+          sub.format == 5u16:
         if sub.coverage.covers(gid):
           return true
       elif sub.format == 3u16:
@@ -299,7 +301,7 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  if sub.format == 1u16:
+  if sub.format == 1u16 or sub.format == 4u16:
     let ci = sub.coverage.coverageIndex(gid)
     if ci.isNone or int(ci.get) >= sub.ruleSets.len:
       return false
@@ -315,7 +317,7 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
         return false
       return true
     false
-  elif sub.format == 2u16:
+  elif sub.format == 2u16 or sub.format == 5u16:
     if not sub.coverage.covers(gid):
       return false
     let cls = int(sub.classDef.classOf(gid))
@@ -333,7 +335,7 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
         return false
       return true
     false
-  elif sub.format == 3u16:
+  elif sub.format == 3u16 or sub.format == 6u16:
     if sub.coverages.len == 0:
       return false
     if not sub.coverages[0].covers(gid):
@@ -360,7 +362,7 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  if sub.format == 1u16:
+  if sub.format == 1u16 or sub.format == 4u16:
     let ci = sub.coverage.coverageIndex(gid)
     if ci.isNone or int(ci.get) >= sub.ruleSets.len:
       return false
@@ -383,7 +385,7 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
         return false
       return true
     false
-  elif sub.format == 2u16:
+  elif sub.format == 2u16 or sub.format == 5u16:
     if not sub.coverage.covers(gid):
       return false
     let cls = int(sub.inputClassDef.classOf(gid))
@@ -798,15 +800,17 @@ proc posLookupCovers(lookup: PosLookup, gid: uint32): bool =
         return true
     of pkContext:
       let sub = lookup.contextPos[e.index]
-      if sub.format == 1u16 or sub.format == 2u16:
+      if sub.format == 1u16 or sub.format == 2u16 or sub.format == 4u16 or
+          sub.format == 5u16:
         if sub.coverage.covers(gid):
           return true
-      elif sub.format == 3u16:
+      elif sub.format == 3u16 or sub.format == 6u16:
         if sub.coverages.len > 0 and sub.coverages[0].covers(gid):
           return true
     of pkChain:
       let sub = lookup.chainPos[e.index]
-      if sub.format == 1u16 or sub.format == 2u16:
+      if sub.format == 1u16 or sub.format == 2u16 or sub.format == 4u16 or
+          sub.format == 5u16:
         if sub.coverage.covers(gid):
           return true
       elif sub.format == 3u16:
@@ -879,13 +883,13 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
     return false
   let secondIdx = secondOpt.get
   let second = buf.info[secondIdx].glyphId
-  if sub.format == 1u16:
+  if sub.format == 1u16 or sub.format == 3u16:
     let covIdx = sub.coverage.coverageIndex(first).get
     if int(covIdx) >= sub.pairSets.len:
       return false
     let set = sub.pairSets[int(covIdx)]
     for i, s in set.seconds:
-      if uint32(s) == second:
+      if s == second:
         let (v1, v2) = set.values[i]
         discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal)
         discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal)
@@ -896,7 +900,7 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
         return true
     # TODO: unsafe_to_concat marking on pair miss.
     false
-  elif sub.format == 2u16:
+  elif sub.format == 2u16 or sub.format == 4u16:
     let class1 = sub.classDef1.classOf(first)
     let class2 = sub.classDef2.classOf(second)
     if class1 >= uint32(sub.class1Count) or class2 >= uint32(sub.class2Count):
@@ -1425,7 +1429,7 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  if sub.format == 1u16:
+  if sub.format == 1u16 or sub.format == 4u16:
     let ci = sub.coverage.coverageIndex(gid)
     if ci.isNone or int(ci.get) >= sub.ruleSets.len:
       return false
@@ -1441,7 +1445,7 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
         return false
       return true
     false
-  elif sub.format == 2u16:
+  elif sub.format == 2u16 or sub.format == 5u16:
     if not sub.coverage.covers(gid):
       return false
     let cls = int(sub.classDef.classOf(gid))
@@ -1459,7 +1463,7 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
         return false
       return true
     false
-  elif sub.format == 3u16:
+  elif sub.format == 3u16 or sub.format == 6u16:
     if sub.coverages.len == 0:
       return false
     if not sub.coverages[0].covers(gid):
@@ -1487,7 +1491,7 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  if sub.format == 1u16:
+  if sub.format == 1u16 or sub.format == 4u16:
     let ci = sub.coverage.coverageIndex(gid)
     if ci.isNone or int(ci.get) >= sub.ruleSets.len:
       return false
@@ -1510,7 +1514,7 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
         return false
       return true
     false
-  elif sub.format == 2u16:
+  elif sub.format == 2u16 or sub.format == 5u16:
     if not sub.coverage.covers(gid):
       return false
     let cls = int(sub.inputClassDef.classOf(gid))
