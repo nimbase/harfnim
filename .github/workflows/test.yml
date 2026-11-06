@@ -6,5 +6,6 @@ jobs:
     with:
       nim-version: stable
       pre-test-command: |
+        clue install
         clue build tools/hr_shape.nim --out:/tmp/hr-shape
         clue build tools/conformance.nim --out:/tmp/conformance
