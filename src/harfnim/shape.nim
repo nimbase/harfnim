@@ -1,10 +1,10 @@
 ## Full shaping orchestration: ShapePlan + shape() entry.
 ##
 ## Mirrors harfrust shape.rs / ot/layout.rs. Arabic joining, fallback
-## presentation forms (unicode and win1256), mark/cursive GPOS, and
-## fallback mark positioning are implemented; indic-family, thai,
-## hangul, hebrew, khmer, myanmar, USE and syllabic shapers plus stch
-## stretching stay TODO.
+## presentation forms (unicode and win1256), Hebrew composition and mark
+## reorder, mark/cursive GPOS, and fallback mark positioning are
+## implemented; indic-family, thai, hangul, khmer, myanmar, USE and
+## syllabic shapers plus stch stretching stay TODO.
 
 import std/options
 import std/bitops
@@ -21,7 +21,9 @@ import ./varstore
 import ./ot/arabic
 import ./ot/gpos
 import ./ot/gsub
+import ./ot/hebrew
 import ./ot/map
+import ./ot/shaper
 
 export buffer
 export feature
@@ -56,11 +58,15 @@ proc langTagForBuffer(b: Buffer): Tag =
   discard b
   defaultLanguageTag()
 
-proc isArabicShaperScript(b: Buffer): bool =
-  if b.script.isNone:
-    return false
-  let s = b.script.get
-  (s == Arabic or s == Syriac) and b.direction.isHorizontal()
+proc shaperForBuffer(buf: Buffer, gsubOpt: Option[GsubData],
+    scriptTag: Tag): ShaperKind =
+  ## Shaper routing for the buffer, mirroring harfrust `categorize`.
+  ## Indic-family scripts consult the GSUB script they resolve to so
+  ## DFLT/latn-designed fonts stay on the default path.
+  var gs: Option[Tag] = none(Tag)
+  if gsubOpt.isSome:
+    gs = gsubScriptTagFor(gsubOpt.get, scriptTag)
+  categorizeShaper(buf.script, buf.direction.isHorizontal(), gs)
 
 proc formClusters(b: var Buffer) =
   ## Merges grapheme clusters (base plus continuation marks) so marks
@@ -550,7 +556,15 @@ proc shapePlan*(font: ShaperFont, buf: var Buffer,
 proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   buf.guessSegmentProperties()
   let sf = font
-  let useArabic = isArabicShaperScript(buf)
+  # Layout tables are parsed before normalization: shaper selection
+  # (Hebrew composition) and the GPOS-mark gate need them upfront.
+  let gsubOpt = parseGsub(sf.font)
+  let gposOpt = parseGpos(sf.font)
+  let shaper = shaperForBuffer(buf, gsubOpt, plan.scriptTag)
+  let useArabic = shaper == skArabic
+  var hasGposMark = false
+  if gposOpt.isSome:
+    hasGposMark = gposHasMark(gposOpt.get, plan.scriptTag, plan.langTag)
   buf.allocateUnicodeVars()
   var scratch = buf.scratchFlags
   for i in 0 ..< buf.len:
@@ -561,7 +575,13 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   formClusters(buf)
   # TODO: ensure_native_direction, per-syllable matching.
   var nctx = sf.normalizeContextFor()
-  buf.normalize(nmComposedDiacritics, false, nctx)
+  if shaper == skHebrew:
+    nctx.composeFn = hebrewComposeFn(hasGposMark)
+    let hebrewReorder: ReorderMarksFn = proc(b: var Buffer, first,
+        last: int) {.closure.} =
+      b.reorderMarksHebrew(first, last)
+    nctx.reorderMarks = some(hebrewReorder)
+  buf.normalize(nmComposedDiacritics, hasGposMark, nctx)
   buf.deallocateUnicodeVars()
   # Arabic joining + mark reordering happen on Unicode codepoints.
   var arabicMasks: ArabicMasks
@@ -576,7 +596,6 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   buf.allocateGsubGposVars()
   synthesizeGlyphClasses(buf)
   recategorizeMarks(buf)
-  let gsubOpt = parseGsub(sf.font)
   if useArabic and haveArabicMasks:
     if gsubOpt.isSome:
       buf.applyArabicGsub(gsubOpt.get, plan.scriptTag, plan.langTag,
@@ -591,7 +610,6 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   buf.clearPositions()
   buf.positionStart()
   setBaseAdvances(buf, sf)
-  let gposOpt = parseGpos(sf.font)
   if gposOpt.isSome:
     if useArabic:
       buf.applyDefaultGpos(gposOpt.get, plan.scriptTag, plan.langTag,

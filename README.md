@@ -87,7 +87,8 @@ for i in 0 ..< buf.len:
 * [x] HVAR/VVAR advance variation and CFF2 outlines with blend
 * [x] GPOS variation deltas from the GDEF item variation store
 * [x] Windows-1256 legacy Arabic fallback (signature, presents, ligatures)
-* [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
+* [x] Hebrew shaper (presentation-form composition, mark reorder) and shaper dispatch
+* [ ] Indic, Thai, Hangul, Khmer, Myanmar, USE, syllabic shapers
 * [ ] MVAR metrics
 * [ ] AAT morx
 * [ ] stch stretching
