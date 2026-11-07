@@ -123,4 +123,15 @@ Arabic mark data).
 - 👋 Wanna help? [Fork it!](https://github.com/nimbase/harfnim/fork)
 
 ### 🎩 License
-MIT license | Nim Community.
+
+harfnim is MIT licensed — see [LICENSE](LICENSE) for the full text.
+
+Copyright (c) 2026 nimbase
+
+### 🙏 Acknowledgements
+
+harfnim is a Nim port of [HarfBuzz](https://github.com/harfbuzz/harfbuzz)
+(Behdad Esfahbod and the HarfBuzz developers), developed against
+[harfrust](https://github.com/harfbuzz/harfrust) (Copyright (c)
+HarfBuzz developers, Copyright (c) 2020 Yevhenii Reizner) as the
+reference implementation. Both upstream projects are MIT licensed.
