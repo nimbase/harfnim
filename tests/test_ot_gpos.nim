@@ -658,3 +658,277 @@ test "contextpos nested pair":
   check shapeWithGpos(buildFontTables(gpos), "AA",
     @[globalFeature(tagFromStr("kern"), 1)]) ==
     @[(1u32, 600i32, 0i32, 0i32, 0i32), (1u32, 600i32, 0i32, 0i32, 0i32)]
+
+# --------------------------------------------------------------------------
+# GPOS variation (VariationIndex via GDEF ItemVariationStore)
+# --------------------------------------------------------------------------
+
+proc putF2dot14(s: var seq[uint8], v: float64) =
+  s.putI16(int16(v * 16384.0))
+
+proc varIdxBytes(outer, inner: uint16): seq[uint8] =
+  result = @[]
+  result.putU16(outer)
+  result.putU16(inner)
+  result.putU16(0x8000u16)
+
+proc buildVarStore1(delta: int32): seq[uint8] =
+  # 1 axis; region (0,1,1); one VarData, one item.
+  var regList: seq[uint8] = @[]
+  regList.putU16(1u16)
+  regList.putU16(1u16)
+  regList.putF2dot14(0.0)
+  regList.putF2dot14(1.0)
+  regList.putF2dot14(1.0)
+  var vd: seq[uint8] = @[]
+  vd.putU16(1u16) # itemCount
+  vd.putU16(1u16) # numShorts (all words)
+  vd.putU16(1u16) # regionCount
+  vd.putU16(0u16) # region index
+  vd.putI16(cast[int16](delta))
+  result = @[]
+  result.putU16(1u16) # format
+  let listOff = 8 + 2
+  result.putU32(uint32(listOff))
+  result.putU16(1u16) # dataCount
+  result.putU16(uint16(listOff + regList.len))
+  result.add(regList)
+  result.add(vd)
+
+proc buildGdef(varStore: seq[uint8], minor: uint16 = 3u16): seq[uint8] =
+  result = @[]
+  result.putU16(1u16)
+  result.putU16(minor)
+  for _ in 0 ..< 4:
+    result.putU16(0u16)
+  if minor >= 2u16:
+    result.putU16(0u16)
+  if minor >= 3u16:
+    if varStore.len > 0:
+      result.putU32(18u32)
+      result.add(varStore)
+    else:
+      result.putU32(0u32)
+
+proc buildFvar1(): seq[uint8] =
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(16u16)
+  result.putU16(2u16)
+  result.putU16(1u16)
+  result.putU16(20u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU32(tagFromStr("wght").toU32())
+  result.putU32(cast[uint32](int32(100 * 65536)))
+  result.putU32(cast[uint32](int32(400 * 65536)))
+  result.putU32(cast[uint32](int32(900 * 65536)))
+  result.putU16(0u16)
+  result.putU16(256u16)
+
+proc buildSinglePos1Var(covGlyph: uint16, base: int16, varOuter,
+    varInner: uint16): seq[uint8] =
+  # SinglePos1, format xAdvance|device, base + VarIdx table.
+  result = @[]
+  result.putU16(1u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  result.putU16(0x0004u16 or 0x0040u16)
+  result.putI16(base)
+  let devPos = result.len
+  result.putU16(0u16)
+  let covOff = result.len
+  for b in coverageBytes(@[covGlyph]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  let varOff = result.len
+  for b in varIdxBytes(varOuter, varInner):
+    result.add(b)
+  result.putU16At(devPos, uint16(varOff))
+
+proc buildPairPos1Var(firstCov: uint16, base: int16, varOuter,
+    varInner: uint16): seq[uint8] =
+  # PairPos1 A-B, format1 xAdvance|device, format2 0.
+  result = @[]
+  result.putU16(1u16)
+  let covPos = result.len
+  result.putU16(0u16)
+  result.putU16(0x0004u16 or 0x0040u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  let setPos = result.len
+  result.putU16(0u16)
+  let covOff = result.len
+  for b in coverageBytes(@[firstCov]):
+    result.add(b)
+  result.putU16At(covPos, uint16(covOff))
+  let setOff = result.len
+  result.putU16At(setPos, uint16(setOff))
+  # PairSet, single pair B.
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putI16(base)
+  let devPos = result.len
+  result.putU16(0u16)
+  let varOff = result.len
+  for b in varIdxBytes(varOuter, varInner):
+    result.add(b)
+  # Device offset is relative to the PairSet table.
+  result.putU16At(devPos, uint16(varOff - setOff))
+
+proc buildFontVarGpos(gpos, gdef, fvar: seq[uint8]): seq[uint8] =
+  let cmapData = buildCmapSingle()
+  var head = newSeq[uint8]()
+  head.putU32(0x00010000u32)
+  head.putU32(0u32)
+  head.putU32(0u32)
+  head.putU32(0x5F0F3CF5u32)
+  head.putU16(0u16)
+  head.putU16(1000u16)
+  for _ in 0 ..< 4:
+    head.putU32(0u32)
+  for _ in 0 ..< 4:
+    head.putI16(0i16)
+  head.putU16(0u16)
+  head.putU16(0u16)
+  head.putI16(0i16)
+  head.putI16(0i16)
+  head.putU16(0u16)
+  var hhea = newSeq[uint8]()
+  hhea.putU32(0x00010000u32)
+  hhea.putI16(800i16)
+  hhea.putI16(-200i16)
+  hhea.putI16(0i16)
+  hhea.putU16(600u16)
+  for _ in 0 ..< 11:
+    hhea.putI16(0i16)
+  hhea.putU16(2u16)
+  var maxp = newSeq[uint8]()
+  maxp.putU32(0x00005000u32)
+  maxp.putU16(12u16)
+  var hmtx = newSeq[uint8]()
+  hmtx.putU16(500u16)
+  hmtx.putI16(0i16)
+  hmtx.putU16(600u16)
+  hmtx.putI16(10i16)
+  var loca = @[0u8, 0u8, 0u8, 0u8]
+  var tables = @[
+    ("head", head), ("hhea", hhea), ("maxp", maxp), ("hmtx", hmtx),
+    ("cmap", cmapData), ("loca", loca), ("GPOS", gpos),
+  ]
+  if gdef.len > 0:
+    tables.add(("GDEF", gdef))
+  if fvar.len > 0:
+    tables.add(("fvar", fvar))
+  buildFontRaw(tables)
+
+proc shapeGposVar(fontBytes: seq[uint8], text: string,
+    feats: seq[Feature],
+    coords: seq[float32]): seq[tuple[gid: uint32, xAdv, xOff: int32]] =
+  let f = parseFont(fontBytes)
+  var sf = newShaperFont(f)
+  sf.varCoords = coords
+  let gposOpt = parseGpos(f)
+  doAssert gposOpt.isSome
+  var b = newBuffer()
+  b.pushStr(text)
+  b.guessSegmentProperties()
+  var scratch = 0u32
+  for i in 0 ..< b.len:
+    b.info[i].initUnicodeProps(scratch)
+  b.allocateUnicodeVars()
+  var nctx = sf.normalizeContextFor()
+  b.normalize(nmComposedDiacritics, false, nctx)
+  b.deallocateUnicodeVars()
+  b.mapGlyphsFast()
+  b.setContentType(some(contentGlyphs))
+  b.allocateGsubGposVars()
+  b.clearPositions()
+  for i in 0 ..< b.len:
+    b.pos[i].xAdvance = sf.hAdvance(newGlyphId(b.info[i].glyphId))
+  b.applyGposFeatures(gposOpt.get, tagFromStr("latn"), tagFromStr("dflt"),
+    feats, sf.scale, sf.font.gdefVarStore, sf.varCoords)
+  b.deallocateGsubGposVars()
+  result = @[]
+  for i in 0 ..< b.len:
+    result.add((b.info[i].glyphId, b.pos[i].xAdvance, b.pos[i].xOffset))
+
+proc varFont(sub: seq[uint8], gdef: seq[uint8],
+    lookupType: uint16 = 1u16): seq[uint8] =
+  let gpos = buildGposOneLookup("kern", lookupType, sub)
+  buildFontVarGpos(gpos, gdef, buildFvar1())
+
+test "gpos singlepos varidx advances with coordinate":
+  let sub = buildSinglePos1Var(1u16, 20i16, 0u16, 0u16)
+  let store = buildVarStore1(30i32)
+  let fontBytes = varFont(sub, buildGdef(store))
+  let kern = @[globalFeature(tagFromStr("kern"), 1)]
+  check shapeGposVar(fontBytes, "A", kern, @[]) == @[(1u32, 620i32, 0i32)]
+  check shapeGposVar(fontBytes, "A", kern, @[1.0f32]) ==
+    @[(1u32, 650i32, 0i32)]
+  check shapeGposVar(fontBytes, "A", kern, @[0.5f32]) ==
+    @[(1u32, 635i32, 0i32)]
+
+test "gpos pairpos varidx kerns with coordinate":
+  let sub = buildPairPos1Var(1u16, -80i16, 0u16, 0u16)
+  let store = buildVarStore1(-20i32)
+  let fontBytes = varFont(sub, buildGdef(store), 2u16)
+  let kern = @[globalFeature(tagFromStr("kern"), 1)]
+  check shapeGposVar(fontBytes, "AB", kern, @[]) ==
+    @[(1u32, 520i32, 0i32), (2u32, 600i32, 0i32)]
+  check shapeGposVar(fontBytes, "AB", kern, @[1.0f32]) ==
+    @[(1u32, 500i32, 0i32), (2u32, 600i32, 0i32)]
+
+test "gpos device tables are ignored":
+  # VarIdx slot pointing at a real Device table (deltaFormat 1).
+  var sub = buildSinglePos1Var(1u16, 20i16, 0u16, 0u16)
+  # Rewrite the VarIdx table as a Device table: start/end/format.
+  let at = sub.len - 6
+  sub[at] = 0u8
+  sub[at + 1] = 12u8
+  sub[at + 2] = 0u8
+  sub[at + 3] = 12u8
+  sub[at + 4] = 0u8
+  sub[at + 5] = 1u8
+  let store = buildVarStore1(30i32)
+  let fontBytes = varFont(sub, buildGdef(store))
+  let kern = @[globalFeature(tagFromStr("kern"), 1)]
+  check shapeGposVar(fontBytes, "A", kern, @[1.0f32]) ==
+    @[(1u32, 620i32, 0i32)]
+
+test "gpos malformed varidx keeps base value":
+  let sub = buildSinglePos1Var(1u16, 20i16, 0u16, 0u16)
+  var bad = sub
+  # Point the device offset past the end of the table.
+  bad[8] = 0xFFu8
+  bad[9] = 0xFFu8
+  let store = buildVarStore1(30i32)
+  let fontBytes = varFont(bad, buildGdef(store))
+  let kern = @[globalFeature(tagFromStr("kern"), 1)]
+  check shapeGposVar(fontBytes, "A", kern, @[1.0f32]) ==
+    @[(1u32, 620i32, 0i32)]
+
+test "gpos without varstore behaves statically":
+  let sub = buildSinglePos1Var(1u16, 20i16, 0u16, 0u16)
+  let store = buildVarStore1(30i32)
+  let kern = @[globalFeature(tagFromStr("kern"), 1)]
+  # GDEF 1.0: no varstore field at all.
+  check shapeGposVar(varFont(sub, buildGdef(store, 1u16)), "A", kern,
+    @[1.0f32]) == @[(1u32, 620i32, 0i32)]
+  # GDEF with NULL varstore offset.
+  check shapeGposVar(varFont(sub, buildGdef(@[])), "A", kern,
+    @[1.0f32]) == @[(1u32, 620i32, 0i32)]
+  # No GDEF table at all.
+  let fontBytes = buildFontVarGpos(
+    buildGposOneLookup("kern", 1u16, sub), @[], buildFvar1())
+  check shapeGposVar(fontBytes, "A", kern, @[1.0f32]) ==
+    @[(1u32, 620i32, 0i32)]
+
+test "gpos out-of-range varidx is ignored":
+  # VarIdx outer 5 does not exist in a 1-subtable store.
+  let sub = buildSinglePos1Var(1u16, 20i16, 5u16, 0u16)
+  let store = buildVarStore1(30i32)
+  let fontBytes = varFont(sub, buildGdef(store))
+  let kern = @[globalFeature(tagFromStr("kern"), 1)]
+  check shapeGposVar(fontBytes, "A", kern, @[1.0f32]) ==
+    @[(1u32, 620i32, 0i32)]

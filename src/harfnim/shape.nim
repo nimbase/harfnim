@@ -16,6 +16,7 @@ import ./normalize
 import ./script
 import ./tag
 import ./unicode
+import ./varstore
 import ./ot/arabic
 import ./ot/gpos
 import ./ot/gsub
@@ -314,7 +315,8 @@ proc applyArabicFallback*(buf: var Buffer, sf: ShaperFont,
   buf.applyFallbackLig(ligM, am.rligMask, false)
 
 proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
-    langTag: Tag, userFeatures: openArray[Feature], scale: Scale) =
+    langTag: Tag, userFeatures: openArray[Feature], scale: Scale,
+    store: VarStore = VarStore(), coords: seq[float32] = @[]) =
   ## Applies mark/mkmk/curs/dist/abvm/blwm by default plus user features.
   const autoTags = ["abvm", "blwm", "mark", "mkmk", "curs", "dist"]
   let available = gposFeaturesFor(gpos, scriptTag, langTag)
@@ -335,7 +337,7 @@ proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     if lks.len == 0:
       continue
     buf.setMasks(v, m, GlobalStart, GlobalEnd)
-    buf.applyPosLookups(gpos, lks, m, scale)
+    buf.applyPosLookups(gpos, lks, m, scale, store, coords)
   # User-requested GPOS (kern etc) with shared allocation above arabic bits.
   # Features already applied above with automatic masks are skipped.
   var uBit = nextBit
@@ -360,7 +362,7 @@ proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     if lks.len == 0:
       continue
     buf.setMasks(v, m, f.start, f.stop)
-    buf.applyPosLookups(gpos, lks, m, scale)
+    buf.applyPosLookups(gpos, lks, m, scale, store, coords)
 
 proc zeroMarkWidths*(buf: var Buffer, adjust: bool) =
   let horiz = buf.direction.isHorizontal()
@@ -542,10 +544,10 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   if gposOpt.isSome:
     if useArabic:
       buf.applyDefaultGpos(gposOpt.get, plan.scriptTag, plan.langTag,
-        plan.features, sf.scale)
+        plan.features, sf.scale, sf.font.gdefVarStore, sf.varCoords)
     else:
       buf.applyGposFeatures(gposOpt.get, plan.scriptTag, plan.langTag,
-        plan.features, sf.scale)
+        plan.features, sf.scale, sf.font.gdefVarStore, sf.varCoords)
   # Legacy `kern` table, mirroring harfrust position_by_plan: it runs
   # after GPOS when kerning was requested but GPOS supplied no kern
   # feature for the script.

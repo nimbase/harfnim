@@ -7,6 +7,7 @@ import ../buffer
 import ../feature
 import ../scale
 import ../tag
+import ../varstore
 import ./apply
 
 export apply
@@ -104,7 +105,9 @@ proc gposFeaturesFor*(gpos: GposData, scriptTag, langTag: Tag): seq[
       result.add(gpos.features[int(fi)])
 
 proc applyGposFeatures*(buf: var Buffer, gpos: GposData, scriptTag,
-    langTag: Tag, features: openArray[Feature], scale: Scale) =
+    langTag: Tag, features: openArray[Feature], scale: Scale,
+    store: VarStore = VarStore(),
+    coords: seq[float32] = @[]) =
   let available = gposFeaturesFor(gpos, scriptTag, langTag)
   if available.len == 0 or features.len == 0:
     return
@@ -130,4 +133,4 @@ proc applyGposFeatures*(buf: var Buffer, gpos: GposData, scriptTag,
     if lookups.len == 0:
       continue
     buf.setMasks(valueBits, mask, f.start, f.stop)
-    applyPosLookups(buf, gpos, lookups, mask, scale)
+    applyPosLookups(buf, gpos, lookups, mask, scale, store, coords)

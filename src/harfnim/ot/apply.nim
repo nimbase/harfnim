@@ -6,6 +6,7 @@ import ../direction
 import ../feature
 import ../scale
 import ../unicode
+import ../varstore
 import ./context
 import ./gpos
 import ./gsub
@@ -115,18 +116,21 @@ proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
   mask: uint32): bool
 proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
   mask: uint32, scale: Scale,
-  nestingLeft: int = MaxNestingLevel): bool
+  nestingLeft: int = MaxNestingLevel, store: VarStore = VarStore(),
+  coords: seq[float32] = @[]): bool
 proc applyNestedPosAt(buf: var Buffer, gpos: GposData, lookupIndex: int,
-  parentMask: uint32, scale: Scale, nestingLeft: int): bool
+  parentMask: uint32, scale: Scale, nestingLeft: int, store: VarStore,
+  coords: seq[float32]): bool
 proc applyPosRecords(buf: var Buffer, gpos: GposData,
   records: seq[LookupRecord], positions: seq[int], matchEnd: int,
-  parentMask: uint32, scale: Scale, nestingLeft: int): bool
+  parentMask: uint32, scale: Scale, nestingLeft: int,
+  store: VarStore, coords: seq[float32]): bool
 proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
   sub: ContextSubst, props, lookupMask: uint32, scale: Scale,
-  nestingLeft: int): bool
+  nestingLeft: int, store: VarStore, coords: seq[float32]): bool
 proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
   sub: ChainContextSubst, props, lookupMask: uint32, scale: Scale,
-  nestingLeft: int): bool
+  nestingLeft: int, store: VarStore, coords: seq[float32]): bool
 
 proc outputGlyphForComponent(buf: var Buffer, gid: uint32, classGuess: uint16) =
   let cur = buf.cur(0)
@@ -822,7 +826,8 @@ proc posLookupCovers(lookup: PosLookup, gid: uint32): bool =
   false
 
 proc applyValueRecord(buf: var Buffer, posIdx: int, value: ValueRecord,
-    scale: Scale, isHorizontal: bool): bool =
+    scale: Scale, isHorizontal: bool, store: VarStore,
+    coords: seq[float32]): bool =
   if posIdx < 0 or posIdx >= buf.pos.len:
     return false
   result = false
@@ -842,7 +847,30 @@ proc applyValueRecord(buf: var Buffer, posIdx: int, value: ValueRecord,
     buf.pos[posIdx].yAdvance =
       saturatingSubI32(buf.pos[posIdx].yAdvance, scale.scaleY(value.yAdvance))
     result = true
-  # TODO: device tables and variation deltas (hinting/variable fonts only).
+  # Variation deltas from VariationIndex tables (plain Device tables
+  # stay ignored: hinting only).
+  let valueApplies = [true, true, isHorizontal, not isHorizontal]
+  for k in 0 ..< 4:
+    let vi = value.varIndex[k]
+    if vi == NoVariationIndex or not valueApplies[k]:
+      continue
+    let d = deltaFor(store, vi, coords)
+    if d == 0i32:
+      continue
+    case k
+    of 0:
+      buf.pos[posIdx].xOffset =
+        saturatingAddI32(buf.pos[posIdx].xOffset, scale.scaleX(d))
+    of 1:
+      buf.pos[posIdx].yOffset =
+        saturatingAddI32(buf.pos[posIdx].yOffset, scale.scaleY(d))
+    of 2:
+      buf.pos[posIdx].xAdvance =
+        saturatingAddI32(buf.pos[posIdx].xAdvance, scale.scaleX(d))
+    else:
+      buf.pos[posIdx].yAdvance =
+        saturatingSubI32(buf.pos[posIdx].yAdvance, scale.scaleY(d))
+    result = true
 
 proc findSecondGlyph(buf: Buffer, props, mask: uint32): Option[int] =
   var j = buf.idx + 1
@@ -857,7 +885,7 @@ proc findSecondGlyph(buf: Buffer, props, mask: uint32): Option[int] =
   none(int)
 
 proc applySinglePos(buf: var Buffer, sub: SinglePos, scale: Scale,
-    isHorizontal: bool): bool =
+    isHorizontal: bool, store: VarStore, coords: seq[float32]): bool =
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
@@ -867,12 +895,13 @@ proc applySinglePos(buf: var Buffer, sub: SinglePos, scale: Scale,
   let idx = int(ci.get)
   if idx >= sub.values.len:
     return false
-  discard applyValueRecord(buf, buf.idx, sub.values[idx], scale, isHorizontal)
+  discard applyValueRecord(buf, buf.idx, sub.values[idx], scale, isHorizontal, store, coords)
   buf.nextGlyph()
   true
 
 proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
-    scale: Scale, isHorizontal: bool): bool =
+    scale: Scale, isHorizontal: bool, store: VarStore,
+    coords: seq[float32]): bool =
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let first = buf.info[buf.idx].glyphId
@@ -891,8 +920,8 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
     for i, s in set.seconds:
       if s == second:
         let (v1, v2) = set.values[i]
-        discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal)
-        discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal)
+        discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal, store, coords)
+        discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal, store, coords)
         if sub.format2 != 0u16:
           buf.idx = secondIdx + 1
         else:
@@ -909,8 +938,8 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
     if recIdx < 0 or recIdx >= sub.matrix.len:
       return false
     let (v1, v2) = sub.matrix[recIdx]
-    discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal)
-    discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal)
+    discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal, store, coords)
+    discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal, store, coords)
     if sub.format2 != 0u16:
       buf.idx = secondIdx + 1
     else:
@@ -1329,7 +1358,8 @@ proc propagateAttachmentOffsets*(buf: var Buffer) =
 
 proc applyPosRecords(buf: var Buffer, gpos: GposData,
     records: seq[LookupRecord], positions: seq[int], matchEnd: int,
-    parentMask: uint32, scale: Scale, nestingLeft: int): bool =
+    parentMask: uint32, scale: Scale, nestingLeft: int,
+    store: VarStore, coords: seq[float32]): bool =
   ## Applies positioning lookups at matched positions. Unlike GSUB, GPOS
   ## never changes the glyph count, so positions stay valid and no
   ## length-delta shifting is needed.
@@ -1360,7 +1390,7 @@ proc applyPosRecords(buf: var Buffer, gpos: GposData,
       buf.successful = false
       break
     let applied = applyNestedPosAt(buf, gpos, int(rec.lookupIndex),
-      parentMask, scale, nestingLeft - 1)
+      parentMask, scale, nestingLeft - 1, store, coords)
     if not applied:
       if not buf.successful:
         break
@@ -1372,7 +1402,8 @@ proc applyPosRecords(buf: var Buffer, gpos: GposData,
   buf.successful
 
 proc applyNestedPosAt(buf: var Buffer, gpos: GposData, lookupIndex: int,
-    parentMask: uint32, scale: Scale, nestingLeft: int): bool =
+    parentMask: uint32, scale: Scale, nestingLeft: int, store: VarStore,
+    coords: seq[float32]): bool =
   if nestingLeft <= 0:
     buf.indexFailed()
     return false
@@ -1389,11 +1420,11 @@ proc applyNestedPosAt(buf: var Buffer, gpos: GposData, lookupIndex: int,
     case e.kind
     of pkSingle:
       if applySinglePos(buf, lookup.singlePos[e.index], scale,
-          isHorizontal):
+          isHorizontal, store, coords):
         return true
     of pkPair:
       if applyPairPos(buf, lookup.pairPos[e.index], nestedProps,
-          parentMask, scale, isHorizontal):
+          parentMask, scale, isHorizontal, store, coords):
         return true
     of pkMarkBase:
       if applyMarkBase(buf, lookup.markBasePos[e.index], nestedProps,
@@ -1413,11 +1444,11 @@ proc applyNestedPosAt(buf: var Buffer, gpos: GposData, lookupIndex: int,
         return true
     of pkContext:
       if applyPosContextSubst(buf, gpos, lookup.contextPos[e.index],
-          nestedProps, parentMask, scale, nestingLeft):
+          nestedProps, parentMask, scale, nestingLeft, store, coords):
         return true
     of pkChain:
       if applyPosChainSubst(buf, gpos, lookup.chainPos[e.index],
-          nestedProps, parentMask, scale, nestingLeft):
+          nestedProps, parentMask, scale, nestingLeft, store, coords):
         return true
     of pkOther:
       continue
@@ -1425,7 +1456,7 @@ proc applyNestedPosAt(buf: var Buffer, gpos: GposData, lookupIndex: int,
 
 proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
     sub: ContextSubst, props, lookupMask: uint32, scale: Scale,
-    nestingLeft: int): bool =
+    nestingLeft: int, store: VarStore, coords: seq[float32]): bool =
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
@@ -1439,7 +1470,7 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
       if m.isNone:
         continue
       if applyPosRecords(buf, gpos, rule.records, m.get.positions,
-          m.get.matchEnd, lookupMask, scale, nestingLeft):
+          m.get.matchEnd, lookupMask, scale, nestingLeft, store, coords):
         return true
       if not buf.successful:
         return false
@@ -1457,7 +1488,7 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
       if m.isNone:
         continue
       if applyPosRecords(buf, gpos, rule.records, m.get.positions,
-          m.get.matchEnd, lookupMask, scale, nestingLeft):
+          m.get.matchEnd, lookupMask, scale, nestingLeft, store, coords):
         return true
       if not buf.successful:
         return false
@@ -1477,7 +1508,7 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
     if m.isNone:
       return false
     if applyPosRecords(buf, gpos, sub.records, m.get.positions,
-        m.get.matchEnd, lookupMask, scale, nestingLeft):
+        m.get.matchEnd, lookupMask, scale, nestingLeft, store, coords):
       return true
     if not buf.successful:
       return false
@@ -1487,7 +1518,7 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
 
 proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
     sub: ChainContextSubst, props, lookupMask: uint32, scale: Scale,
-    nestingLeft: int): bool =
+    nestingLeft: int, store: VarStore, coords: seq[float32]): bool =
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
@@ -1508,7 +1539,7 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
           noClassDef(), @[]):
         continue
       if applyPosRecords(buf, gpos, rule.records, mi.get.positions,
-          mi.get.matchEnd, lookupMask, scale, nestingLeft):
+          mi.get.matchEnd, lookupMask, scale, nestingLeft, store, coords):
         return true
       if not buf.successful:
         return false
@@ -1533,7 +1564,7 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
           sub.backtrackClassDef, @[]):
         continue
       if applyPosRecords(buf, gpos, rule.records, mi.get.positions,
-          mi.get.matchEnd, lookupMask, scale, nestingLeft):
+          mi.get.matchEnd, lookupMask, scale, nestingLeft, store, coords):
         return true
       if not buf.successful:
         return false
@@ -1562,7 +1593,7 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
         sub.backtrackCoverages):
       return false
     if applyPosRecords(buf, gpos, sub.records, mi.get.positions,
-        mi.get.matchEnd, lookupMask, scale, nestingLeft):
+        mi.get.matchEnd, lookupMask, scale, nestingLeft, store, coords):
       return true
     if not buf.successful:
       return false
@@ -1572,7 +1603,8 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
 
 proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
     mask: uint32, scale: Scale,
-    nestingLeft: int = MaxNestingLevel): bool =
+    nestingLeft: int = MaxNestingLevel, store: VarStore = VarStore(),
+    coords: seq[float32] = @[]): bool =
   if lookup.order.len == 0:
     return false
   if buf.haveOutput:
@@ -1598,12 +1630,12 @@ proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
       case e.kind
       of pkSingle:
         if applySinglePos(buf, lookup.singlePos[e.index], scale,
-            isHorizontal):
+            isHorizontal, store, coords):
           done = true
           break
       of pkPair:
         if applyPairPos(buf, lookup.pairPos[e.index], props, mask, scale,
-            isHorizontal):
+            isHorizontal, store, coords):
           done = true
           break
       of pkMarkBase:
@@ -1628,12 +1660,12 @@ proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
           break
       of pkContext:
         if applyPosContextSubst(buf, gpos, lookup.contextPos[e.index],
-            props, mask, scale, nestingLeft):
+            props, mask, scale, nestingLeft, store, coords):
           done = true
           break
       of pkChain:
         if applyPosChainSubst(buf, gpos, lookup.chainPos[e.index],
-            props, mask, scale, nestingLeft):
+            props, mask, scale, nestingLeft, store, coords):
           done = true
           break
       of pkOther:
@@ -1644,7 +1676,8 @@ proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
       buf.nextGlyph()
 
 proc applyPosLookups*(buf: var Buffer, gpos: GposData,
-    lookupIndices: openArray[uint16], mask: uint32, scale: Scale) =
+    lookupIndices: openArray[uint16], mask: uint32, scale: Scale,
+    store: VarStore = VarStore(), coords: seq[float32] = @[]) =
   if buf.isEmpty() or mask == 0u32:
     return
   if not buf.havePositions:
@@ -1656,7 +1689,8 @@ proc applyPosLookups*(buf: var Buffer, gpos: GposData,
     if lookup.order.len == 0:
       continue
     buf.idx = 0
-    discard applyPosLookup(buf, gpos, lookup, mask, scale)
+    discard applyPosLookup(buf, gpos, lookup, mask, scale,
+      MaxNestingLevel, store, coords)
 
 # --------------------------------------------------------------------------
 # Legacy `kern` table (mirrors harfrust aat/kern.rs machine_kern for

@@ -1,16 +1,19 @@
 ## GPOS positioning tables, ported from harfrust `ot/lookup/gpos.rs`.
 ##
-## Scope: static (non-variable) fonts. ValueRecord device tables and
-## variation deltas are skipped (TODO); anchors ignore contour points and
-## device tables (TODO). Wide (24-bit, beyond-64K) formats 3/4 and
-## coverage/class 3/4 are supported. Extension (type 9) flattens inner
-## SinglePos, PairPos, cursive, mark attachments, and contextual
-## positioning (types 7/8 share the GSUB SequenceContext/
-## ChainedSequenceContext layouts and rule engine).
+## Scope: static and variable fonts. ValueRecord device offsets that
+## reference VariationIndex tables apply GDEF variation deltas at the
+## active normalized coordinates; plain Device tables (hinting) are
+## ignored, as are anchor contour points.
+## Wide (24-bit, beyond-64K) formats 3/4 and coverage/class 3/4 are
+## supported. Extension (type 9) flattens inner SinglePos, PairPos,
+## cursive, mark attachments, and contextual positioning (types 7/8
+## share the GSUB SequenceContext/ChainedSequenceContext layouts and
+## rule engine).
 
 import std/options
 
 import ../sfnt
+import ../varstore
 import ./coverage
 import ./gsub
 
@@ -44,6 +47,10 @@ type
     yPlacement*: int32
     xAdvance*: int32
     yAdvance*: int32
+    ## Per-value VariationIndex (outer << 16 | inner), in
+    ## xPlacement/yPlacement/xAdvance/yAdvance order;
+    ## NoVariationIndex when the value does not vary.
+    varIndex*: array[4, uint32]
 
   Anchor* = object
     format*: uint16
@@ -144,34 +151,59 @@ proc valueRecordLen*(format: uint16): int =
   n * 2
 
 proc parseValueRecord*(bytes: openArray[uint8], off: int,
-    format: uint16): ValueRecord =
-  result = ValueRecord(format: format)
+    format: uint16, parentBase: int): ValueRecord =
+  ## Parses base values plus per-value device/VariationIndex offsets.
+  ## Device offsets resolve against `parentBase` (the immediate parent
+  ## table: SinglePos/PairPosFormat2 subtable, or PairSet); a
+  ## VariationIndex table (deltaFormat 0x8000) yields a packed index,
+  ## anything else (device tables, NULL, malformed) keeps the
+  ## NoVariationIndex sentinel.
+  result = ValueRecord(format: format, varIndex: [NoVariationIndex,
+    NoVariationIndex, NoVariationIndex, NoVariationIndex])
   if off < 0:
     return result
   var p = off
   if (format and ValueXPlacement) != 0u16:
     if p + 2 > bytes.len:
-      return ValueRecord(format: format)
+      return ValueRecord(format: format, varIndex: result.varIndex)
     result.xPlacement = int32(readI16(bytes, p))
     p += 2
   if (format and ValueYPlacement) != 0u16:
     if p + 2 > bytes.len:
-      return ValueRecord(format: format)
+      return ValueRecord(format: format, varIndex: result.varIndex)
     result.yPlacement = int32(readI16(bytes, p))
     p += 2
   if (format and ValueXAdvance) != 0u16:
     if p + 2 > bytes.len:
-      return ValueRecord(format: format)
+      return ValueRecord(format: format, varIndex: result.varIndex)
     result.xAdvance = int32(readI16(bytes, p))
     p += 2
   if (format and ValueYAdvance) != 0u16:
     if p + 2 > bytes.len:
-      return ValueRecord(format: format)
+      return ValueRecord(format: format, varIndex: result.varIndex)
     result.yAdvance = int32(readI16(bytes, p))
     p += 2
-  # TODO: device tables and variation deltas (offsets after the values).
-  # They occupy 2 bytes per set device bit but only affect hinting or
-  # variable fonts, so shaping ignores them.
+  const deviceBits = [ValueXPlacementDevice, ValueYPlacementDevice,
+    ValueXAdvanceDevice, ValueYAdvanceDevice]
+  for k in 0 ..< 4:
+    if (format and deviceBits[k]) == 0u16:
+      continue
+    if p + 2 > bytes.len:
+      return result
+    let devOff = int(readU16(bytes, p))
+    p += 2
+    if devOff == 0 or parentBase < 0:
+      continue
+    let t = parentBase + devOff
+    # VariationIndex table: outer, inner, then deltaFormat 0x8000.
+    # Anything else is a hinting device table (ignored) or malformed.
+    if t < 0 or t + 6 > bytes.len:
+      continue
+    if readU16(bytes, t + 4) != 0x8000u16:
+      continue
+    let outer = uint32(readU16(bytes, t))
+    let inner = uint32(readU16(bytes, t + 2))
+    result.varIndex[k] = (outer shl 16) or inner
 
 proc parseAnchor*(bytes: openArray[uint8], off: int): Anchor =
   if off <= 0 or off + 6 > bytes.len:
@@ -204,7 +236,7 @@ proc parseSinglePos*(bytes: openArray[uint8], off: int): SinglePos =
     let recLen = valueRecordLen(valueFormat)
     if off + 6 + recLen > bytes.len:
       raise newException(FontError, "short SinglePosFormat1 table")
-    let v = parseValueRecord(bytes, off + 6, valueFormat)
+    let v = parseValueRecord(bytes, off + 6, valueFormat, off)
     SinglePos(coverage: coverage, format: 1u16, values: @[v])
   elif format == 2u16:
     let covOff = int(readU16(bytes, off + 2))
@@ -218,7 +250,7 @@ proc parseSinglePos*(bytes: openArray[uint8], off: int): SinglePos =
       raise newException(FontError, "short SinglePosFormat2 table")
     var vals = newSeq[ValueRecord](count)
     for i in 0 ..< count:
-      vals[i] = parseValueRecord(bytes, off + 8 + i * recLen, valueFormat)
+      vals[i] = parseValueRecord(bytes, off + 8 + i * recLen, valueFormat, off)
     SinglePos(coverage: coverage, format: 2u16, values: vals)
   elif format == 3u16:
     if off + 10 > bytes.len:
@@ -231,7 +263,7 @@ proc parseSinglePos*(bytes: openArray[uint8], off: int): SinglePos =
     let recLen = valueRecordLen(valueFormat)
     if off + 8 + recLen > bytes.len:
       raise newException(FontError, "short SinglePosFormat3 table")
-    let v = parseValueRecord(bytes, off + 8, valueFormat)
+    let v = parseValueRecord(bytes, off + 8, valueFormat, off)
     SinglePos(coverage: coverage, format: 3u16, values: @[v])
   elif format == 4u16:
     if off + 13 > bytes.len:
@@ -247,7 +279,7 @@ proc parseSinglePos*(bytes: openArray[uint8], off: int): SinglePos =
       raise newException(FontError, "short SinglePosFormat4 table")
     var vals = newSeq[ValueRecord](count)
     for i in 0 ..< count:
-      vals[i] = parseValueRecord(bytes, off + 11 + i * recLen, valueFormat)
+      vals[i] = parseValueRecord(bytes, off + 11 + i * recLen, valueFormat, off)
     SinglePos(coverage: coverage, format: 4u16, values: vals)
   else:
     raise newException(FontError, "unsupported SinglePos format")
@@ -267,8 +299,8 @@ proc parsePairSet(bytes: openArray[uint8], off: int, format1,
   for i in 0 ..< count:
     let base = off + 2 + i * recLen
     seconds[i] = uint32(readU16(bytes, base))
-    values[i] = (parseValueRecord(bytes, base + 2, format1),
-      parseValueRecord(bytes, base + 2 + len1, format2))
+    values[i] = (parseValueRecord(bytes, base + 2, format1, off),
+      parseValueRecord(bytes, base + 2 + len1, format2, off))
   PairSet(seconds: seconds, values: values)
 
 proc parsePairSet24(bytes: openArray[uint8], off: int, format1,
@@ -286,8 +318,8 @@ proc parsePairSet24(bytes: openArray[uint8], off: int, format1,
   for i in 0 ..< count:
     let base = off + 3 + i * recLen
     seconds[i] = readU24(bytes, base)
-    values[i] = (parseValueRecord(bytes, base + 3, format1),
-      parseValueRecord(bytes, base + 3 + len1, format2))
+    values[i] = (parseValueRecord(bytes, base + 3, format1, off),
+      parseValueRecord(bytes, base + 3 + len1, format2, off))
   PairSet(seconds: seconds, values: values)
 
 proc parsePairPos*(bytes: openArray[uint8], off: int): PairPos =
@@ -339,8 +371,8 @@ proc parsePairPos*(bytes: openArray[uint8], off: int): PairPos =
     var matrix = newSeq[PairValue](count)
     for i in 0 ..< count:
       let base = off + 16 + i * recLen
-      matrix[i] = (parseValueRecord(bytes, base, format1),
-        parseValueRecord(bytes, base + len1, format2))
+      matrix[i] = (parseValueRecord(bytes, base, format1, off),
+        parseValueRecord(bytes, base + len1, format2, off))
     PairPos(coverage: coverage, format: 2u16, format1: format1,
       format2: format2, pairSets: @[], classDef1: classDef1,
       classDef2: classDef2, class1Count: class1Count,
@@ -396,8 +428,8 @@ proc parsePairPos*(bytes: openArray[uint8], off: int): PairPos =
     var matrix = newSeq[PairValue](count)
     for i in 0 ..< count:
       let base = off + 22 + i * recLen
-      matrix[i] = (parseValueRecord(bytes, base, format1),
-        parseValueRecord(bytes, base + len1, format2))
+      matrix[i] = (parseValueRecord(bytes, base, format1, off),
+        parseValueRecord(bytes, base + len1, format2, off))
     PairPos(coverage: coverage, format: 4u16, format1: format1,
       format2: format2, pairSets: @[], classDef1: classDef1,
       classDef2: classDef2, class1Count: class1Count,

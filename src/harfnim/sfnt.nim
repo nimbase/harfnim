@@ -51,6 +51,7 @@ type
     hvarAdvMap*: DeltaSetIndexMap
     vvarStore*: VarStore
     vvarAdvMap*: DeltaSetIndexMap
+    gdefVarStore*: VarStore
 
 proc tagOf(a, b, c, d: char): uint32 =
   (uint32(uint8(a)) shl 24) or (uint32(uint8(b)) shl 16) or
@@ -74,6 +75,7 @@ const
   TagGvar = 0x67766172u32
   TagHvar = 0x48564152u32
   TagVvar = 0x56564152u32
+  TagGdef = 0x47444546u32
 
 proc checkBounds(bytes: openArray[uint8], off, size: int) =
   if off < 0 or size < 0 or off + size > bytes.len:
@@ -538,6 +540,17 @@ proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
     if advOff != 0 and result.vvarStore.ok:
       result.vvarAdvMap = parseDeltaSetIndexMap(bytes,
         vvar.offset + advOff, vvar.len - advOff)
+  # GDEF 1.3+: the ItemVariationStore that GPOS VariationIndex
+  # tables reference. Earlier versions and malformed tables leave an
+  # empty store (contained); shaping then behaves statically.
+  let gdef = result.tableData(TagGdef)
+  if gdef.ok and gdef.len >= 18 and
+      readU16(bytes, gdef.offset) == 1u16 and
+      readU16(bytes, gdef.offset + 2) >= 3u16:
+    let varStoreOff = int(readU32(bytes, gdef.offset + 14))
+    if varStoreOff != 0:
+      result.gdefVarStore = parseItemVariationStore(bytes,
+        gdef.offset + varStoreOff, gdef.len - varStoreOff)
 
 proc parseFont*(data: openArray[uint8], faceIndex: int = 0): SfntFont =
   var bytes = newSeq[uint8](data.len)
