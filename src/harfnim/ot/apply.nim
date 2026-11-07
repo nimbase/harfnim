@@ -627,11 +627,11 @@ proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
   if nestingLeft <= 0:
     buf.indexFailed()
     return false
-  if lookupIndex < 0 or lookupIndex >= gsub.lookups.len:
+  if lookupIndex < 0 or lookupIndex >= gsubLookupCount(gsub):
     return false
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
-  let lookup = gsub.lookups[lookupIndex]
+  let lookup = getGsubLookup(gsub, lookupIndex)
   if lookup.order.len == 0:
     return false
   let nestedProps = lookup.lookupProps()
@@ -769,9 +769,9 @@ proc applySubstLookups*(buf: var Buffer, gsub: GsubData,
   if buf.isEmpty() or mask == 0u32:
     return
   for li in lookupIndices:
-    if int(li) >= gsub.lookups.len:
+    if int(li) >= gsubLookupCount(gsub):
       continue
-    let lookup = gsub.lookups[int(li)]
+    let lookup = getGsubLookup(gsub, int(li))
     if lookup.order.len == 0:
       continue
     if lookup.isReverse:
@@ -1436,11 +1436,11 @@ proc applyNestedPosAt(buf: var Buffer, gpos: GposData, lookupIndex: int,
   if nestingLeft <= 0:
     buf.indexFailed()
     return false
-  if lookupIndex < 0 or lookupIndex >= gpos.lookups.len:
+  if lookupIndex < 0 or lookupIndex >= gposLookupCount(gpos):
     return false
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
-  let lookup = gpos.lookups[lookupIndex]
+  let lookup = getGposLookup(gpos, lookupIndex)
   if lookup.order.len == 0:
     return false
   let nestedProps = lookup.lookupProps()
@@ -1713,9 +1713,9 @@ proc applyPosLookups*(buf: var Buffer, gpos: GposData,
   if not buf.havePositions:
     buf.clearPositions()
   for li in lookupIndices:
-    if int(li) >= gpos.lookups.len:
+    if int(li) >= gposLookupCount(gpos):
       continue
-    let lookup = gpos.lookups[int(li)]
+    let lookup = getGposLookup(gpos, int(li))
     if lookup.order.len == 0:
       continue
     buf.idx = 0

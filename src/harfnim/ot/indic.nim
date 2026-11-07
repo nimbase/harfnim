@@ -357,8 +357,8 @@ proc lookupWouldSubstitute(gsub: GsubData, lookup: Lookup,
 proc featureWouldSubstitute(gsub: GsubData, lookups: openArray[uint16],
     glyphs: openArray[uint32], zeroContext: bool): bool =
   for li in lookups:
-    if int(li) < gsub.lookups.len and lookupWouldSubstitute(gsub,
-        gsub.lookups[int(li)], glyphs, zeroContext):
+    if int(li) < gsubLookupCount(gsub) and lookupWouldSubstitute(gsub,
+        getGsubLookup(gsub, int(li)), glyphs, zeroContext):
       return true
   false
 

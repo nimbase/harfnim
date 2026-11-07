@@ -128,10 +128,23 @@ type
     reverseSubsts*: seq[ReverseChainSubst]
     order*: seq[LookupEntry]
 
-  GsubData* = object
+  GsubData* = ref object
+    ## Parsed GSUB table. A ref so shaping passes a pointer instead of
+    ## deep-copying megabytes of parsed lookups per call (Nim seq `=`
+    ## copies). All shapes through one ShaperFont share the handle, and
+    ## deferred lookup bodies fill the cache on first use.
     scripts*: seq[tuple[tag: uint32, script: ScriptTable]]
     features*: seq[tuple[tag: uint32, lookups: seq[uint16]]]
     lookups*: seq[Lookup]
+    ## On-demand lookup cache. `parseGsubTable` (raw bytes) parses
+    ## eagerly; `parseGsub` (font) parses scripts and features eagerly
+    ## but defers lookup bodies until first use. Direct `.lookups[]`
+    ## indexing bypasses the cache: use `getGsubLookup` so placeholders
+    ## get parsed before use.
+    font*: SfntFont
+    lookupBase*: int
+    offsets*: seq[int]
+    parsed*: seq[bool]
 
 const TagGsub = 0x47535542u32
 
@@ -1079,6 +1092,36 @@ proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
     alternateSubsts: alts, ligatureSubsts: ligs, contextSubsts: ctxs,
     chainSubsts: chains, reverseSubsts: revs, order: order)
 
+proc emptyLookup*(): Lookup =
+  ## Placeholder for unreadable lookup slots; keeps feature references
+  ## aligned.
+  Lookup(lookupType: 0u16, lookupFlag: 0u16, markFilteringSet: 0u16,
+    isReverse: false, singleSubsts: @[], multipleSubsts: @[],
+    alternateSubsts: @[], ligatureSubsts: @[], contextSubsts: @[],
+    chainSubsts: @[], reverseSubsts: @[], order: @[])
+
+proc gsubLookupCount*(gsub: GsubData): int =
+  ## Bounds for lookup indices. `lookups` is pre-sized to the full
+  ## LookupList in both eager and lazy tables.
+  if gsub == nil:
+    return 0
+  gsub.lookups.len
+
+proc getGsubLookup*(gsub: GsubData, idx: int): Lookup =
+  ## Returns the parsed lookup, parsing and caching on first use when
+  ## the table was built lazily via `parseGsub`. The table is a ref so
+  ## the cache fills through value copies without `var` threading.
+  if gsub.offsets.len == 0 or gsub.parsed[idx]:
+    return gsub.lookups[idx]
+  let lk =
+    try:
+      parseLookup(gsub.font.bytes, gsub.lookupBase, gsub.offsets[idx])
+    except FontError:
+      emptyLookup()
+  gsub.lookups[idx] = lk
+  gsub.parsed[idx] = true
+  lk
+
 proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
   if off + 10 > bytes.len:
     raise newException(FontError, "short GSUB header")
@@ -1099,19 +1142,36 @@ proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
     except FontError:
       # Skip unreadable lookups but keep the slot so feature
       # references stay aligned (mirrors harfrust lazy lookup caching).
-      lookups.add(Lookup(lookupType: 0u16, lookupFlag: 0u16,
-        markFilteringSet: 0u16, isReverse: false, singleSubsts: @[],
-        multipleSubsts: @[], alternateSubsts: @[], ligatureSubsts: @[],
-        contextSubsts: @[], chainSubsts: @[], reverseSubsts: @[],
-        order: @[]))
-  GsubData(scripts: scripts, features: features, lookups: lookups)
+      lookups.add(emptyLookup())
+  GsubData(scripts: scripts, features: features, lookups: lookups,
+    font: nil, lookupBase: 0, offsets: @[], parsed: @[])
 
 proc parseGsub*(f: SfntFont): Option[GsubData] =
+  ## Parses scripts and features eagerly (small, needed for feature
+  ## resolution) and defers lookup bodies until first use. Lookup
+  ## offsets are cheap u16 reads; bodies parse via `getGsubLookup`.
   let (ok, off, len) = f.tableData(TagGsub)
   if not ok or len < 10:
     return none(GsubData)
   try:
-    some(parseGsubTable(f.bytes, off))
+    let bytes = f.bytes
+    if off + 10 > bytes.len:
+      raise newException(FontError, "short GSUB header")
+    let scripts = parseScriptList(bytes, off + int(readU16(bytes, off + 4)))
+    let features = parseFeatureList(bytes, off + int(readU16(bytes, off + 6)))
+    let lookupBase = off + int(readU16(bytes, off + 8))
+    let lookupCount = int(readU16(bytes, lookupBase))
+    if lookupBase + 2 + lookupCount * 2 > bytes.len:
+      raise newException(FontError, "short LookupList")
+    var offsets = newSeq[int](lookupCount)
+    var lookups = newSeq[Lookup](lookupCount)
+    var parsed = newSeq[bool](lookupCount)
+    for i in 0 ..< lookupCount:
+      offsets[i] = int(readU16(bytes, lookupBase + 2 + i * 2))
+      lookups[i] = emptyLookup()
+      parsed[i] = false
+    some(GsubData(scripts: scripts, features: features, lookups: lookups,
+      font: f, lookupBase: lookupBase, offsets: offsets, parsed: parsed))
   except FontError:
     none(GsubData)
 

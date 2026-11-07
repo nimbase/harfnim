@@ -419,8 +419,8 @@ test "multiple 2 splits with 24-bit glyphs":
   let f = parseFont(buildFontTables(@[("GSUB", gsub)]))
   let g = parseGsub(f)
   check g.isSome
-  check g.get.lookups[0].multipleSubsts[0].coverage.covers(1u32)
-  check g.get.lookups[0].multipleSubsts[0].sequences[0] == @[2u32, 3u32]
+  check getGsubLookup(g.get, 0).multipleSubsts[0].coverage.covers(1u32)
+  check getGsubLookup(g.get, 0).multipleSubsts[0].sequences[0] == @[2u32, 3u32]
 
 proc altSet24(alts: seq[uint32]): seq[uint8] =
   result = @[]
@@ -458,7 +458,7 @@ test "alternate 2 parses 24-bit alts":
   let f = parseFont(buildFontTables(@[("GSUB", gsub)]))
   let g = parseGsub(f)
   check g.isSome
-  check g.get.lookups[0].alternateSubsts[0].sets[0] == @[10u32, 11u32]
+  check getGsubLookup(g.get, 0).alternateSubsts[0].sets[0] == @[10u32, 11u32]
 
 proc ligTable24(ligGlyph: uint32, comps: seq[uint32]): seq[uint8] =
   result = @[]
@@ -532,7 +532,7 @@ test "ligature 2 parses 24-bit components":
   let f = parseFont(buildFontTables(@[("GSUB", gsub)]))
   let g = parseGsub(f)
   check g.isSome
-  let lig = g.get.lookups[0].ligatureSubsts[0].sets[0][0]
+  let lig = getGsubLookup(g.get, 0).ligatureSubsts[0].sets[0][0]
   check lig.ligGlyph == 10u32
   check lig.components == @[2u32]
 
@@ -593,7 +593,7 @@ test "reversechain 2 parses 24-bit coverages":
   let f = parseFont(buildFontTables(@[("GSUB", gsub)]))
   let g = parseGsub(f)
   check g.isSome
-  check g.get.lookups[0].reverseSubsts[0].substitutes == @[10u32]
+  check getGsubLookup(g.get, 0).reverseSubsts[0].substitutes == @[10u32]
 
 # --- SequenceContext wide ---
 
@@ -972,7 +972,7 @@ test "chained 5 class wide triggers":
   let f = parseFont(buildFontTables(@[("GSUB", gsub)]))
   let g = parseGsub(f)
   check g.isSome
-  check g.get.lookups[0].chainSubsts[0].format == 5u16
+  check getGsubLookup(g.get, 0).chainSubsts[0].format == 5u16
 
 # --- GPOS wide ---
 
@@ -1189,7 +1189,7 @@ test "cursive 2 wide parses":
   let f = parseFont(buildFontTables(@[("GPOS", gpos)]))
   let g = parseGpos(f)
   check g.isSome
-  check g.get.lookups[0].cursivePos[0].entryAnchors.len == 1
+  check getGposLookup(g.get, 0).cursivePos[0].entryAnchors.len == 1
 
 proc markArray1(classes: seq[uint16], anchorOffs: seq[int],
     anchors: seq[seq[uint8]]): seq[uint8] =
@@ -1317,8 +1317,8 @@ test "markbase 2 wide parses":
   let f = parseFont(buildFontTables(@[("GPOS", gpos)]))
   let g = parseGpos(f)
   check g.isSome
-  check g.get.lookups[0].markBasePos[0].markAnchors.len == 1
-  check g.get.lookups[0].markBasePos[0].baseAnchors.len == 1
+  check getGposLookup(g.get, 0).markBasePos[0].markAnchors.len == 1
+  check getGposLookup(g.get, 0).markBasePos[0].baseAnchors.len == 1
 
 test "marklig 2 and markmark 2 parse":
   # MarkLig2: reuse markBase2 builder pattern but check lig path via direct parse

@@ -135,10 +135,17 @@ type
     chainPos*: seq[ChainContextSubst]
     order*: seq[PosLookupEntry]
 
-  GposData* = object
+  GposData* = ref object
+    ## Parsed GPOS table. A ref so shaping passes a pointer instead of
+    ## deep-copying parsed lookups per call (see GsubData). Deferred
+    ## lookup bodies fill the cache on first use via `getGposLookup`.
     scripts*: seq[tuple[tag: uint32, script: ScriptTable]]
     features*: seq[tuple[tag: uint32, lookups: seq[uint16]]]
     lookups*: seq[PosLookup]
+    font*: SfntFont
+    lookupBase*: int
+    offsets*: seq[int]
+    parsed*: seq[bool]
 
 const TagGpos = 0x47504F53u32
 
@@ -956,6 +963,31 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
     markMarkPos: markMarks, contextPos: ctxs, chainPos: chains,
     order: order)
 
+proc emptyPosLookup*(): PosLookup =
+  PosLookup(lookupType: 0u16, lookupFlag: 0u16, markFilteringSet: 0u16,
+    singlePos: @[], pairPos: @[], cursivePos: @[], markBasePos: @[],
+    markLigPos: @[], markMarkPos: @[], contextPos: @[], chainPos: @[],
+    order: @[])
+
+proc gposLookupCount*(gpos: GposData): int =
+  if gpos == nil:
+    return 0
+  gpos.lookups.len
+
+proc getGposLookup*(gpos: GposData, idx: int): PosLookup =
+  ## Returns the parsed lookup, parsing and caching on first use when
+  ## the table was built lazily via `parseGpos`.
+  if gpos.offsets.len == 0 or gpos.parsed[idx]:
+    return gpos.lookups[idx]
+  let lk =
+    try:
+      parsePosLookup(gpos.font.bytes, gpos.lookupBase, gpos.offsets[idx])
+    except FontError:
+      emptyPosLookup()
+  gpos.lookups[idx] = lk
+  gpos.parsed[idx] = true
+  lk
+
 proc parseGposTable*(bytes: openArray[uint8], off: int): GposData =
   if off + 10 > bytes.len:
     raise newException(FontError, "short GPOS header")
@@ -971,14 +1003,37 @@ proc parseGposTable*(bytes: openArray[uint8], off: int): GposData =
     raise newException(FontError, "short LookupList")
   for i in 0 ..< lookupCount:
     let loff = int(readU16(bytes, lookupBase + 2 + i * 2))
-    lookups.add(parsePosLookup(bytes, lookupBase, loff))
-  GposData(scripts: scripts, features: features, lookups: lookups)
+    try:
+      lookups.add(parsePosLookup(bytes, lookupBase, loff))
+    except FontError:
+      lookups.add(emptyPosLookup())
+  GposData(scripts: scripts, features: features, lookups: lookups,
+    font: nil, lookupBase: 0, offsets: @[], parsed: @[])
 
 proc parseGpos*(f: SfntFont): Option[GposData] =
+  ## Parses scripts and features eagerly, defers lookup bodies until
+  ## first use via `getGposLookup`.
   let (ok, off, len) = f.tableData(TagGpos)
   if not ok or len < 10:
     return none(GposData)
   try:
-    some(parseGposTable(f.bytes, off))
+    let bytes = f.bytes
+    if off + 10 > bytes.len:
+      raise newException(FontError, "short GPOS header")
+    let scripts = parseScriptList(bytes, off + int(readU16(bytes, off + 4)))
+    let features = parseFeatureList(bytes, off + int(readU16(bytes, off + 6)))
+    let lookupBase = off + int(readU16(bytes, off + 8))
+    let lookupCount = int(readU16(bytes, lookupBase))
+    if lookupBase + 2 + lookupCount * 2 > bytes.len:
+      raise newException(FontError, "short LookupList")
+    var offsets = newSeq[int](lookupCount)
+    var lookups = newSeq[PosLookup](lookupCount)
+    var parsed = newSeq[bool](lookupCount)
+    for i in 0 ..< lookupCount:
+      offsets[i] = int(readU16(bytes, lookupBase + 2 + i * 2))
+      lookups[i] = emptyPosLookup()
+      parsed[i] = false
+    some(GposData(scripts: scripts, features: features, lookups: lookups,
+      font: f, lookupBase: lookupBase, offsets: offsets, parsed: parsed))
   except FontError:
     none(GposData)
