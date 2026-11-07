@@ -69,10 +69,14 @@ proc variationGlyph*(f: ShaperFont, base, selector: uint32): Option[GlyphId] =
   f.font.mapUnicodeVariant(base, selector)
 
 proc hAdvance*(f: ShaperFont, gid: GlyphId): int32 =
-  f.scale.clampXAdvance(f.scale.scaleX(f.font.hAdvance(gid.value)))
+  let base = f.font.hAdvance(gid.value) +
+    f.font.hAdvanceDelta(gid.value, f.varCoords)
+  f.scale.clampXAdvance(f.scale.scaleX(base))
 
 proc vAdvance*(f: ShaperFont, gid: GlyphId): int32 =
-  let v = f.scale.clampYAdvance(f.scale.scaleY(f.font.vAdvance(gid.value)))
+  let base = f.font.vAdvance(gid.value) +
+    f.font.vAdvanceDelta(gid.value, f.varCoords)
+  let v = f.scale.clampYAdvance(f.scale.scaleY(base))
   if v == low(int32): high(int32) else: -v
 
 proc drawGlyph*(f: ShaperFont, gid: GlyphId,

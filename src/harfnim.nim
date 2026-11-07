@@ -12,6 +12,7 @@ import harfnim/glyf
 import harfnim/gvar
 import harfnim/cff
 import harfnim/variations
+import harfnim/varstore
 import harfnim/font
 import harfnim/ot/map
 import harfnim/shape
@@ -30,6 +31,7 @@ export glyf
 export gvar
 export cff
 export variations
+export varstore
 export font
 export map
 export shape

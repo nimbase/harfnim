@@ -4,6 +4,7 @@ import ./buffer
 import ./draw
 import ./glyf
 import ./gvar
+import ./varstore
 import ./cff
 
 type
@@ -46,6 +47,10 @@ type
     names*: seq[NameEntry]
     fvarAxes*: seq[FvarAxis]
     avarMaps*: seq[seq[AvarSegment]]
+    hvarStore*: VarStore
+    hvarAdvMap*: DeltaSetIndexMap
+    vvarStore*: VarStore
+    vvarAdvMap*: DeltaSetIndexMap
 
 proc tagOf(a, b, c, d: char): uint32 =
   (uint32(uint8(a)) shl 24) or (uint32(uint8(b)) shl 16) or
@@ -66,6 +71,8 @@ const
   TagFvar = 0x66766172u32
   TagAvar = 0x61766172u32
   TagGvar = 0x67766172u32
+  TagHvar = 0x48564152u32
+  TagVvar = 0x56564152u32
 
 proc checkBounds(bytes: openArray[uint8], off, size: int) =
   if off < 0 or size < 0 or off + size > bytes.len:
@@ -508,6 +515,28 @@ proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
       result.fvarAxes.len)
   else:
     result.avarMaps = newSeq[seq[AvarSegment]](result.fvarAxes.len)
+  let hvar = result.tableData(TagHvar)
+  if hvar.ok and hvar.len >= 20 and
+      readU16(bytes, hvar.offset) == 1u16:
+    let storeOff = int(readU32(bytes, hvar.offset + 4))
+    let advOff = int(readU32(bytes, hvar.offset + 8))
+    if storeOff != 0:
+      result.hvarStore = parseItemVariationStore(bytes,
+        hvar.offset + storeOff, hvar.len - storeOff)
+    if advOff != 0 and result.hvarStore.ok:
+      result.hvarAdvMap = parseDeltaSetIndexMap(bytes,
+        hvar.offset + advOff, hvar.len - advOff)
+  let vvar = result.tableData(TagVvar)
+  if vvar.ok and vvar.len >= 20 and
+      readU16(bytes, vvar.offset) == 1u16:
+    let storeOff = int(readU32(bytes, vvar.offset + 4))
+    let advOff = int(readU32(bytes, vvar.offset + 8))
+    if storeOff != 0:
+      result.vvarStore = parseItemVariationStore(bytes,
+        vvar.offset + storeOff, vvar.len - storeOff)
+    if advOff != 0 and result.vvarStore.ok:
+      result.vvarAdvMap = parseDeltaSetIndexMap(bytes,
+        vvar.offset + advOff, vvar.len - advOff)
 
 proc parseFont*(data: openArray[uint8], faceIndex: int = 0): SfntFont =
   var bytes = newSeq[uint8](data.len)
@@ -692,6 +721,21 @@ proc hAdvance*(f: SfntFont, gid: uint32): int32 =
 
 proc hSideBearing*(f: SfntFont, gid: uint32): int32 =
   int32(hAdvanceRaw(f, gid).lsb)
+
+proc hAdvanceDelta*(f: SfntFont, gid: uint32,
+    coords: seq[float32]): int32 =
+  ## HVAR advance adjustment at normalized coordinates; 0 when the
+  ## font has no usable HVAR data or the location is empty.
+  if coords.len == 0:
+    return 0i32
+  deltaFor(f.hvarStore, mapVarIndex(f.hvarAdvMap, int(gid)), coords)
+
+proc vAdvanceDelta*(f: SfntFont, gid: uint32,
+    coords: seq[float32]): int32 =
+  ## VVAR advance adjustment (same contract as `hAdvanceDelta`).
+  if coords.len == 0:
+    return 0i32
+  deltaFor(f.vvarStore, mapVarIndex(f.vvarAdvMap, int(gid)), coords)
 
 proc vAdvance*(f: SfntFont, gid: uint32): int32 =
   if f.hasVMetrics:

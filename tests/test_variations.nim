@@ -674,3 +674,191 @@ test "gvar word and long runs decode":
   sf2.setVariations([(wghtTag(), 900.0f32)])
   let ops2 = collectVar(sf2, 1)
   check ops2[2].to == (70050i32, 100i32)
+
+# --------------------------------------------------------------------------
+# HVAR/VVAR advance variations
+# --------------------------------------------------------------------------
+
+proc encF2dot14(s: var seq[uint8], v: float64) =
+  s.putI16(int16(v * 16384.0))
+
+proc buildRegionList(regions: seq[seq[tuple[s, p, e: float64]]],
+    axisCount: int): seq[uint8] =
+  result = @[]
+  result.putU16(uint16(axisCount))
+  result.putU16(uint16(regions.len))
+  for r in regions:
+    for a in 0 ..< axisCount:
+      result.encF2dot14(r[a].s)
+      result.encF2dot14(r[a].p)
+      result.encF2dot14(r[a].e)
+
+proc buildVarData(regionIndexes: seq[int], rows: seq[seq[int32]],
+    longWords: bool = false, bigCount: int = -1): seq[uint8] =
+  result = @[]
+  result.putU16(uint16(rows.len))
+  let nBig = if bigCount < 0: regionIndexes.len else: bigCount
+  if longWords:
+    result.putU16(uint16(0x8000 or nBig))
+  else:
+    result.putU16(uint16(nBig))
+  result.putU16(uint16(regionIndexes.len))
+  for r in regionIndexes:
+    result.putU16(uint16(r))
+  for row in rows:
+    for k, v in row:
+      if k < nBig:
+        if longWords:
+          result.putU32(cast[uint32](v))
+        else:
+          result.putI16(cast[int16](v))
+      else:
+        if longWords:
+          result.putI16(cast[int16](v))
+        else:
+          result.add(uint8(cast[int8](v)))
+
+proc buildItemStore(regions: seq[seq[tuple[s, p, e: float64]]],
+    axisCount: int, datas: seq[seq[uint8]]): seq[uint8] =
+  let regList = buildRegionList(regions, axisCount)
+  result = @[]
+  result.putU16(1u16)
+  let listOff = 8 + datas.len * 2
+  result.putU32(uint32(listOff))
+  result.putU16(uint16(datas.len))
+  var cur = listOff + regList.len
+  for d in datas:
+    result.putU16(uint16(cur))
+    cur += d.len
+  result.add(regList)
+  for d in datas:
+    result.add(d)
+
+proc buildMap0(entries: seq[uint32], innerBits, entrySize: int): seq[uint8] =
+  result = @[]
+  result.add(0u8)
+  result.add(uint8(((entrySize - 1) shl 4) or (innerBits - 1)))
+  result.putU16(uint16(entries.len))
+  let innerMask = (1u32 shl innerBits) - 1u32
+  for e in entries:
+    let inner = e and innerMask
+    let outer = (e and (not innerMask)) shr (16 - innerBits)
+    var raw = (outer shl (8 * entrySize - innerBits)) or inner
+    for k in countdown(entrySize - 1, 0):
+      result.add(uint8((raw shr (k * 8)) and 0xFFu32))
+
+proc buildMap1(entries: seq[uint32], innerBits, entrySize: int): seq[uint8] =
+  result = @[]
+  result.add(1u8)
+  result.add(uint8(((entrySize - 1) shl 4) or (innerBits - 1)))
+  result.putU32(uint32(entries.len))
+  let innerMask = (1u32 shl innerBits) - 1u32
+  for e in entries:
+    let inner = e and innerMask
+    let outer = (e and (not innerMask)) shr (16 - innerBits)
+    var raw = (outer shl (8 * entrySize - innerBits)) or inner
+    for k in countdown(entrySize - 1, 0):
+      result.add(uint8((raw shr (k * 8)) and 0xFFu32))
+
+proc buildHvarTable(store, advMap: seq[uint8]): seq[uint8] =
+  result = @[]
+  result.putU16(1u16)
+  result.putU16(0u16)
+  let storeOff = 20
+  result.putU32(uint32(storeOff))
+  result.putU32(uint32(if advMap.len > 0: storeOff + store.len else: 0))
+  result.putU32(0u32)
+  result.putU32(0u32)
+  result.add(store)
+  result.add(advMap)
+
+proc varFontHV(hvar, vvar: seq[uint8]): SfntFont =
+  let fvar = buildFvar(@[("wght", 100.0f32, 400.0f32, 900.0f32)])
+  var tables = @[("fvar", fvar)]
+  if hvar.len > 0:
+    tables.add(("HVAR", hvar))
+  if vvar.len > 0:
+    tables.add(("VVAR", vvar))
+  parseFont(buildFontVar(tables))
+
+proc hvarBasic(): seq[uint8] =
+  let store = buildItemStore(@[@[(s: 0.0, p: 1.0, e: 1.0)]], 1,
+    @[buildVarData(@[0], @[@[0i32], @[50i32]])])
+  buildHvarTable(store, buildMap0(@[0u32, 1u32], 1, 1))
+
+test "hvar advance varies with coordinate":
+  var sf = newShaperFont(varFontHV(hvarBasic(), @[]))
+  check sf.hAdvance(newGlyphId(1)) == 600i32
+  sf.setVariations([(wghtTag(), 900.0f32)])
+  check sf.hAdvance(newGlyphId(1)) == 650i32
+  sf.setVariations([(wghtTag(), 650.0f32)])
+  check sf.hAdvance(newGlyphId(1)) == 625i32
+  # Empty location: static.
+  var sf2 = newShaperFont(varFontHV(hvarBasic(), @[]))
+  check sf2.hAdvance(newGlyphId(1)) == 600i32
+  check sf2.hAdvance(newGlyphId(0)) == 500i32
+
+test "hvar regions sum and words encode":
+  let store = buildItemStore(
+    @[@[(s: 0.0, p: 1.0, e: 1.0)], @[(s: 0.0, p: 1.0, e: 1.0)]], 1,
+    @[buildVarData(@[0, 1], @[@[0i32, 0i32], @[30i32, 20i32]],
+      bigCount = 1)])
+  var sf = newShaperFont(varFontHV(buildHvarTable(store,
+    buildMap0(@[0u32, 1u32], 1, 1)), @[]))
+  sf.setVariations([(wghtTag(), 900.0f32)])
+  check sf.hAdvance(newGlyphId(1)) == 650i32
+
+test "hvar map format 1 and sentinel":
+  let store = buildItemStore(@[@[(s: 0.0, p: 1.0, e: 1.0)]], 1,
+    @[buildVarData(@[0], @[@[0i32], @[50i32]])])
+  let m = buildMap1(@[NoVariationIndex, 1u32], 16, 4)
+  var sf = newShaperFont(varFontHV(buildHvarTable(store, m), @[]))
+  sf.setVariations([(wghtTag(), 900.0f32)])
+  check sf.hAdvance(newGlyphId(0)) == 500i32
+  check sf.hAdvance(newGlyphId(1)) == 650i32
+  # Gid past the map: no variation.
+  check mapVarIndex(parseDeltaSetIndexMap(m, 0, m.len), 9) ==
+    NoVariationIndex
+
+test "hvar malformed is contained":
+  var bad = hvarBasic()
+  bad[4] = 0xFFu8
+  bad[5] = 0xFFu8
+  bad[6] = 0xFFu8
+  bad[7] = 0xFFu8
+  var sf = newShaperFont(varFontHV(bad, @[]))
+  sf.setVariations([(wghtTag(), 900.0f32)])
+  check sf.hAdvance(newGlyphId(1)) == 600i32
+
+test "vvar advance varies with coordinate":
+  let store = buildItemStore(@[@[(s: 0.0, p: 1.0, e: 1.0)]], 1,
+    @[buildVarData(@[0], @[@[0i32], @[-100i32]])])
+  var sf = newShaperFont(varFontHV(@[], buildHvarTable(store,
+    buildMap0(@[0u32, 1u32], 1, 1))))
+  check sf.vAdvance(newGlyphId(1)) == -1000i32
+  sf.setVariations([(wghtTag(), 900.0f32)])
+  check sf.vAdvance(newGlyphId(1)) == -900i32
+
+test "varstore long words decode":
+  let store = buildItemStore(@[@[(s: 0.0, p: 1.0, e: 1.0)]], 1,
+    @[buildVarData(@[0], @[@[0i32], @[70000i32]], longWords = true)])
+  var sf = newShaperFont(varFontHV(buildHvarTable(store,
+    buildMap0(@[0u32, 1u32], 1, 1)), @[]))
+  sf.setVariations([(wghtTag(), 900.0f32)])
+  check sf.hAdvance(newGlyphId(1)) == 70600i32
+
+test "region scalar edge cases":
+  check regionScalar(@[(start: 0.0, peak: 1.0, finish: 1.0)],
+    @[0.5f32]) == 0.5
+  check regionScalar(@[(start: 0.0, peak: 1.0, finish: 1.0)],
+    @[1.0f32]) == 1.0
+  check regionScalar(@[(start: 0.0, peak: 1.0, finish: 1.0)],
+    @[1.5f32]) == 0.0
+  check abs(regionScalar(@[(start: 0.2, peak: 0.6, finish: 1.0)],
+    @[0.4f32]) - 0.5) < 1e-6
+  # Peak zero: axis does not participate.
+  check regionScalar(@[(start: 0.0, peak: 0.0, finish: 0.0)],
+    @[0.7f32]) == 1.0
+  # Straddling support is skipped (malformed-tolerant).
+  check regionScalar(@[(start: -1.0, peak: 0.5, finish: 1.0)],
+    @[0.9f32]) == 1.0
