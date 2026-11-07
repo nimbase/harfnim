@@ -13,6 +13,13 @@ type
     offset*: int
     length*: int
 
+  NameEntry* = object
+    platformID*: uint16
+    encodingID*: uint16
+    languageID*: uint16
+    nameID*: uint16
+    bytes*: seq[uint8]
+
   SfntFont* = object
     bytes*: seq[uint8]
     tables*: seq[TableEntry]
@@ -24,6 +31,8 @@ type
     numVMetrics*: uint16
     isSymbol*: bool
     cmapOffset*: int
+    cmap14Offset*: int
+    names*: seq[NameEntry]
 
 proc tagOf(a, b, c, d: char): uint32 =
   (uint32(uint8(a)) shl 24) or (uint32(uint8(b)) shl 16) or
@@ -40,6 +49,7 @@ const
   TagVhea = 0x76686561u32
   TagVmtx = 0x766D7478u32
   TagCff = 0x43464620u32
+  TagName = 0x6E616D65u32
 
 proc checkBounds(bytes: openArray[uint8], off, size: int) =
   if off < 0 or size < 0 or off + size > bytes.len:
@@ -128,6 +138,187 @@ proc parseCmapSelection(bytes: seq[uint8], cmapOff: int): tuple[
         return (r.off, p == 3u16 and e == 0u16)
   (-1, false)
 
+proc findCmap14Offset(bytes: seq[uint8], cmapOff: int): int =
+  ## Absolute offset of the first format 14 (UVS) subtable, or -1.
+  ## Malformed entries are skipped; never raises beyond the caller's
+  ## bounds checking.
+  if cmapOff < 0 or cmapOff + 4 > bytes.len:
+    return -1
+  let numTables = int(readU16(bytes, cmapOff + 2))
+  if cmapOff + 4 + numTables * 8 > bytes.len:
+    return -1
+  for i in 0 ..< numTables:
+    let base = cmapOff + 4 + i * 8
+    let sub = cmapOff + int(readU32(bytes, base + 4))
+    if sub < 0 or sub + 2 > bytes.len:
+      continue
+    if readU16(bytes, sub) == 14u16:
+      return sub
+  -1
+
+proc readU24At(bytes: seq[uint8], off: int): uint32 =
+  (uint32(bytes[off]) shl 16) or (uint32(bytes[off + 1]) shl 8) or
+    uint32(bytes[off + 2])
+
+proc cmap14VariantUncached(bytes: seq[uint8], sub: int, base,
+    selector: uint32, numGlyphs: uint16,
+    nominal: Option[uint32]): Option[uint32] =
+  ## Resolves one (base, selector) pair through a format 14 subtable.
+  ## Non-default mappings win; default ranges fall back to the nominal
+  ## glyph. Malformed data yields none (contained, like other cmap
+  ## lookups) rather than raising.
+  if sub < 0 or sub + 10 > bytes.len:
+    return none(uint32)
+  if readU16(bytes, sub) != 14u16:
+    return none(uint32)
+  let length = int(readU32(bytes, sub + 2))
+  if length < 10 or sub + length > bytes.len:
+    return none(uint32)
+  let numRecords = int(readU32(bytes, sub + 6))
+  if numRecords < 0 or sub + 10 + numRecords * 11 > sub + length:
+    return none(uint32)
+  # Records are sorted by selector; binary search them.
+  var lo = 0
+  var hi = numRecords
+  var found = -1
+  while lo < hi:
+    let mid = (lo + hi) shr 1
+    let sel = readU24At(bytes, sub + 10 + mid * 11)
+    if sel < selector:
+      lo = mid + 1
+    elif sel > selector:
+      hi = mid
+    else:
+      found = mid
+      break
+  if found < 0:
+    return none(uint32)
+  let recOff = sub + 10 + found * 11
+  let defaultOff = int(readU32(bytes, recOff + 3))
+  let nonDefaultOff = int(readU32(bytes, recOff + 7))
+  if nonDefaultOff != 0:
+    let t = sub + nonDefaultOff
+    if t >= sub and t + 4 <= sub + length and t + 4 <= bytes.len:
+      let numMappings = int(readU32(bytes, t))
+      if numMappings >= 0 and t + 4 + numMappings * 5 <= sub + length and
+          t + 4 + numMappings * 5 <= bytes.len:
+        var l2 = 0
+        var h2 = numMappings
+        while l2 < h2:
+          let m2 = (l2 + h2) shr 1
+          let u = readU24At(bytes, t + 4 + m2 * 5)
+          if u < base:
+            l2 = m2 + 1
+          elif u > base:
+            h2 = m2
+          else:
+            let gid = readU16(bytes, t + 4 + m2 * 5 + 3)
+            if gid == 0u16 or uint32(gid) >= uint32(numGlyphs):
+              return none(uint32)
+            return some(uint32(gid))
+  if defaultOff != 0:
+    let t = sub + defaultOff
+    if t >= sub and t + 4 <= sub + length and t + 4 <= bytes.len:
+      let numRanges = int(readU32(bytes, t))
+      if numRanges >= 0 and t + 4 + numRanges * 4 <= sub + length and
+          t + 4 + numRanges * 4 <= bytes.len:
+        var l3 = 0
+        var h3 = numRanges
+        while l3 < h3:
+          let m3 = (l3 + h3) shr 1
+          let s = readU24At(bytes, t + 4 + m3 * 4)
+          let e = s + uint32(bytes[t + 4 + m3 * 4 + 3])
+          if base < s:
+            h3 = m3
+          elif base > e:
+            l3 = m3 + 1
+          else:
+            return nominal
+  none(uint32)
+
+proc parseNameRecords(bytes: seq[uint8], tableOff, tableLen: int): seq[
+    NameEntry] =
+  ## Parses the `name` table directory. Format 0 and 1 share the same
+  ## record layout; language-tag data after the records is ignored.
+  ## Malformed tables yield an empty list (contained).
+  result = @[]
+  if tableOff < 0 or tableLen < 6 or tableOff + tableLen > bytes.len:
+    return
+  let format = readU16(bytes, tableOff)
+  if format > 1u16:
+    return
+  let count = int(readU16(bytes, tableOff + 2))
+  let stringOffset = int(readU16(bytes, tableOff + 4))
+  if stringOffset < 0 or stringOffset > tableLen:
+    return
+  if tableOff + 6 + count * 12 > tableOff + tableLen:
+    return
+  if tableOff + 6 + count * 12 > bytes.len:
+    return
+  let storage = tableOff + stringOffset
+  for i in 0 ..< count:
+    let base = tableOff + 6 + i * 12
+    let length = int(readU16(bytes, base + 8))
+    let strOff = int(readU16(bytes, base + 10))
+    if strOff < 0 or length < 0 or strOff + length > tableLen - stringOffset:
+      continue
+    if storage + strOff + length > bytes.len:
+      continue
+    var raw = newSeq[uint8](length)
+    for k in 0 ..< length:
+      raw[k] = bytes[storage + strOff + k]
+    result.add(NameEntry(platformID: readU16(bytes, base),
+      encodingID: readU16(bytes, base + 2),
+      languageID: readU16(bytes, base + 4),
+      nameID: readU16(bytes, base + 6), bytes: raw))
+
+proc decodeNameUtf16Be(raw: seq[uint8]): string =
+  ## Decodes UTF-16BE (Windows/Unicode platform strings) as UTF-8,
+  ## using replacement characters for malformed units.
+  result = ""
+  var i = 0
+  while i + 1 < raw.len:
+    let u = (uint32(raw[i]) shl 8) or uint32(raw[i + 1])
+    i += 2
+    var cp = u
+    if cp >= 0xD800u32 and cp <= 0xDBFFu32 and i + 1 < raw.len:
+      let lo = (uint32(raw[i]) shl 8) or uint32(raw[i + 1])
+      if lo >= 0xDC00u32 and lo <= 0xDFFFu32:
+        cp = 0x10000u32 + ((cp - 0xD800u32) shl 10) + (lo - 0xDC00u32)
+        i += 2
+    if cp < 0x80u32:
+      result.add(char(cp))
+    elif cp < 0x800u32:
+      result.add(char(0xC0u32 or (cp shr 6)))
+      result.add(char(0x80u32 or (cp and 0x3Fu32)))
+    elif cp < 0x10000u32:
+      result.add(char(0xE0u32 or (cp shr 12)))
+      result.add(char(0x80u32 or ((cp shr 6) and 0x3Fu32)))
+      result.add(char(0x80u32 or (cp and 0x3Fu32)))
+    elif cp <= 0x10FFFFu32:
+      result.add(char(0xF0u32 or (cp shr 18)))
+      result.add(char(0x80u32 or ((cp shr 12) and 0x3Fu32)))
+      result.add(char(0x80u32 or ((cp shr 6) and 0x3Fu32)))
+      result.add(char(0x80u32 or (cp and 0x3Fu32)))
+    else:
+      result.add("\xEF\xBF\xBD")
+
+proc decodeNameBytes*(e: NameEntry): string =
+  ## Decodes a name record to UTF-8. Unicode/Windows platforms are
+  ## UTF-16BE; other platforms fall back to a Latin-1 pass-through
+  ## (TODO: Mac Roman table).
+  if e.platformID == 0u16 or e.platformID == 3u16:
+    result = decodeNameUtf16Be(e.bytes)
+  else:
+    result = ""
+    for b in e.bytes:
+      let cp = uint32(b)
+      if cp < 0x80u32:
+        result.add(char(cp))
+      else:
+        result.add(char(0xC0u32 or (cp shr 6)))
+        result.add(char(0x80u32 or (cp and 0x3Fu32)))
+
 proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
   if bytes.len < 12:
     raise newException(FontError, "font too small for offset table")
@@ -178,6 +369,14 @@ proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
     let (sub, sym) = parseCmapSelection(bytes, cmap.offset)
     result.cmapOffset = sub
     result.isSymbol = sym
+    result.cmap14Offset = findCmap14Offset(bytes, cmap.offset)
+  else:
+    result.cmap14Offset = -1
+  let name = result.tableData(TagName)
+  if name.ok:
+    result.names = parseNameRecords(bytes, name.offset, name.len)
+  else:
+    result.names = @[]
 
 proc parseFont*(data: openArray[uint8], faceIndex: int = 0): SfntFont =
   var bytes = newSeq[uint8](data.len)
@@ -299,6 +498,42 @@ proc mapUnicode*(f: SfntFont, cp: uint32): Option[GlyphId] =
       return some(newGlyphId(shifted.get))
   # TODO: legacy Arabic PUA pages (0xB200/0xB300) with arabic shaper tables
   none(GlyphId)
+
+proc mapUnicodeVariant*(f: SfntFont, base,
+    selector: uint32): Option[GlyphId] =
+  ## Maps a (base, variation selector) pair through cmap format 14.
+  ## Default UVS entries resolve to the nominal glyph; non-default
+  ## entries resolve to their mapped glyph. Returns none when the font
+  ## has no format 14 subtable or the sequence is not covered.
+  if f.cmap14Offset < 0:
+    return none(GlyphId)
+  let nominal =
+    block:
+      let d = cmapMapUncached(f, base)
+      if d.isSome: some(d.get)
+      elif f.isSymbol and base < 0x100u32:
+        cmapMapUncached(f, base + 0xF000u32)
+      else: none(uint32)
+  let gid = cmap14VariantUncached(f.bytes, f.cmap14Offset, base, selector,
+    f.numGlyphs, nominal)
+  if gid.isNone:
+    return none(GlyphId)
+  some(newGlyphId(gid.get))
+
+proc fontName*(f: SfntFont, nameID: uint16, platformID = 3u16,
+    encodingID = 1u16, languageID = 0x0409u16): Option[string] =
+  ## Returns the decoded `name` table string for an exact
+  ## (platform, encoding, language, nameID) match, falling back to any
+  ## record with the same nameID. Unicode/Windows strings decode from
+  ## UTF-16BE; other platforms use a Latin-1 pass-through.
+  for e in f.names:
+    if e.nameID == nameID and e.platformID == platformID and
+        e.encodingID == encodingID and e.languageID == languageID:
+      return some(decodeNameBytes(e))
+  for e in f.names:
+    if e.nameID == nameID:
+      return some(decodeNameBytes(e))
+  none(string)
 
 proc hAdvanceRaw(f: SfntFont, gid: uint32): tuple[adv: uint16, lsb: int16] =
   let hmtx = f.tableData(TagHmtx)

@@ -49,8 +49,7 @@ proc nominalGlyphs*(f: ShaperFont, infos: var seq[GlyphInfo], first,
     inc result
 
 proc variationGlyph*(f: ShaperFont, base, selector: uint32): Option[GlyphId] =
-  # TODO: cmap format 14 (Unicode Variation Sequences)
-  none(GlyphId)
+  f.font.mapUnicodeVariant(base, selector)
 
 proc hAdvance*(f: ShaperFont, gid: GlyphId): int32 =
   f.scale.clampXAdvance(f.scale.scaleX(f.font.hAdvance(gid.value)))

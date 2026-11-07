@@ -354,3 +354,205 @@ test "glyph extents simple bounds":
       height: -20i32))
   check sf.glyphExtents(newGlyphId(2)) == none(GlyphExtents)
   check sf.glyphExtents(newGlyphId(9)) == none(GlyphExtents)
+
+# --------------------------------------------------------------------------
+# cmap format 14 (UVS) and name table
+# --------------------------------------------------------------------------
+
+proc putU24(s: var seq[uint8], v: uint32) =
+  s.add(uint8((v shr 16) and 0xFFu32))
+  s.add(uint8((v shr 8) and 0xFFu32))
+  s.add(uint8(v and 0xFFu32))
+
+proc buildCmap14(records: seq[tuple[selector: uint32,
+    defaultRanges: seq[tuple[first, additional: uint32]],
+    mappings: seq[tuple[unicode: uint32, gid: uint16]]]]): seq[uint8] =
+  result = @[]
+  result.putU16(14u16)
+  let lenPos = result.len
+  result.putU32(0u32) # length placeholder
+  result.putU32(uint32(records.len))
+  var recPos: seq[int] = @[]
+  for _ in records:
+    recPos.add(result.len)
+    result.putU24(0u32)
+    result.putU32(0u32)
+    result.putU32(0u32)
+  for i, r in records:
+    result[recPos[i]] = uint8((r.selector shr 16) and 0xFFu32)
+    result[recPos[i]+1] = uint8((r.selector shr 8) and 0xFFu32)
+    result[recPos[i]+2] = uint8(r.selector and 0xFFu32)
+    if r.defaultRanges.len > 0:
+      let dOff = result.len
+      result[recPos[i]+3] = uint8((dOff shr 24) and 0xFF)
+      result[recPos[i]+4] = uint8((dOff shr 16) and 0xFF)
+      result[recPos[i]+5] = uint8((dOff shr 8) and 0xFF)
+      result[recPos[i]+6] = uint8(dOff and 0xFF)
+      result.putU32(uint32(r.defaultRanges.len))
+      for dr in r.defaultRanges:
+        result.putU24(dr.first)
+        result.add(uint8(dr.additional and 0xFFu32))
+    if r.mappings.len > 0:
+      let nOff = result.len
+      result[recPos[i]+7] = uint8((nOff shr 24) and 0xFF)
+      result[recPos[i]+8] = uint8((nOff shr 16) and 0xFF)
+      result[recPos[i]+9] = uint8((nOff shr 8) and 0xFF)
+      result[recPos[i]+10] = uint8(nOff and 0xFF)
+      result.putU32(uint32(r.mappings.len))
+      for m in r.mappings:
+        result.putU24(m.unicode)
+        result.putU16(m.gid)
+  let total = result.len
+  result[lenPos] = uint8((total shr 24) and 0xFF)
+  result[lenPos+1] = uint8((total shr 16) and 0xFF)
+  result[lenPos+2] = uint8((total shr 8) and 0xFF)
+  result[lenPos+3] = uint8(total and 0xFF)
+
+proc buildFontSized(cmap: seq[uint8], numGlyphs: int,
+    name: seq[uint8] = @[]): seq[uint8] =
+  var head = newSeq[uint8]()
+  head.putU32(0x00010000u32)
+  head.putU32(0u32)
+  head.putU32(0u32)
+  head.putU32(0x5F0F3CF5u32)
+  head.putU16(0u16)
+  head.putU16(1000u16)
+  for _ in 0 ..< 4:
+    head.putU32(0u32)
+  for _ in 0 ..< 4:
+    head.putI16(0i16)
+  head.putU16(0u16)
+  head.putU16(0u16)
+  head.putI16(0i16)
+  head.putI16(0i16)
+  head.putU16(0u16)
+  var hhea = newSeq[uint8]()
+  hhea.putU32(0x00010000u32)
+  hhea.putI16(800i16)
+  hhea.putI16(-200i16)
+  hhea.putI16(0i16)
+  hhea.putU16(600u16)
+  for _ in 0 ..< 11:
+    hhea.putI16(0i16)
+  hhea.putU16(uint16(numGlyphs))
+  var maxp = newSeq[uint8]()
+  maxp.putU32(0x00005000u32)
+  maxp.putU16(uint16(numGlyphs))
+  var hmtx = newSeq[uint8]()
+  for _ in 0 ..< numGlyphs:
+    hmtx.putU16(500u16)
+    hmtx.putI16(0i16)
+  var loca = newSeq[uint8]()
+  for _ in 0 .. numGlyphs:
+    loca.add(0u8)
+    loca.add(0u8)
+  var tables = @[
+    ("head", head), ("hhea", hhea), ("maxp", maxp), ("hmtx", hmtx),
+    ("cmap", cmap), ("loca", loca),
+  ]
+  if name.len > 0:
+    tables.add(("name", name))
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(uint16(tables.len))
+  result.putU16(32u16)
+  result.putU16(1u16)
+  result.putU16(16u16)
+  var off = 12 + tables.len * 16
+  for (tname, data) in tables:
+    for c in tname:
+      result.add(uint8(c))
+    result.putU32(0u32)
+    result.putU32(uint32(off))
+    var padded = (data.len + 3) and not 3
+    result.putU32(uint32(padded))
+    off += padded
+  for (_, data) in tables:
+    result.add(data)
+    result.pad4()
+
+proc encodeUtf16Be(s: string): seq[uint8] =
+  result = @[]
+  for c in s:
+    result.putU16(uint16(ord(c)))
+
+proc buildName(records: seq[tuple[plat, enc, lang, id: uint16,
+    text: string]]): seq[uint8] =
+  result = @[]
+  result.putU16(0u16)
+  result.putU16(uint16(records.len))
+  let stringOff = 6 + records.len * 12
+  result.putU16(uint16(stringOff))
+  var storage = newSeq[uint8]()
+  var offs: seq[int] = @[]
+  for r in records:
+    result.putU16(r.plat)
+    result.putU16(r.enc)
+    result.putU16(r.lang)
+    result.putU16(r.id)
+    let enc = encodeUtf16Be(r.text)
+    result.putU16(uint16(enc.len))
+    offs.add(storage.len)
+    result.putU16(0u16) # patched below
+    for b in enc:
+      storage.add(b)
+  for i, o in offs:
+    let pos = 6 + i * 12 + 10
+    result[pos] = uint8((o shr 8) and 0xFF)
+    result[pos+1] = uint8(o and 0xFF)
+  for b in storage:
+    result.add(b)
+
+test "cmap14 non-default variant":
+  let cmap = buildCmap(@[(3u16, 1u16, buildCmapFormat4()),
+    (0u16, 5u16, buildCmap14(@[(selector: 0xFE00u32,
+      defaultRanges: newSeq[tuple[first, additional: uint32]](), mappings: @[(unicode: 0x41u32, gid: 7u16)])]))])
+  let sf = newShaperFont(parseFont(buildFontSized(cmap, 10)))
+  check sf.nominalGlyph(0x41u32) == some(newGlyphId(1))
+  check sf.variationGlyph(0x41u32, 0xFE00u32) == some(newGlyphId(7))
+  check sf.variationGlyph(0x42u32, 0xFE00u32) == none(GlyphId)
+  check sf.variationGlyph(0x41u32, 0xFE01u32) == none(GlyphId)
+
+test "cmap14 default variant falls back to nominal":
+  let cmap = buildCmap(@[(3u16, 1u16, buildCmapFormat4()),
+    (0u16, 5u16, buildCmap14(@[(selector: 0xFE01u32,
+      defaultRanges: @[(first: 0x41u32, additional: 1u32)],
+      mappings: newSeq[tuple[unicode: uint32, gid: uint16]]()) ]))])
+  let sf = newShaperFont(parseFont(buildFontSized(cmap, 10)))
+  check sf.variationGlyph(0x41u32, 0xFE01u32) == some(newGlyphId(1))
+  check sf.variationGlyph(0x42u32, 0xFE01u32) == some(newGlyphId(2))
+  check sf.variationGlyph(0x43u32, 0xFE01u32) == none(GlyphId)
+
+test "cmap14 out-of-range gid is none":
+  let cmap = buildCmap(@[(3u16, 1u16, buildCmapFormat4()),
+    (0u16, 5u16, buildCmap14(@[(selector: 0xFE00u32,
+      defaultRanges: newSeq[tuple[first, additional: uint32]](), mappings: @[(unicode: 0x41u32, gid: 99u16)])]))])
+  let sf = newShaperFont(parseFont(buildFontSized(cmap, 10)))
+  check sf.variationGlyph(0x41u32, 0xFE00u32) == none(GlyphId)
+
+test "cmap14 truncated is contained":
+  var bad = buildCmap14(@[(selector: 0xFE00u32, defaultRanges: newSeq[tuple[first, additional: uint32]](),
+    mappings: @[(unicode: 0x41u32, gid: 7u16)])])
+  bad.setLen(bad.len - 3)
+  let cmap = buildCmap(@[(3u16, 1u16, buildCmapFormat4()), (0u16, 5u16, bad)])
+  let sf = newShaperFont(parseFont(buildFontSized(cmap, 10)))
+  check sf.nominalGlyph(0x41u32) == some(newGlyphId(1))
+  check sf.variationGlyph(0x41u32, 0xFE00u32) == none(GlyphId)
+
+test "name table lookup":
+  let name = buildName(@[(3u16, 1u16, 0x0409u16, 1u16, "TestFam"),
+    (3u16, 1u16, 0x0409u16, 2u16, "Regular")])
+  let cmap = buildCmap(@[(3u16, 1u16, buildCmapFormat4())])
+  let f = parseFont(buildFontSized(cmap, 3, name))
+  check f.names.len == 2
+  check f.fontName(1u16) == some("TestFam")
+  check f.fontName(2u16) == some("Regular")
+  check f.fontName(3u16) == none(string)
+  check f.fontName(1u16, languageID = 0x0411u16) == some("TestFam")
+
+test "name table truncated is contained":
+  var bad = buildName(@[(3u16, 1u16, 0x0409u16, 1u16, "TestFam")])
+  bad.setLen(bad.len - 2)
+  let cmap = buildCmap(@[(3u16, 1u16, buildCmapFormat4())])
+  let f = parseFont(buildFontSized(cmap, 3, bad))
+  check f.mapUnicode(0x41u32) == some(newGlyphId(1))
