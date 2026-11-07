@@ -84,8 +84,9 @@ for i in 0 ..< buf.len:
 * [x] CFF / Type 2 charstrings (subrs, flex, CID FDSelect, seac) with bounded outline cache
 * [x] cmap format 14 variation sequences, name table
 * [x] Variable font coordinates (fvar/avar) and gvar outline variations
+* [x] HVAR/VVAR advance variation and CFF2 outlines with blend
 * [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
-* [ ] Variable metrics (HVAR/MVAR/var-store) and CFF2 blending
+* [ ] MVAR metrics and GPOS variation store application
 * [ ] AAT morx
 * [ ] stch stretching and win1256 legacy fallback
 

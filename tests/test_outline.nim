@@ -856,3 +856,421 @@ test "outline cache is bounded":
   cacheStore(c, 2u32, none(GlyphOutline))
   check c.items.len == 2
   check c.items.hasKey(2u32)
+
+# --------------------------------------------------------------------------
+# CFF2 tests
+# --------------------------------------------------------------------------
+
+proc buildIndex2(entries: seq[seq[uint8]]): seq[uint8] =
+  result = @[]
+  result.putU32(uint32(entries.len))
+  if entries.len == 0:
+    return
+  var total = 0
+  for e in entries:
+    total += e.len
+  let offSize = if total + 1 <= 255: 1
+    elif total + 1 <= 65535: 2
+    else: 4
+  result.add(uint8(offSize))
+  var off = 1
+  var offs: seq[int] = @[]
+  for e in entries:
+    offs.add(off)
+    off += e.len
+  offs.add(off)
+  for o in offs:
+    for k in countdown(offSize - 1, 0):
+      result.add(uint8((o shr (k * 8)) and 0xFF))
+  for e in entries:
+    result.add(e)
+
+proc buildCff2Table(charstrings: seq[seq[uint8]],
+    globalSubrs: seq[seq[uint8]] = @[],
+    fdSelect: seq[uint8] = @[],
+    privateDicts: seq[seq[uint8]] = @[],
+    localSubrs: seq[seq[seq[uint8]]] = @[],
+    varStore: seq[uint8] = @[],
+    topMatrix: seq[uint8] = @[]): seq[uint8] =
+  # Order after the required header/top/global header trio:
+  # privates+localsubrs, varstore, charstrings, fdarray, fdselect.
+  # This keeps every forward offset computable in a single pass.
+  let gsubrIdx = buildIndex2(globalSubrs)
+  let csIdx = buildIndex2(charstrings)
+  let topStub = 40
+  var cursor = 5 + topStub
+  let gsubrOff = cursor
+  cursor += gsubrIdx.len
+  var privBlobs: seq[seq[uint8]] = @[]
+  var privOffs: seq[int] = @[]
+  for i, pd in privateDicts:
+    privOffs.add(cursor)
+    var blob = pd
+    if i < localSubrs.len and localSubrs[i].len > 0:
+      blob.add(buildIndex2(localSubrs[i]))
+    privBlobs.add(blob)
+    cursor += blob.len
+  let varStoreOff = cursor
+  cursor += varStore.len
+  let csOff = cursor
+  cursor += csIdx.len
+  # One FontDICT per private dict, embedding its size and offset.
+  var fdEntries: seq[seq[uint8]] = @[]
+  for i, pd in privateDicts:
+    var e: seq[uint8] = @[]
+    e.add(encInt(pd.len))
+    e.add(encInt(privOffs[i]))
+    e.add(18u8)
+    fdEntries.add(e)
+  let fdArrayIdx = buildIndex2(fdEntries)
+  let fdArrayOff = cursor
+  cursor += fdArrayIdx.len
+  let fdSelectOff = cursor
+  cursor += fdSelect.len
+  var top: seq[uint8] = @[]
+  top.add(encInt(csOff))
+  top.add(17u8)
+  if varStore.len > 0:
+    top.add(encInt(varStoreOff))
+    top.add(24u8)
+  top.add(encInt(fdArrayOff))
+  top.add(12u8)
+  top.add(36u8)
+  if fdSelect.len > 0:
+    top.add(encInt(fdSelectOff))
+    top.add(12u8)
+    top.add(37u8)
+  for b in topMatrix:
+    top.add(b)
+  if topMatrix.len > 0:
+    top.add(12u8)
+    top.add(7u8)
+  doAssert top.len <= topStub
+  while top.len < topStub:
+    top.add(0u8) # padding parsed as version op; harmless
+  result = @[2u8, 0u8, 5u8, 0u8, uint8(topStub)]
+  doAssert topStub == 40
+  result.add(top)
+  result.add(gsubrIdx)
+  for blob in privBlobs:
+    result.add(blob)
+  result.add(varStore)
+  result.add(csIdx)
+  result.add(fdArrayIdx)
+  result.add(fdSelect)
+
+proc buildOtf2(cff: seq[uint8], numGlyphs: int,
+    fvar: seq[uint8] = @[]): seq[uint8] =
+  var head = newSeq[uint8]()
+  head.putU32(0x4F54544Fu32)
+  head.putU32(0u32)
+  head.putU32(0u32)
+  head.putU32(0x5F0F3CF5u32)
+  head.putU16(0u16)
+  head.putU16(1000u16)
+  for _ in 0 ..< 4:
+    head.putU32(0u32)
+  for _ in 0 ..< 4:
+    head.putI16(0i16)
+  head.putU16(0u16)
+  head.putU16(0u16)
+  head.putI16(0i16)
+  head.putI16(0i16)
+  head.putU16(0u16)
+  var hhea = newSeq[uint8]()
+  hhea.putU32(0x00010000u32)
+  hhea.putI16(800i16)
+  hhea.putI16(-200i16)
+  hhea.putI16(0i16)
+  hhea.putU16(600u16)
+  for _ in 0 ..< 11:
+    hhea.putI16(0i16)
+  hhea.putU16(uint16(numGlyphs))
+  var maxp = newSeq[uint8]()
+  maxp.putU32(0x00005000u32)
+  maxp.putU16(uint16(numGlyphs))
+  var hmtx = newSeq[uint8]()
+  hmtx.putU16(500u16)
+  hmtx.putI16(0i16)
+  hmtx.putU16(600u16)
+  hmtx.putI16(10i16)
+  hmtx.putI16(20i16)
+  let cmap = buildCmapGlyphs()
+  var tables = @[
+    ("head", head), ("hhea", hhea), ("maxp", maxp), ("hmtx", hmtx),
+    ("cmap", cmap), ("CFF2", cff),
+  ]
+  if fvar.len > 0:
+    tables.add(("fvar", fvar))
+  result = @[]
+  result.putU32(0x4F54544Fu32)
+  result.putU16(uint16(tables.len))
+  result.putU16(32u16)
+  result.putU16(1u16)
+  result.putU16(16u16)
+  var off = 12 + tables.len * 16
+  for (name, data) in tables:
+    for c in name:
+      result.add(uint8(c))
+    result.putU32(0u32)
+    result.putU32(uint32(off))
+    result.putU32(uint32((data.len + 3) and not 3))
+    off += (data.len + 3) and not 3
+  for (_, data) in tables:
+    result.add(data)
+    result.pad4()
+
+proc buildFvarAxes(axes: seq[tuple[tag: string, mn, df, mx: float32]]): seq[
+    uint8] =
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(16u16)
+  result.putU16(2u16)
+  result.putU16(uint16(axes.len))
+  result.putU16(20u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  for a in axes:
+    result.putU32(tagFromStr(a.tag).toU32())
+    result.putU32(cast[uint32](int32(a.mn * 65536.0f32)))
+    result.putU32(cast[uint32](int32(a.df * 65536.0f32)))
+    result.putU32(cast[uint32](int32(a.mx * 65536.0f32)))
+    result.putU16(0u16)
+    result.putU16(256u16)
+
+proc vsRegionList(regions: seq[seq[tuple[s, p, e: float64]]],
+    axisCount: int): seq[uint8] =
+  result = @[]
+  result.putU16(uint16(axisCount))
+  result.putU16(uint16(regions.len))
+  for r in regions:
+    for a in 0 ..< axisCount:
+      result.putI16(int16(r[a].s * 16384.0))
+      result.putI16(int16(r[a].p * 16384.0))
+      result.putI16(int16(r[a].e * 16384.0))
+
+proc vsData(regionIdx: seq[int], rows: seq[seq[int32]]): seq[uint8] =
+  result = @[]
+  result.putU16(uint16(rows.len))
+  result.putU16(uint16(regionIdx.len))
+  result.putU16(uint16(regionIdx.len))
+  for r in regionIdx:
+    result.putU16(uint16(r))
+  for row in rows:
+    for v in row:
+      result.putI16(cast[int16](v))
+
+proc vsStore(regions: seq[seq[tuple[s, p, e: float64]]], axisCount: int,
+    datas: seq[seq[uint8]]): seq[uint8] =
+  let regList = vsRegionList(regions, axisCount)
+  result = @[]
+  result.putU16(1u16)
+  let listOff = 8 + datas.len * 2
+  result.putU32(uint32(listOff))
+  result.putU16(uint16(datas.len))
+  var cur = listOff + regList.len
+  for d in datas:
+    result.putU16(uint16(cur))
+    cur += d.len
+  result.add(regList)
+  for d in datas:
+    result.add(d)
+
+proc blendSquare(dx, dy, delta: int): seq[uint8] =
+  # rmoveto with blended dx, then a 100x100 square.
+  result = @[]
+  result.add(encInt(dx))
+  result.add(encInt(delta))
+  result.add(encInt(1))
+  result.add(16u8) # blend
+  result.add(encInt(dy))
+  result.add(21u8) # rmoveto
+  result.add(encInt(100))
+  result.add(6u8)
+  result.add(encInt(100))
+  result.add(7u8)
+  result.add(encInt(-100))
+  result.add(6u8)
+  result.add(encInt(-100))
+  result.add(7u8)
+  result.add(14u8)
+
+proc cff2Font(cff: seq[uint8], numGlyphs: int,
+    fvar: seq[uint8] = @[]): SfntFont =
+  parseFont(buildOtf2(cff, numGlyphs, fvar))
+
+test "cff2 blend moves with coordinate":
+  let store = vsStore(@[@[(s: 0.0, p: 1.0, e: 1.0)]], 1,
+    @[vsData(@[0], @[@[0i32]])])
+  let fvar = buildFvarAxes(@[("wght", 100.0f32, 400.0f32, 900.0f32)])
+  let cff = buildCff2Table(@[@[14u8], blendSquare(10, 20, 50)],
+    privateDicts = @[newSeq[uint8]()], varStore = store)
+  var sf = newShaperFont(cff2Font(cff, 2, fvar))
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[0].to == (10i32, 20i32)
+  sf.setVariations([(tagFromStr("wght").toU32(), 900.0f32)])
+  ops = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[0].to == (60i32, 20i32)
+  check ops[1].to == (160i32, 20i32)
+
+test "cff2 vsindex selects region set":
+  let r0 = @[(s: 0.0, p: 1.0, e: 1.0), (s: 0.0, p: 0.0, e: 0.0)]
+  let r1 = @[(s: 0.0, p: 0.0, e: 0.0), (s: 0.0, p: 1.0, e: 1.0)]
+  let store = vsStore(@[r0, r1], 2,
+    @[vsData(@[0], @[@[0i32]]), vsData(@[1], @[@[0i32]])])
+  let fvar = buildFvarAxes(@[("wght", 100.0f32, 400.0f32, 900.0f32),
+    ("wdth", 50.0f32, 100.0f32, 200.0f32)])
+  var sqNoVs = blendSquare(10, 20, 40)
+  var sqVs = @[encInt(1)[0], 15u8] & blendSquare(10, 20, 40)
+  let cff = buildCff2Table(@[@[14u8], sqNoVs, sqVs],
+    privateDicts = @[newSeq[uint8](), newSeq[uint8]()], varStore = store)
+  var sf = newShaperFont(cff2Font(cff, 3, fvar))
+  let wght = tagFromStr("wght").toU32()
+  let wdth = tagFromStr("wdth").toU32()
+  sf.setVariations([(wght, 900.0f32)])
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[0].to == (50i32, 20i32)
+  ops = @[]
+  check sf.drawGlyph(newGlyphId(2u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[0].to == (10i32, 20i32)
+  sf.setVariations([(wdth, 200.0f32)])
+  ops = @[]
+  check sf.drawGlyph(newGlyphId(2u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[0].to == (50i32, 20i32)
+
+test "cff2 private vsindex is the default":
+  let r0 = @[(s: 0.0, p: 1.0, e: 1.0), (s: 0.0, p: 0.0, e: 0.0)]
+  let r1 = @[(s: 0.0, p: 0.0, e: 0.0), (s: 0.0, p: 1.0, e: 1.0)]
+  let store = vsStore(@[r0, r1], 2,
+    @[vsData(@[0], @[@[0i32]]), vsData(@[1], @[@[0i32]])])
+  let fvar = buildFvarAxes(@[("wght", 100.0f32, 400.0f32, 900.0f32),
+    ("wdth", 50.0f32, 100.0f32, 200.0f32)])
+  let priv = @[encInt(1)[0], 22u8]
+  let cff = buildCff2Table(@[@[14u8], blendSquare(10, 20, 40)],
+    privateDicts = @[priv], varStore = store)
+  var sf = newShaperFont(cff2Font(cff, 2, fvar))
+  sf.setVariations([(tagFromStr("wdth").toU32(), 200.0f32)])
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[0].to == (50i32, 20i32)
+
+test "cff2 blend without varstore fails":
+  let fvar = buildFvarAxes(@[("wght", 100.0f32, 400.0f32, 900.0f32)])
+  let cff = buildCff2Table(@[@[14u8], blendSquare(10, 20, 50)],
+    privateDicts = @[newSeq[uint8]()])
+  var sf = newShaperFont(cff2Font(cff, 2, fvar))
+  sf.setVariations([(tagFromStr("wght").toU32(), 900.0f32)])
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op)) == false
+
+test "cff2 wrong delta count fails":
+  # Two active regions but only one delta for n = 1.
+  let store = vsStore(
+    @[@[(s: 0.0, p: 1.0, e: 1.0)], @[(s: 0.0, p: 1.0, e: 1.0)]], 1,
+    @[vsData(@[0, 1], @[@[0i32, 0i32]])])
+  let fvar = buildFvarAxes(@[("wght", 100.0f32, 400.0f32, 900.0f32)])
+  let cff = buildCff2Table(@[@[14u8], blendSquare(10, 20, 50)],
+    privateDicts = @[newSeq[uint8]()], varStore = store)
+  var sf = newShaperFont(cff2Font(cff, 2, fvar))
+  sf.setVariations([(tagFromStr("wght").toU32(), 900.0f32)])
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op)) == false
+
+test "cff2 subrs and two fontdicts":
+  let sub = encInt(30) & @[6u8, 11u8]
+  var cs0: seq[uint8] = @[]
+  cs0.add(encInt(0))
+  cs0.add(encInt(0))
+  cs0.add(21u8)
+  cs0.add(encInt(-107))
+  cs0.add(29u8)
+  cs0.add(encInt(0))
+  cs0.add(encInt(20))
+  cs0.add(21u8)
+  cs0.add(14u8)
+  var cs1: seq[uint8] = @[]
+  cs1.add(encInt(0))
+  cs1.add(encInt(0))
+  cs1.add(21u8)
+  cs1.add(encInt(-107))
+  cs1.add(10u8)
+  cs1.add(encInt(70))
+  cs1.add(6u8)
+  cs1.add(encInt(100))
+  cs1.add(7u8)
+  cs1.add(14u8)
+  # fd0: empty private; fd1: private with one local subr.
+  let priv1 = @[encInt(2)[0], 19u8]
+  let fdSelect = @[3u8, 0u8, 2u8, 0u8, 0u8, 0u8, 0u8, 1u8, 1u8,
+    0u8, 3u8]
+  let cff = buildCff2Table(@[@[14u8], cs0, cs1],
+    globalSubrs = @[sub], fdSelect = fdSelect,
+    privateDicts = @[@[], priv1], localSubrs = @[newSeq[seq[uint8]](), @[sub]])
+  var sf = newShaperFont(cff2Font(cff, 3))
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[1].to == (30i32, 0i32)
+  # Second rmoveto starts a new subpath: close, move, close.
+  check ops[2].kind == closePath
+  check ops[3].to == (30i32, 20i32)
+  ops = @[]
+  check sf.drawGlyph(newGlyphId(2u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[1].to == (30i32, 0i32)
+  check ops[2].to == (100i32, 0i32)
+
+test "cff2 fdselect format 4":
+  var cs1: seq[uint8] = @[]
+  cs1.add(encInt(0))
+  cs1.add(encInt(0))
+  cs1.add(21u8)
+  cs1.add(encInt(-107))
+  cs1.add(10u8)
+  cs1.add(14u8)
+  let sub = encInt(40) & @[7u8, 11u8]
+  let priv1 = @[encInt(2)[0], 19u8]
+  # format 4: 1 range [1, sentinel 3) -> fd 1.
+  let fdSelect = @[4u8, 0u8, 0u8, 0u8, 1u8, 0u8, 0u8, 0u8, 1u8, 0u8,
+    1u8, 0u8, 0u8, 0u8, 3u8]
+  let cff = buildCff2Table(@[@[14u8], csSquare(), cs1],
+    fdSelect = fdSelect, privateDicts = @[@[], priv1],
+    localSubrs = @[@[], @[sub]])
+  var sf = newShaperFont(cff2Font(cff, 3))
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(2u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[1].to == (0i32, 40i32)
+
+test "cff2 top matrix scales outlines":
+  # FontMatrix 0.002 (BCD): scale 2.0 at upem 1000.
+  let matrix = @[30u8, 0x0Au8, 0x00u8, 0x2Fu8, 30u8, 0x0Fu8, 30u8,
+    0x0Fu8, 30u8, 0x0Au8, 0x00u8, 0x2Fu8, 30u8, 0x0Fu8, 30u8, 0x0Fu8]
+  let cff = buildCff2Table(@[@[14u8], csSquare()],
+    privateDicts = @[newSeq[uint8]()], topMatrix = matrix)
+  var sf = newShaperFont(cff2Font(cff, 2))
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op))
+  check ops[0].to == (20i32, 40i32)
+
+test "cff2 rejects bad header":
+  let cff = buildCff2Table(@[@[14u8], csSquare()],
+    privateDicts = @[newSeq[uint8]()])
+  var bad = cff
+  bad[0] = 1u8
+  var sf = newShaperFont(cff2Font(bad, 2))
+  var ops: seq[DrawOp] = @[]
+  check sf.drawGlyph(newGlyphId(1u32),
+    proc(op: DrawOp) = ops.add(op)) == false

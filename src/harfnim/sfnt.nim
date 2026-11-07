@@ -67,6 +67,7 @@ const
   TagVhea = 0x76686561u32
   TagVmtx = 0x766D7478u32
   TagCff = 0x43464620u32
+  TagCff2 = 0x43464632u32
   TagName = 0x6E616D65u32
   TagFvar = 0x66766172u32
   TagAvar = 0x61766172u32
@@ -864,7 +865,14 @@ proc drawGlyf(f: SfntFont, gid: uint32,
   drawGlyfGlyph(f.bytes, s, e - s, at, cb, gid, f.gvarContextFor(coords))
 
 proc drawCff(f: SfntFont, gid: uint32,
-    cb: proc(op: DrawOp) {.closure.}): bool =
+    cb: proc(op: DrawOp) {.closure.},
+    coords: seq[float32] = @[]): bool =
+  let t2 = f.tableData(TagCff2)
+  if t2.ok:
+    let c = parseCff2(f.bytes, t2.offset, t2.len, int32(f.unitsPerEm))
+    if c.isNone:
+      return false
+    return drawCffGlyph(c.get, gid, cb, coords)
   let t = f.tableData(TagCff)
   if not t.ok:
     return false
@@ -885,7 +893,7 @@ proc drawGlyph*(f: SfntFont, gid: uint32,
   let glyf = f.tableData(TagGlyf)
   if loca.ok and glyf.ok:
     return f.drawGlyf(gid, cb, coords)
-  f.drawCff(gid, cb)
+  f.drawCff(gid, cb, coords)
 
 proc glyphOutline*(f: SfntFont, gid: uint32,
     coords: seq[float32] = @[]): Option[GlyphOutline] =

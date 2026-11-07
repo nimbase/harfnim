@@ -19,6 +19,7 @@ import std/strutils
 import std/tables
 
 import ./draw
+import ./varstore
 
 const
   CffMaxStack = 64
@@ -82,12 +83,14 @@ type
     charstrings*: Index
     globalSubrs*: Index
     isCID*: bool
+    isCFF2*: bool
     fdArray*: Index
     fdSelectOff*: int
     defaultSubrsOff*: int
     nGlyphs*: int
     charsetOff*: int
     sidToGid*: Table[int, int]
+    varStore*: VarStore
 
   ResolvedGlyph = object
     ok: bool
@@ -95,6 +98,7 @@ type
     csEnd: int
     subrs: Index
     hasSubrs: bool
+    vsindex: int
     mA, mB, mC, mD, mTx, mTy: float64
 
 proc subrBias(count: int): int =
@@ -161,6 +165,44 @@ proc indexBounds*(bytes: seq[uint8], idx: Index, i: int,
     return false
   true
 
+proc readIndex2*(bytes: seq[uint8], off, limit: int): Index =
+  ## Reads a CFF2 INDEX structure (uint32 count) at absolute `off`.
+  result.ok = false
+  if off < 0 or off + 4 > limit or off + 4 > bytes.len:
+    return
+  let count = int((uint32(bytes[off]) shl 24) or
+    (uint32(bytes[off + 1]) shl 16) or (uint32(bytes[off + 2]) shl 8) or
+    uint32(bytes[off + 3]))
+  if count == 0:
+    return Index(ok: true, count: 0, dataOff: off + 4, offBase: 0,
+      offSize: 0)
+  if off + 5 > limit or off + 5 > bytes.len:
+    return
+  let offSize = int(bytes[off + 4])
+  if offSize < 1 or offSize > 4:
+    return
+  let arrOff = off + 5
+  let arrLen = (count + 1) * offSize
+  if arrLen div offSize != count + 1 or arrOff + arrLen > limit or
+      arrOff + arrLen > bytes.len:
+    return
+  var last = 0
+  for i in 0 .. count:
+    var v = 0
+    for k in 0 ..< offSize:
+      v = (v shl 8) or int(bytes[arrOff + i * offSize + k])
+    if i == 0:
+      if v < 1:
+        return
+    if v < last:
+      return
+    last = v
+  let dataOff = arrOff + arrLen
+  if dataOff + last - 1 > limit or dataOff + last - 1 > bytes.len:
+    return
+  Index(ok: true, count: count, dataOff: dataOff, offBase: arrOff,
+    offSize: offSize)
+
 proc decodeReal(bytes: seq[uint8], pos: var int, limit: int,
     v: var float64): bool =
   ## Decodes a nibble-encoded real starting at pos (after the 30 byte).
@@ -215,7 +257,10 @@ proc decodeDict*(bytes: seq[uint8], start, finish: int): Option[
       inc pos
       entries.add((((12 shl 8) or int(op2)), args))
       args = @[]
-    elif b <= 21u8:
+    elif b <= 27u8:
+      # Single-byte operators: 0..21 plus the CFF2 additions
+      # (vsindex 22, blend 23, VariationStore 24). Bytes 28..31 are
+      # number encodings handled below.
       entries.add((int(b), args))
       args = @[]
     elif b == 28u8:
@@ -271,6 +316,8 @@ const
   OpCharstrings = 17
   OpPrivate = 18
   OpCharset = 15
+  OpVarStore = 24
+  OpVsindex = 22
   OpFontMatrix = (12 shl 8) or 7
   OpFdArray = (12 shl 8) or 36
   OpFdSelect = (12 shl 8) or 37
@@ -484,6 +531,80 @@ proc fdFor(f: CffFont, gid: int): tuple[ok: bool, fd: int] =
     return (false, 0)
   (true, found)
 
+proc fdForCff2(f: CffFont, gid: int): tuple[ok: bool, fd: int] =
+  ## CFF2 FontDICTSelect (formats 0/3/4); absent means every glyph
+  ## uses FontDICT 0.
+  if f.fdSelectOff < 0:
+    if gid < 0 or gid >= f.nGlyphs:
+      return (false, 0)
+    return (true, 0)
+  let bytes = f.bytes
+  if f.fdSelectOff + 1 > f.limit:
+    return (false, 0)
+  let fmt = bytes[f.fdSelectOff]
+  if fmt == 0u8:
+    if gid < 0 or gid >= f.nGlyphs:
+      return (false, 0)
+    if f.fdSelectOff + 1 + gid >= f.limit:
+      return (false, 0)
+    return (true, int(bytes[f.fdSelectOff + 1 + gid]))
+  var ok = true
+  if fmt == 3u8:
+    let n = int(readU16At(bytes, f.fdSelectOff + 1, f.limit, ok))
+    if not ok or n < 0:
+      return (false, 0)
+    var base = f.fdSelectOff + 3
+    var prevFirst = -1
+    var found = -1
+    for _ in 0 ..< n:
+      let first = int(readU16At(bytes, base, f.limit, ok))
+      if not ok or base + 3 > f.limit or base + 3 > bytes.len:
+        return (false, 0)
+      let fd = int(bytes[base + 2])
+      if first <= prevFirst:
+        return (false, 0)
+      if first <= gid:
+        found = fd
+      prevFirst = first
+      base += 3
+    let sentinel = int(readU16At(bytes, base, f.limit, ok))
+    if not ok or gid >= sentinel or found < 0:
+      return (false, 0)
+    return (true, found)
+  if fmt != 4u8:
+    return (false, 0)
+  if f.fdSelectOff + 5 > f.limit:
+    return (false, 0)
+  var n4 = 0
+  for k in 0 ..< 4:
+    n4 = (n4 shl 8) or int(bytes[f.fdSelectOff + 1 + k])
+  if n4 < 0:
+    return (false, 0)
+  var base = f.fdSelectOff + 5
+  var prevFirst = -1
+  var found = -1
+  for _ in 0 ..< n4:
+    if base + 6 > f.limit or base + 6 > bytes.len:
+      return (false, 0)
+    var first = 0
+    for k in 0 ..< 4:
+      first = (first shl 8) or int(bytes[base + k])
+    let fd = int((uint16(bytes[base + 4]) shl 8) or uint16(bytes[base + 5]))
+    if first <= prevFirst:
+      return (false, 0)
+    if first <= gid:
+      found = fd
+    prevFirst = first
+    base += 6
+  if base + 4 > f.limit or base + 4 > bytes.len:
+    return (false, 0)
+  var sentinel = 0
+  for k in 0 ..< 4:
+    sentinel = (sentinel shl 8) or int(bytes[base + k])
+  if gid >= sentinel or found < 0:
+    return (false, 0)
+  (true, found)
+
 proc privateSubrs(f: CffFont, pOff, pSize: int): tuple[ok: bool, off: int] =
   ## Returns the absolute offset of the local Subrs INDEX, or -1 when the
   ## Private DICT has no Subrs entry. ok=false when malformed.
@@ -499,6 +620,24 @@ proc privateSubrs(f: CffFont, pOff, pSize: int): tuple[ok: bool, off: int] =
         return (false, -1)
       return (true, pOff + v)
   (true, -1)
+
+proc privateVsindex(f: CffFont, pOff, pSize: int): tuple[ok: bool,
+    vsindex: int] =
+  ## Reads the PrivateDICT `vsindex` default (0 when absent).
+  ## Blend operators inside PrivateDICTs only affect hint keys, which
+  ## are not interpreted, so they are safely ignored here.
+  if pOff < f.base or pSize < 0 or pOff + pSize > f.limit:
+    return (false, 0)
+  let d = decodeDict(f.bytes, pOff, pOff + pSize)
+  if d.isNone:
+    return (false, 0)
+  for e in d.get:
+    if e.op == OpVsindex and e.args.len == 1:
+      let v = int(e.args[0])
+      if v < 0:
+        return (false, 0)
+      return (true, v)
+  (true, 0)
 
 proc combineM(top, sub: array[6, float64]): array[6, float64] =
   ## Affine product applying sub first, then top.
@@ -574,6 +713,134 @@ proc resolveGlyph(f: CffFont, gid: uint32): ResolvedGlyph =
   result.mTy = m[5] * u
   result.ok = true
 
+proc resolveGlyph2(f: CffFont, gid: uint32): ResolvedGlyph =
+  ## Resolves a CFF2 glyph: FontDICTSelect (formats 0/3/4, absent
+  ## means FontDICT 0) picks the FontDICT, whose Private gives local
+  ## subrs and the default vsindex. The top FontMatrix applies
+  ## directly (CFF2 FontDICTs carry no matrix).
+  result.ok = false
+  result.vsindex = 0
+  let g = int(gid)
+  if g < 0 or g >= f.nGlyphs:
+    return
+  var s, e: int
+  if not indexBounds(f.bytes, f.charstrings, g, s, e):
+    return
+  if s < f.base or e > f.limit or s > e:
+    return
+  result.csStart = s
+  result.csEnd = e
+  let (okFd, fd) = fdForCff2(f, g)
+  if not okFd:
+    return
+  var fs, fe: int
+  if not indexBounds(f.bytes, f.fdArray, fd, fs, fe):
+    return
+  let fdDict = decodeDict(f.bytes, fs, fe)
+  if fdDict.isNone:
+    return
+  var pSize = -1
+  var pOffRel = 0
+  for en in fdDict.get:
+    if en.op == OpPrivate and en.args.len == 2:
+      pSize = int(en.args[0])
+      pOffRel = int(en.args[1])
+  if pSize < 0:
+    # Empty private: defaults, no subrs, vsindex 0.
+    pSize = 0
+  let pOff = f.base + pOffRel
+  let (okP, subrsOff) = privateSubrs(f, pOff, pSize)
+  if not okP:
+    return
+  if subrsOff >= 0:
+    let ix = readIndex2(f.bytes, subrsOff, f.limit)
+    if not ix.ok:
+      return
+    result.subrs = ix
+    result.hasSubrs = true
+  let (okV, vs) = privateVsindex(f, pOff, pSize)
+  if not okV:
+    return
+  result.vsindex = vs
+  let u = float64(f.upem)
+  result.mA = f.topM[0] * u
+  result.mB = f.topM[1] * u
+  result.mC = f.topM[2] * u
+  result.mD = f.topM[3] * u
+  result.mTx = f.topM[4] * u
+  result.mTy = f.topM[5] * u
+  result.ok = true
+
+proc parseCff2*(bytes: seq[uint8], cffOff, cffLen: int,
+    upem: int32): Option[CffFont] =
+  ## Parses the CFF2 table at `cffOff`/`cffLen`. Returns none for
+  ## non-CFF2 data or malformed tables.
+  let base = int(cffOff)
+  let limit = base + int(cffLen)
+  if base < 0 or cffLen < 5 or limit > bytes.len:
+    return none(CffFont)
+  if bytes[base] != 2u8:
+    return none(CffFont)
+  let hdrSize = int(bytes[base + 2])
+  if hdrSize < 5 or base + hdrSize > limit:
+    return none(CffFont)
+  if base + hdrSize + 1 > limit:
+    return none(CffFont)
+  let topLen = int((uint16(bytes[base + 3]) shl 8) or
+    uint16(bytes[base + 4]))
+  if topLen < 0 or base + hdrSize + topLen > limit:
+    return none(CffFont)
+  var f = CffFont(bytes: bytes, base: base, limit: limit, upem: upem,
+    fdSelectOff: -1, defaultSubrsOff: -1, charsetOff: -1, isCFF2: true,
+    sidToGid: initTable[int, int]())
+  f.topM = [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+  let topOpt = decodeDict(bytes, base + hdrSize,
+    base + hdrSize + topLen)
+  if topOpt.isNone:
+    return none(CffFont)
+  let gsubrOff = base + hdrSize + topLen
+  f.globalSubrs = readIndex2(bytes, gsubrOff, limit)
+  if not f.globalSubrs.ok:
+    return none(CffFont)
+  var ok = true
+  var csOff = -1
+  var fdArrayOff = -1
+  var varStoreOff = -1
+  for e in topOpt.get:
+    case e.op
+    of OpCharstrings:
+      csOff = dictArg(e, 0, ok)
+    of OpVarStore:
+      varStoreOff = dictArg(e, 0, ok)
+    of OpFdArray:
+      fdArrayOff = dictArg(e, 0, ok)
+    of OpFdSelect:
+      let v = dictArg(e, 0, ok)
+      if ok:
+        f.fdSelectOff = base + v
+    of OpFontMatrix:
+      if e.args.len == 6:
+        for i in 0 ..< 6:
+          f.topM[i] = e.args[i]
+        f.hasTopM = true
+    else:
+      discard
+  if not ok or csOff < 0 or fdArrayOff < 0:
+    return none(CffFont)
+  f.charstrings = readIndex2(bytes, base + csOff, limit)
+  if not f.charstrings.ok or f.charstrings.count == 0:
+    return none(CffFont)
+  f.fdArray = readIndex2(bytes, base + fdArrayOff, limit)
+  if not f.fdArray.ok or f.fdArray.count == 0:
+    return none(CffFont)
+  if varStoreOff >= 0:
+    f.varStore = parseItemVariationStore(bytes, base + varStoreOff,
+      limit - (base + varStoreOff))
+    if not f.varStore.ok:
+      return none(CffFont)
+  f.nGlyphs = f.charstrings.count
+  some(f)
+
 # ---------------------------------------------------------------------------
 # Type 2 charstring interpreter
 # ---------------------------------------------------------------------------
@@ -597,6 +864,10 @@ type
     randState: uint32
     depth: int
     seacComponent: bool
+    cff2: bool
+    coords: seq[float32]
+    vsindex: int
+    vsindexSet: bool
     failed: bool
 
 proc seacGid(f: CffFont, code: int): tuple[ok: bool, gid: int] =
@@ -616,7 +887,8 @@ proc seacGid(f: CffFont, code: int): tuple[ok: bool, gid: int] =
   (false, 0)
 
 proc push(e: var Exec, v: float64) =
-  if e.stack.len >= CffMaxStack:
+  let cap = if e.cff2: 513 else: CffMaxStack
+  if e.stack.len >= cap:
     e.failed = true
     return
   e.stack.add(v)
@@ -989,12 +1261,61 @@ proc execRange(e: var Exec, start, finish: int,
               e.failed = true
             else:
               e.depth += 1
-              let r = e.execRange(ss, se, cb)
+              # Falling off the end of a subroutine acts as an
+              # implicit return (explicit `return` resumes the
+              # caller the same way).
+              discard e.execRange(ss, se, cb)
               e.depth -= 1
-              if r == erDone:
-                return erDone
       of 11u8: # return
         return erReturn
+      of 15u8: # vsindex (CFF2 only): selects the ItemVariationData
+        # for subsequent blends. May be used at most once and must
+        # precede the first blend.
+        if not e.cff2 or e.vsindexSet or not e.font.varStore.ok:
+          e.failed = true
+        else:
+          let v = e.pop()
+          if e.failed or v < 0.0 or v != floor(v):
+            e.failed = true
+          else:
+            e.vsindex = int(v)
+            e.vsindexSet = true
+      of 16u8: # blend (CFF2 only): stack holds n defaults, n*k
+        # deltas (value-major), then n.
+        if not e.cff2 or not e.font.varStore.ok:
+          e.failed = true
+        else:
+          let nv = e.pop()
+          if e.failed or nv < 0.0 or nv != floor(nv):
+            e.failed = true
+          else:
+            let n = int(nv)
+            let store = e.font.varStore
+            if e.vsindex < 0 or e.vsindex >= store.datas.len:
+              e.failed = true
+            else:
+              let regions = store.datas[e.vsindex].regionIndexes
+              let k = regions.len
+              if n < 0 or e.stack.len < n + n * k:
+                e.failed = true
+              else:
+                var scalars = newSeq[float64](k)
+                for j, r in regions:
+                  if r < 0 or r >= store.regions.len:
+                    e.failed = true
+                    break
+                  scalars[j] = regionScalar(store.regions[r], e.coords)
+                if not e.failed:
+                  let base = e.stack.len - (n + n * k)
+                  var results = newSeq[float64](n)
+                  for i in 0 ..< n:
+                    var v = e.stack[base + i]
+                    for j in 0 ..< k:
+                      v += scalars[j] * e.stack[base + n + i * k + j]
+                    results[i] = v
+                  e.stack.setLen(base)
+                  for v in results:
+                    e.stack.add(v)
       of 14u8: # endchar
         let a = e.takeStack()
         if a.len == 0:
@@ -1002,7 +1323,7 @@ proc execRange(e: var Exec, start, finish: int,
             cb(DrawOp(kind: closePath))
             e.open = false
           return erDone
-        elif a.len == 4 and not e.seacComponent:
+        elif a.len == 4 and not e.seacComponent and not e.cff2:
           # Deprecated seac form (TN 5177 Appendix C): the stack holds
           # adx ady bchar achar (an optional width was consumed by
           # takeStack). bchar/achar are Standard Encoding codes that
@@ -1201,14 +1522,18 @@ proc execRange(e: var Exec, start, finish: int,
     erDone
 
 proc drawCffGlyph*(f: CffFont, gid: uint32,
-    cb: proc(op: DrawOp) {.closure.}): bool =
+    cb: proc(op: DrawOp) {.closure.},
+    coords: seq[float32] = @[]): bool =
   ## Executes the charstring for `gid` into draw ops. Returns false when
-  ## the glyph has no usable outline.
-  let res = resolveGlyph(f, gid)
+  ## the glyph has no usable outline. CFF2 glyphs blend with `coords`.
+  let res =
+    if f.isCFF2: resolveGlyph2(f, gid)
+    else: resolveGlyph(f, gid)
   if not res.ok:
     return false
   var e = Exec(res: res, font: f, bytes: f.bytes,
-    globalSubrs: f.globalSubrs, first: true, randState: 1u32)
+    globalSubrs: f.globalSubrs, first: not f.isCFF2, randState: 1u32,
+    cff2: f.isCFF2, coords: coords, vsindex: res.vsindex)
   let r = e.execRange(res.csStart, res.csEnd, cb)
   if e.failed or e.nops == 0:
     # No path operators means no outline (e.g. endchar-only .notdef).
