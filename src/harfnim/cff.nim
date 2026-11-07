@@ -8,11 +8,15 @@
 ##
 ## Any inconsistency inside the table or a charstring makes the decode
 ## return `none` / `false` rather than raising. CFF2 tables (major == 2)
-## are unsupported and report no outline (TODO).
+## are unsupported and report no outline (TODO). The deprecated
+## Type 2 `seac` form (endchar with adx ady bchar achar, TN 5177
+## Appendix C) is supported via the Standard Encoding and the font
+## charset; nested seac is rejected per spec.
 
 import std/math
 import std/options
 import std/strutils
+import std/tables
 
 import ./draw
 
@@ -20,6 +24,43 @@ const
   CffMaxStack = 64
   CffMaxSubrDepth = 10
   CffMaxTransient = 32
+
+  ## CFF Standard Encoding (Adobe TN 5176, Appendix B): char code -> SID.
+  ## Generated from fonttools StandardEncoding + cffStandardStrings.
+  StandardEncodingSids = [
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      1,   2,   3,   4,   5,   6,   7,   8,
+      9,  10,  11,  12,  13,  14,  15,  16,
+     17,  18,  19,  20,  21,  22,  23,  24,
+     25,  26,  27,  28,  29,  30,  31,  32,
+     33,  34,  35,  36,  37,  38,  39,  40,
+     41,  42,  43,  44,  45,  46,  47,  48,
+     49,  50,  51,  52,  53,  54,  55,  56,
+     57,  58,  59,  60,  61,  62,  63,  64,
+     65,  66,  67,  68,  69,  70,  71,  72,
+     73,  74,  75,  76,  77,  78,  79,  80,
+     81,  82,  83,  84,  85,  86,  87,  88,
+     89,  90,  91,  92,  93,  94,  95,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0,  96,  97,  98,  99, 100, 101, 102,
+    103, 104, 105, 106, 107, 108, 109, 110,
+      0, 111, 112, 113, 114,   0, 115, 116,
+    117, 118, 119, 120, 121, 122,   0, 123,
+      0, 124, 125, 126, 127, 128, 129, 130,
+    131,   0, 132, 133,   0, 134, 135, 136,
+    137,   0,   0,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,
+      0, 138,   0, 139,   0,   0,   0,   0,
+    140, 141, 142, 143,   0,   0,   0,   0,
+      0, 144,   0,   0,   0, 145,   0,   0,
+    146, 147, 148, 149,   0,   0,   0,   0,
+  ]
 
 type
   Index* = object
@@ -45,6 +86,8 @@ type
     fdSelectOff*: int
     defaultSubrsOff*: int
     nGlyphs*: int
+    charsetOff*: int
+    sidToGid*: Table[int, int]
 
   ResolvedGlyph = object
     ok: bool
@@ -227,6 +270,7 @@ proc decodeDict*(bytes: seq[uint8], start, finish: int): Option[
 const
   OpCharstrings = 17
   OpPrivate = 18
+  OpCharset = 15
   OpFontMatrix = (12 shl 8) or 7
   OpFdArray = (12 shl 8) or 36
   OpFdSelect = (12 shl 8) or 37
@@ -238,6 +282,50 @@ proc dictArg(e: DictEntry, i: int, ok: var bool): int =
     ok = false
     return 0
   int(e.args[i])
+
+proc parseCharset(bytes: seq[uint8], off, limit, nGlyphs: int,
+    sidToGid: var Table[int, int]): bool =
+  ## Builds a SID -> gid map from the CFF charset at absolute `off`.
+  ## Gid 0 is always .notdef (SID 0). Malformed data returns false.
+  result = false
+  if off < 0 or off + 1 > limit or off + 1 > bytes.len:
+    return
+  sidToGid[0] = 0
+  let format = bytes[off]
+  if format == 0u8:
+    if nGlyphs <= 1:
+      return true
+    if off + 1 + (nGlyphs - 1) * 2 > limit or
+        off + 1 + (nGlyphs - 1) * 2 > bytes.len:
+      return
+    for gid in 1 ..< nGlyphs:
+      let sid = int((uint16(bytes[off + 1 + (gid - 1) * 2]) shl 8) or
+        uint16(bytes[off + 2 + (gid - 1) * 2]))
+      if sid notin sidToGid:
+        sidToGid[sid] = gid
+    return true
+  if format != 1u8 and format != 2u8:
+    return
+  var pos = off + 1
+  var gid = 1
+  while gid < nGlyphs:
+    let headLen = if format == 1u8: 3 else: 4
+    if pos + headLen > limit or pos + headLen > bytes.len:
+      return
+    let first = int((uint16(bytes[pos]) shl 8) or uint16(bytes[pos + 1]))
+    let nLeft = if format == 1u8: int(bytes[pos + 2])
+      else: int((uint16(bytes[pos + 2]) shl 8) or uint16(bytes[pos + 3]))
+    pos += headLen
+    if nLeft < 0 or first < 0:
+      return
+    for k in 0 .. nLeft:
+      if gid >= nGlyphs:
+        break
+      let sid = first + k
+      if sid notin sidToGid:
+        sidToGid[sid] = gid
+      inc gid
+  return true
 
 proc parseCff*(bytes: seq[uint8], cffOff, cffLen: int,
     upem: int32): Option[CffFont] =
@@ -254,7 +342,8 @@ proc parseCff*(bytes: seq[uint8], cffOff, cffLen: int,
   if hdrSize < 4 or base + hdrSize > limit:
     return none(CffFont)
   var f = CffFont(bytes: bytes, base: base, limit: limit, upem: upem,
-    fdSelectOff: -1, defaultSubrsOff: -1)
+    fdSelectOff: -1, defaultSubrsOff: -1, charsetOff: -1,
+    sidToGid: initTable[int, int]())
   f.topM = [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
   var pos = base + hdrSize
   # Name INDEX (skip).
@@ -323,6 +412,10 @@ proc parseCff*(bytes: seq[uint8], cffOff, cffLen: int,
       let v = dictArg(e, 0, ok)
       if ok:
         f.fdSelectOff = base + v
+    of OpCharset:
+      let v = dictArg(e, 0, ok)
+      if ok:
+        f.charsetOff = base + v
     of OpFontMatrix:
       if e.args.len == 6:
         for i in 0 ..< 6:
@@ -333,6 +426,9 @@ proc parseCff*(bytes: seq[uint8], cffOff, cffLen: int,
   if not ok or not f.charstrings.ok:
     return none(CffFont)
   f.nGlyphs = f.charstrings.count
+  if f.charsetOff >= 0:
+    if not parseCharset(bytes, f.charsetOff, limit, f.nGlyphs, f.sidToGid):
+      return none(CffFont)
   if f.isCID:
     if not f.fdArray.ok or f.fdSelectOff < 0:
       return none(CffFont)
@@ -488,6 +584,7 @@ type
 
   Exec = object
     res: ResolvedGlyph
+    font: CffFont
     bytes: seq[uint8]
     globalSubrs: Index
     stack: seq[float64]
@@ -499,7 +596,24 @@ type
     transient: array[CffMaxTransient, float64]
     randState: uint32
     depth: int
+    seacComponent: bool
     failed: bool
+
+proc seacGid(f: CffFont, code: int): tuple[ok: bool, gid: int] =
+  ## Resolves a Standard Encoding char code to a glyph id through the
+  ## font charset. Fonts without an explicit charset fall back to the
+  ## identity mapping (TODO: ISOAdobe default charset).
+  if code < 0 or code > 255:
+    return (false, 0)
+  let sid = StandardEncodingSids[code]
+  if sid in f.sidToGid:
+    let gid = f.sidToGid[sid]
+    if gid >= 0 and gid < f.nGlyphs:
+      return (true, gid)
+    return (false, 0)
+  if f.charsetOff < 0 and sid >= 0 and sid < f.nGlyphs:
+    return (true, sid)
+  (false, 0)
 
 proc push(e: var Exec, v: float64) =
   if e.stack.len >= CffMaxStack:
@@ -888,8 +1002,61 @@ proc execRange(e: var Exec, start, finish: int,
             cb(DrawOp(kind: closePath))
             e.open = false
           return erDone
+        elif a.len == 4 and not e.seacComponent:
+          # Deprecated seac form (TN 5177 Appendix C): the stack holds
+          # adx ady bchar achar (an optional width was consumed by
+          # takeStack). bchar/achar are Standard Encoding codes that
+          # resolve through the font charset; the accent component is
+          # translated by (adx, ady) before the FontMatrix transform.
+          if a[2] < 0.0 or a[2] > 255.0 or a[2] != floor(a[2]) or
+              a[3] < 0.0 or a[3] > 255.0 or a[3] != floor(a[3]):
+            e.failed = true
+          else:
+            let f = e.font
+            let (okB, bGid) = seacGid(f, int(a[2]))
+            let (okA, aGid) = seacGid(f, int(a[3]))
+            let bRes = if okB: resolveGlyph(f, uint32(bGid))
+              else: ResolvedGlyph(ok: false)
+            let aRes = if okA: resolveGlyph(f, uint32(aGid))
+              else: ResolvedGlyph(ok: false)
+            if not okB or not okA or not bRes.ok or not aRes.ok:
+              e.failed = true
+            else:
+              if e.open:
+                cb(DrawOp(kind: closePath))
+                e.open = false
+              var sub = Exec(res: bRes, font: f, bytes: f.bytes,
+                globalSubrs: f.globalSubrs, first: true,
+                randState: e.randState, depth: e.depth,
+                seacComponent: true)
+              discard sub.execRange(bRes.csStart, bRes.csEnd, cb)
+              if sub.open:
+                cb(DrawOp(kind: closePath))
+                sub.open = false
+              e.nops += sub.nops
+              e.randState = sub.randState
+              if sub.failed:
+                e.failed = true
+              else:
+                var acc = aRes
+                acc.mTx += acc.mA * a[0] + acc.mC * a[1]
+                acc.mTy += acc.mB * a[0] + acc.mD * a[1]
+                var sub2 = Exec(res: acc, font: f, bytes: f.bytes,
+                  globalSubrs: f.globalSubrs, first: true,
+                  randState: e.randState, depth: e.depth,
+                  seacComponent: true)
+                discard sub2.execRange(acc.csStart, acc.csEnd, cb)
+                if sub2.open:
+                  cb(DrawOp(kind: closePath))
+                  sub2.open = false
+                e.nops += sub2.nops
+                e.randState = sub2.randState
+                if sub2.failed:
+                  e.failed = true
+          return erDone
         else:
-          # seac (4 args) and any other trailing stack are unsupported.
+          # Any other trailing stack (including nested seac) is
+          # malformed.
           e.failed = true
       of 19u8, 20u8: # hintmask / cntrmask
         let a = e.takeStack()
@@ -1040,8 +1207,8 @@ proc drawCffGlyph*(f: CffFont, gid: uint32,
   let res = resolveGlyph(f, gid)
   if not res.ok:
     return false
-  var e = Exec(res: res, bytes: f.bytes, globalSubrs: f.globalSubrs,
-    first: true, randState: 1u32)
+  var e = Exec(res: res, font: f, bytes: f.bytes,
+    globalSubrs: f.globalSubrs, first: true, randState: 1u32)
   let r = e.execRange(res.csStart, res.csEnd, cb)
   if e.failed or e.nops == 0:
     # No path operators means no outline (e.g. endchar-only .notdef).

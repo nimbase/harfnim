@@ -81,12 +81,12 @@ for i in 0 ..< buf.len:
 * [x] Legacy kern table (format 0, MS and Apple layouts)
 * [x] hr-shape CLI and conformance harness
 * [x] glyf outlines (simple + composite) with draw callbacks and extents fallback
-* [x] CFF / Type 2 charstrings (subrs, flex, CID FDSelect) with outline cache
+* [x] CFF / Type 2 charstrings (subrs, flex, CID FDSelect, seac) with bounded outline cache
+* [x] cmap format 14 variation sequences, name table
 * [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
-* [ ] cmap 14, name table, variations (including CFF2)
+* [ ] Variations (fvar/gvar/var-store, CFF2 blend)
 * [ ] AAT morx
 * [ ] stch stretching and win1256 legacy fallback
-* [ ] Outline follow-ups: seac accents, bounded outline cache
 
 ## Tools
 `hr-shape` is a small `hb-shape` compatible CLI (numeric glyph ids and

@@ -247,7 +247,8 @@ proc buildCffTable(charstrings: seq[seq[uint8]],
     localSubrs: seq[seq[uint8]] = @[],
     fdArray: seq[seq[uint8]] = @[],
     fdSelect: seq[uint8] = @[],
-    ros: bool = false): seq[uint8] =
+    ros: bool = false,
+    charset: seq[uint8] = @[]): seq[uint8] =
   let nameIdx = buildIndex(@[@[uint8('T')]])
   let strIdx = buildIndex(@[])
   let gsubrIdx = buildIndex(globalSubrs)
@@ -255,7 +256,7 @@ proc buildCffTable(charstrings: seq[seq[uint8]],
   let fdArrayIdx = buildIndex(fdArray)
   # Layout: header | name | top | string | gsubr | charstrings |
   #         private | localsubrs | fdarray | fdselect
-  let topStub = 30 # ample room; Top DICT rebuilt below with real offsets
+  let topStub = 40 # ample room; Top DICT rebuilt below with real offsets
   var topOff = 4 + nameIdx.len
   var cursor = topOff + (5 + topStub)
   let strOff = cursor
@@ -273,6 +274,8 @@ proc buildCffTable(charstrings: seq[seq[uint8]],
   cursor += fdArrayIdx.len
   let fdSelectOff = cursor
   cursor += fdSelect.len
+  let charsetOff = cursor
+  cursor += charset.len
   # Top DICT with real offsets.
   var top: seq[uint8] = @[]
   top.add(encInt(csOff))
@@ -281,6 +284,9 @@ proc buildCffTable(charstrings: seq[seq[uint8]],
     top.add(encInt(privateDict.len))
     top.add(encInt(privateOff))
     top.add(18u8)
+  if charset.len > 0:
+    top.add(encInt(charsetOff))
+    top.add(15u8)
   if ros:
     top.add(encInt(0))
     top.add(encInt(0))
@@ -308,6 +314,7 @@ proc buildCffTable(charstrings: seq[seq[uint8]],
   result.add(localIdx)
   result.add(fdArrayIdx)
   result.add(fdSelect)
+  result.add(charset)
 
 proc buildOtf(cff: seq[uint8], numGlyphs: int): seq[uint8] =
   var head = newSeq[uint8]()
@@ -686,7 +693,7 @@ test "cff malformed inputs fail":
     @[139u8, 139u8, 21u8, 140u8, 5u8, 14u8]])
   check collectOps(newShaperFont(parseFont(buildOtf(bad3, 2))),
     1).ok == false
-  # seac via endchar with args.
+  # seac to empty .notdef components yields no outline.
   let bad4 = buildCffTable(@[@[14u8],
     @[139u8, 139u8, 139u8, 139u8, 139u8, 14u8]])
   check collectOps(newShaperFont(parseFont(buildOtf(bad4, 2))),
@@ -771,3 +778,81 @@ test "outline cache stores hits and misses":
   check collectOps(sf, 0).ok == false
   check sf.outlineCache.items.hasKey(0u32)
   check collectOps(sf, 0).ok == false
+
+proc charset0(sids: seq[uint16]): seq[uint8] =
+  ## Charset format 0 covering gids 1 .. sids.len.
+  result = @[0u8]
+  for s in sids:
+    result.putU16(s)
+
+proc csAccent(): seq[uint8] =
+  # move(0,0) hline(20) end -> ops: move, line, close.
+  @[139u8, 139u8, 21u8, 159u8, 6u8, 14u8]
+
+test "cff seac composes base and accent":
+  # 'A' (code 65) -> SID 34 at gid 1; 'quoteleft' (code 96) ->
+  # SID 65 at gid 2; composite at gid 3 references them via seac.
+  let cs = charset0(@[34u16, 65u16, 35u16])
+  let seac = encInt(50) & encInt(100) & encInt(65) & encInt(96) & @[14u8]
+  let cff = buildCffTable(@[@[14u8], csSquare(), csAccent(), seac],
+    charset = cs)
+  let sf = newShaperFont(parseFont(buildOtf(cff, 4)))
+  let (ok, ops) = collectOps(sf, 3)
+  check ok
+  # Base square (6 ops) then accent translated by (50,100) (3 ops).
+  check ops.len == 9
+  check ops[0].kind == moveTo and ops[0].to == (10i32, 20i32)
+  check ops[5].kind == closePath
+  check ops[6].kind == moveTo and ops[6].to == (50i32, 100i32)
+  check ops[7].kind == lineTo and ops[7].to == (70i32, 100i32)
+  check ops[8].kind == closePath
+
+test "cff seac with width arg":
+  # Optional leading width is consumed; same composite as above.
+  let cs = charset0(@[34u16, 65u16, 35u16])
+  let seac = encInt(0) & encInt(50) & encInt(100) & encInt(65) &
+    encInt(96) & @[14u8]
+  let cff = buildCffTable(@[@[14u8], csSquare(), csAccent(), seac],
+    charset = cs)
+  let sf = newShaperFont(parseFont(buildOtf(cff, 4)))
+  let (ok, ops) = collectOps(sf, 3)
+  check ok
+  check ops.len == 9
+  check ops[6].to == (50i32, 100i32)
+
+test "cff seac rejects bad components and nesting":
+  let cs = charset0(@[34u16, 65u16, 35u16, 37u16])
+  # 'C' (code 67) -> SID 36 is absent from the charset.
+  let badComp = encInt(0) & encInt(0) & encInt(67) & encInt(96) & @[14u8]
+  let cff = buildCffTable(@[@[14u8], csSquare(), csAccent(), badComp],
+    charset = cs)
+  let sf = newShaperFont(parseFont(buildOtf(cff, 4)))
+  check collectOps(sf, 3).ok == false
+  # Nested seac: gid 4 references gid 3, itself a seac composite
+  # ('B' code 66 -> SID 35 -> gid 3).
+  let nested = encInt(0) & encInt(0) & encInt(66) & encInt(96) & @[14u8]
+  let square = csSquare()
+  let accent = csAccent()
+  let seacInner = encInt(50) & encInt(100) & encInt(65) & encInt(96) &
+    @[14u8]
+  let cff2 = buildCffTable(@[@[14u8], square, accent, seacInner, nested],
+    charset = cs)
+  let sf2 = newShaperFont(parseFont(buildOtf(cff2, 5)))
+  check collectOps(sf2, 4).ok == false
+  # The inner composite still decodes on its own.
+  check collectOps(sf2, 3).ok == true
+
+test "outline cache is bounded":
+  var c = newOutlineCache(2)
+  let empty = GlyphOutline(contours: @[])
+  cacheStore(c, 1u32, none(GlyphOutline))
+  cacheStore(c, 2u32, some(empty))
+  cacheStore(c, 3u32, none(GlyphOutline))
+  check c.items.len == 2
+  check not c.items.hasKey(1u32)
+  check c.items.hasKey(2u32)
+  check c.items.hasKey(3u32)
+  # Updating an existing key does not evict.
+  cacheStore(c, 2u32, none(GlyphOutline))
+  check c.items.len == 2
+  check c.items.hasKey(2u32)

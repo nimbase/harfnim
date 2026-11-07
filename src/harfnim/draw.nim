@@ -38,15 +38,19 @@ type
   OutlineCache* = ref object
     ## Lazily filled per-glyph outlines in font units, shared by copies
     ## of the owning ShaperFont. Failures are cached as none so repeated
-    ## queries on malformed data do not re-decode.
-    ## TODO: bound this for CJK-sized fonts.
+    ## queries on malformed data do not re-decode. Bounded FIFO: the
+    ## oldest entry is evicted once `maxItems` is exceeded, so CJK-sized
+    ## fonts cannot grow the table without limit.
     items*: Table[uint32, Option[GlyphOutline]]
+    order*: seq[uint32]
+    maxItems*: int
 
 proc roundHalfAway*(v: float64): int32 =
   if v >= 0.0: int32(v + 0.5) else: int32(v - 0.5)
 
-proc newOutlineCache*(): OutlineCache =
-  OutlineCache(items: initTable[uint32, Option[GlyphOutline]]())
+proc newOutlineCache*(maxItems = 256): OutlineCache =
+  OutlineCache(items: initTable[uint32, Option[GlyphOutline]](), order: @[],
+    maxItems: maxItems)
 
 proc cacheLookup*(c: OutlineCache,
     gid: uint32): tuple[hit: bool, v: Option[GlyphOutline]] =
@@ -56,8 +60,17 @@ proc cacheLookup*(c: OutlineCache,
     (true, c.items[gid])
 
 proc cacheStore*(c: OutlineCache, gid: uint32, v: Option[GlyphOutline]) =
-  if not c.isNil:
+  if c.isNil:
+    return
+  if c.items.hasKey(gid):
     c.items[gid] = v
+    return
+  if c.maxItems > 0 and c.order.len >= c.maxItems:
+    let oldest = c.order[0]
+    c.order.delete(0)
+    c.items.del(oldest)
+  c.items[gid] = v
+  c.order.add(gid)
 
 proc `==`*(a, b: DrawOp): bool =
   if a.kind != b.kind:
