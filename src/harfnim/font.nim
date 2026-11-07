@@ -6,6 +6,9 @@ import ./normalize
 import ./scale
 import ./sfnt
 import ./variations
+import ./ot/gpos
+import ./ot/gsub
+import ./ot/kern
 
 export scale
 export sfnt
@@ -13,14 +16,32 @@ export draw
 export variations
 
 type
-  ShaperFont* = object
+  LayoutTables* = ref object
+    ## Lazily parsed layout tables, shared through ShaperFont copies
+    ## (same pattern as the outline cache). Table bytes are immutable
+    ## per parsed font and parsing ignores the variation location
+    ## (applied later from `varCoords`), so no invalidation is needed.
+    gsubDone*: bool
+    gsub*: Option[GsubData]
+    gposDone*: bool
+    gpos*: Option[GposData]
+    kernDone*: bool
+    kern*: Option[KernData]
+
+  ShaperFont* = ref object
+    ## Shaper handle over a parsed font (HarfBuzz `hb_font_t` equivalent).
+    ## A ref so copies share state instead of deep-copying megabytes of
+    ## font bytes per call. Sharing is observable: `setScale` and
+    ## `setVariations` mutate the shared object, so callers needing
+    ## isolation must create separate shapers via `newShaperFont`.
     font*: SfntFont
     unitsPerEm*: uint16
     scale*: Scale
     outlineCache*: OutlineCache
+    layout*: LayoutTables
     varCoords*: seq[float32]
     # TODO: FontFuncs overrides (custom nominal/metrics callbacks)
-    # TODO: OT/AAT layout caches, cmap cache
+    # TODO: cmap cache
 
 proc newShaperFont*(font: SfntFont): ShaperFont =
   ShaperFont(
@@ -28,8 +49,38 @@ proc newShaperFont*(font: SfntFont): ShaperFont =
     unitsPerEm: font.unitsPerEm,
     scale: identityScale(int32(font.unitsPerEm)),
     outlineCache: newOutlineCache(),
+    layout: LayoutTables(),
     varCoords: newSeq[float32](font.fvarAxes.len),
   )
+
+proc cachedGsub*(f: ShaperFont): Option[GsubData] =
+  ## GSUB parsed once per shaper (full-table parse costs milliseconds
+  ## on large fonts; `shape` used to pay it on every call).
+  if f.layout == nil:
+    return parseGsub(f.font)
+  if not f.layout.gsubDone:
+    f.layout.gsub = parseGsub(f.font)
+    f.layout.gsubDone = true
+  f.layout.gsub
+
+proc cachedGpos*(f: ShaperFont): Option[GposData] =
+  ## Like `cachedGsub` for GPOS.
+  if f.layout == nil:
+    return parseGpos(f.font)
+  if not f.layout.gposDone:
+    f.layout.gpos = parseGpos(f.font)
+    f.layout.gposDone = true
+  f.layout.gpos
+
+proc cachedKern*(f: ShaperFont): Option[KernData] =
+  ## Like `cachedGsub` for the legacy `kern` table (parsed only when a
+  ## kern feature is requested and GPOS supplied no kern for the script).
+  if f.layout == nil:
+    return parseKern(f.font)
+  if not f.layout.kernDone:
+    f.layout.kern = parseKern(f.font)
+    f.layout.kernDone = true
+  f.layout.kern
 
 proc setScale*(f: var ShaperFont, scale: int32) =
   f.scale = newScale(scale, scale, int32(f.unitsPerEm))

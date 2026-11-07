@@ -32,7 +32,11 @@ type
 
   AvarSegment* = tuple[fromV, toV: float32]
 
-  SfntFont* = object
+  SfntFont* = ref object
+    ## Parsed font handle. A ref so copies share the (large) table bytes
+    ## instead of deep-copying megabytes per call (Nim seq `=` is a deep
+    ## copy); the parsed data is immutable, so sharing is safe. The
+    ## lazily filled `locaCache` rides along through copies.
     bytes*: seq[uint8]
     tables*: seq[TableEntry]
     unitsPerEm*: uint16
@@ -52,6 +56,17 @@ type
     vvarStore*: VarStore
     vvarAdvMap*: DeltaSetIndexMap
     gdefVarStore*: VarStore
+    locaCache*: LocaCache
+
+  LocaCache* = ref object
+    ## Lazily parsed `loca` offsets. Created once per parsed font and
+    ## shared through SfntFont copies (same pattern as the shaper's
+    ## outline cache); the table bytes are immutable so no invalidation
+    ## is needed.
+    done*: bool
+    ok*: bool
+    starts*: seq[int]
+    ends*: seq[int]
 
 proc tagOf(a, b, c, d: char): uint32 =
   (uint32(uint8(a)) shl 24) or (uint32(uint8(b)) shl 16) or
@@ -474,8 +489,10 @@ proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
     if off < 0 or len < 0 or off + len > bytes.len:
       raise newException(FontError, "table out of bounds")
     tables.add(TableEntry(tag: tag, offset: off, length: len))
+  new(result)
   result.bytes = bytes
   result.tables = tables
+  result.locaCache = LocaCache()
   result.cmapOffset = -1
   let head = result.tableData(TagHead)
   if not head.ok or head.len < 54:
@@ -795,9 +812,25 @@ proc glyphOffsets(f: SfntFont): tuple[ok: bool, starts, ends: seq[int]] =
       ends[i] = glyf.offset + e
   (true, starts, ends)
 
+proc cachedGlyphOffsets*(f: SfntFont): tuple[ok: bool, starts,
+    ends: seq[int]] =
+  ## `glyphOffsets`, parsed once per font. Outline/extent lookups call
+  ## this per glyph, and a full `loca` walk per call costs milliseconds
+  ## on large fonts (50k glyphs). Falls back to the uncached walk when
+  ## the font bypassed `parseFontData` (no cache allocated).
+  if f.locaCache == nil:
+    return glyphOffsets(f)
+  if not f.locaCache.done:
+    let (ok, s, e) = glyphOffsets(f)
+    f.locaCache.ok = ok
+    f.locaCache.starts = s
+    f.locaCache.ends = e
+    f.locaCache.done = true
+  (f.locaCache.ok, f.locaCache.starts, f.locaCache.ends)
+
 proc glyphBoundsUnscaled*(f: SfntFont,
     gid: uint32): Option[tuple[xMin, yMin, xMax, yMax: int32]] =
-  let (ok, starts, ends) = f.glyphOffsets()
+  let (ok, starts, ends) = f.cachedGlyphOffsets()
   if not ok or int(gid) >= starts.len:
     return none(tuple[xMin, yMin, xMax, yMax: int32])
   let s = starts[int(gid)]
@@ -850,7 +883,7 @@ proc glyphDataRange*(f: SfntFont, gid: uint32): tuple[ok: bool, off,
   ## Byte range of the `glyf` data for `gid`, or ok=false when the font
   ## has no glyf table or the id is out of range. Empty glyphs report
   ## len 0.
-  let (ok, starts, ends) = f.glyphOffsets()
+  let (ok, starts, ends) = f.cachedGlyphOffsets()
   if not ok or int(gid) >= starts.len:
     return (false, 0, 0)
   let s = starts[int(gid)]
@@ -862,7 +895,7 @@ proc glyphDataRange*(f: SfntFont, gid: uint32): tuple[ok: bool, off,
 proc drawGlyf(f: SfntFont, gid: uint32,
     cb: proc(op: DrawOp) {.closure.},
     coords: seq[float32] = @[]): bool =
-  let (ok, starts, ends) = f.glyphOffsets()
+  let (ok, starts, ends) = f.cachedGlyphOffsets()
   if not ok or int(gid) >= starts.len:
     return false
   let s = starts[int(gid)]

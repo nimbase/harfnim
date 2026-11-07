@@ -558,8 +558,10 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   let sf = font
   # Layout tables are parsed before normalization: shaper selection
   # (Hebrew composition) and the GPOS-mark gate need them upfront.
-  let gsubOpt = parseGsub(sf.font)
-  let gposOpt = parseGpos(sf.font)
+  # Parsed once per shaper (see cachedGsub); re-parsing per shape call
+  # cost milliseconds on large fonts.
+  let gsubOpt = sf.cachedGsub()
+  let gposOpt = sf.cachedGpos()
   let shaper = shaperForBuffer(buf, gsubOpt, plan.scriptTag)
   let useArabic = shaper == skArabic
   var hasGposMark = false
@@ -630,7 +632,7 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   var kernRan = false
   var hasCrossKern = false
   if kernRequested:
-    let kernOpt = parseKern(sf.font)
+    let kernOpt = sf.cachedKern()
     if kernOpt.isSome and kernOpt.get.subtables.len > 0:
       var hasGposKern = false
       if gposOpt.isSome:
