@@ -89,7 +89,7 @@ proc drawGlyph*(f: ShaperFont, gid: GlyphId,
   var b = OutlineBuilder()
   let ok = b.collectInto(proc(
       c: proc(op: DrawOp) {.closure.}): bool =
-    f.font.drawGlyph(gid.value, c))
+    f.font.drawGlyph(gid.value, c, f.varCoords))
   let o = b.finish()
   cacheStore(f.outlineCache, gid.value,
     if ok: some(o) else: none(GlyphOutline))
@@ -106,7 +106,7 @@ proc glyphOutline*(f: ShaperFont, gid: GlyphId): Option[GlyphOutline] =
   var b = OutlineBuilder()
   let ok = b.collectInto(proc(
       c: proc(op: DrawOp) {.closure.}): bool =
-    f.font.drawGlyph(gid.value, c))
+    f.font.drawGlyph(gid.value, c, f.varCoords))
   let o = if ok: some(b.finish()) else: none(GlyphOutline)
   cacheStore(f.outlineCache, gid.value, o)
   o
@@ -118,14 +118,23 @@ proc glyphBoundsComputedCached*(f: ShaperFont,
     return none(tuple[xMin, yMin, xMax, yMax: int32])
   outlineBounds(o.get)
 
+proc isVaried*(f: ShaperFont): bool =
+  ## True when a non-default variation location is active.
+  for v in f.varCoords:
+    if v != 0.0f32:
+      return true
+  false
+
 proc glyphExtents*(f: ShaperFont, gid: GlyphId): Option[GlyphExtents] =
-  let b = f.font.glyphBoundsUnscaled(gid.value)
-  if b.isSome:
-    let (xMin, yMin, xMax, yMax) = b.get
-    return some(f.scale.scaleExtents(GlyphExtents(xBearing: xMin,
-      yBearing: yMax, width: xMax - xMin, height: yMin - yMax)))
-  # Header box unavailable (composite glyph or CFF outlines): fall back
-  # to the decoded outline bounds.
+  if not f.isVaried() or not f.font.hasGvar():
+    let b = f.font.glyphBoundsUnscaled(gid.value)
+    if b.isSome:
+      let (xMin, yMin, xMax, yMax) = b.get
+      return some(f.scale.scaleExtents(GlyphExtents(xBearing: xMin,
+        yBearing: yMax, width: xMax - xMin, height: yMin - yMax)))
+  # Header box unavailable (composite glyph or CFF outlines) or the
+  # location is varied: fall back to the decoded outline bounds.
+  # TODO: metric variations (HVAR/MVAR) for advances.
   let cb = f.glyphBoundsComputedCached(gid)
   if cb.isNone:
     return none(GlyphExtents)

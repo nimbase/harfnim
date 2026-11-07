@@ -9,6 +9,7 @@ import harfnim/unicode
 import harfnim/normalize
 import harfnim/draw
 import harfnim/glyf
+import harfnim/gvar
 import harfnim/cff
 import harfnim/variations
 import harfnim/font
@@ -26,6 +27,7 @@ export unicode
 export normalize
 export draw
 export glyf
+export gvar
 export cff
 export variations
 export font

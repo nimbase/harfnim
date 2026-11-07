@@ -3,6 +3,7 @@ import std/options
 import ./buffer
 import ./draw
 import ./glyf
+import ./gvar
 import ./cff
 
 type
@@ -772,6 +773,20 @@ proc numFaces*(data: openArray[uint8]): int =
 # Outlines (glyf / CFF)
 # ---------------------------------------------------------------------------
 
+proc hasGvar*(f: SfntFont): bool =
+  f.tableData(TagGvar).ok
+
+proc gvarContextFor(f: SfntFont, coords: seq[float32]): GvarContext =
+  if coords.len == 0:
+    return noGvarContext()
+  let t = f.tableData(TagGvar)
+  if not t.ok:
+    return noGvarContext()
+  let gt = parseGvar(f.bytes, t.offset, t.len)
+  if not gt.ok:
+    return noGvarContext()
+  GvarContext(table: gt, coords: coords)
+
 proc glyphDataRange*(f: SfntFont, gid: uint32): tuple[ok: bool, off,
     len: int] =
   ## Byte range of the `glyf` data for `gid`, or ok=false when the font
@@ -787,7 +802,8 @@ proc glyphDataRange*(f: SfntFont, gid: uint32): tuple[ok: bool, off,
   (true, s, e - s)
 
 proc drawGlyf(f: SfntFont, gid: uint32,
-    cb: proc(op: DrawOp) {.closure.}): bool =
+    cb: proc(op: DrawOp) {.closure.},
+    coords: seq[float32] = @[]): bool =
   let (ok, starts, ends) = f.glyphOffsets()
   if not ok or int(gid) >= starts.len:
     return false
@@ -801,7 +817,7 @@ proc drawGlyf(f: SfntFont, gid: uint32,
       (false, 0, 0)
     else:
       (true, starts[int(id)], ends[int(id)] - starts[int(id)])
-  drawGlyfGlyph(f.bytes, s, e - s, at, cb)
+  drawGlyfGlyph(f.bytes, s, e - s, at, cb, gid, f.gvarContextFor(coords))
 
 proc drawCff(f: SfntFont, gid: uint32,
     cb: proc(op: DrawOp) {.closure.}): bool =
@@ -814,21 +830,26 @@ proc drawCff(f: SfntFont, gid: uint32,
   drawCffGlyph(c.get, gid, cb)
 
 proc drawGlyph*(f: SfntFont, gid: uint32,
-    cb: proc(op: DrawOp) {.closure.}): bool =
+    cb: proc(op: DrawOp) {.closure.},
+    coords: seq[float32] = @[]): bool =
   ## Emits the outline of `gid` as draw ops. TrueType `glyf` outlines
   ## take precedence when present, otherwise the CFF table is used.
-  ## Returns false when the glyph has no usable outline.
+  ## `coords` are normalized variation coordinates for `gvar`
+  ## (CFF2 blending is a follow-up). Returns false when the glyph has
+  ## no usable outline.
   let loca = f.tableData(TagLoca)
   let glyf = f.tableData(TagGlyf)
   if loca.ok and glyf.ok:
-    return f.drawGlyf(gid, cb)
+    return f.drawGlyf(gid, cb, coords)
   f.drawCff(gid, cb)
 
-proc glyphOutline*(f: SfntFont, gid: uint32): Option[GlyphOutline] =
+proc glyphOutline*(f: SfntFont, gid: uint32,
+    coords: seq[float32] = @[]): Option[GlyphOutline] =
   ## Collects `drawGlyph` into a value outline.
   var b = OutlineBuilder()
   if not b.collectInto(proc(
-      cb: proc(op: DrawOp) {.closure.}): bool = f.drawGlyph(gid, cb)):
+      cb: proc(op: DrawOp) {.closure.}): bool =
+    f.drawGlyph(gid, cb, coords)):
     return none(GlyphOutline)
   some(b.finish())
 

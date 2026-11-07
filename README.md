@@ -83,8 +83,9 @@ for i in 0 ..< buf.len:
 * [x] glyf outlines (simple + composite) with draw callbacks and extents fallback
 * [x] CFF / Type 2 charstrings (subrs, flex, CID FDSelect, seac) with bounded outline cache
 * [x] cmap format 14 variation sequences, name table
+* [x] Variable font coordinates (fvar/avar) and gvar outline variations
 * [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
-* [ ] Variations (fvar/gvar/var-store, CFF2 blend)
+* [ ] Variable metrics (HVAR/MVAR/var-store) and CFF2 blending
 * [ ] AAT morx
 * [ ] stch stretching and win1256 legacy fallback
 

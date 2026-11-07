@@ -10,6 +10,7 @@
 import std/options
 
 import ./draw
+import ./gvar
 
 const
   GlyfMaxDepth = 16
@@ -188,10 +189,13 @@ proc xformPt(x, y: int32, a, b, c, d, e, f: float64): tuple[x, y: int32] =
 
 proc decodeGlyphOutlines*(bytes: seq[uint8], off, len: int,
     glyphAt: proc(gid: uint32): tuple[ok: bool, off, len: int] {.closure.},
-    depth: int = 0): Option[seq[TTContour]] =
+    depth: int = 0, gid: uint32 = 0u32,
+    gvar: GvarContext = noGvarContext()): Option[seq[TTContour]] =
   ## Decodes the glyph at `off`/`len` into point contours. Composite
-  ## components resolve through `glyphAt`. Returns `none` for empty or
-  ## malformed glyphs.
+  ## components resolve through `glyphAt`. When `gvar` carries
+  ## variation data, per-glyph deltas apply in glyph space before
+  ## component transforms. Returns `none` for empty or malformed
+  ## glyphs.
   if depth > GlyfMaxDepth:
     return none(seq[TTContour])
   if off < 0 or len < 10 or off + len > bytes.len:
@@ -207,7 +211,34 @@ proc decodeGlyphOutlines*(bytes: seq[uint8], off, len: int,
   # Skip the bounding box; bounds come from the decoded points.
   r.pos += 8
   if numContours > 0:
-    return decodeSimple(r, numContours)
+    let csOpt = decodeSimple(r, numContours)
+    if csOpt.isNone or not gvar.hasData():
+      return csOpt
+    # Flatten, apply gvar deltas (base kept on malformed data), and
+    # rebuild the contours with identical on-curve flags.
+    var cs = csOpt.get
+    var ends = newSeq[int]()
+    var xs = newSeq[int32]()
+    var ys = newSeq[int32]()
+    var flags = newSeq[bool]()
+    for c in cs:
+      for p in c:
+        xs.add(p.x)
+        ys.add(p.y)
+        flags.add(p.onCurve)
+      ends.add(xs.len - 1)
+    if xs.len == 0:
+      return csOpt
+    discard applyGvarDeltas(gvar, int(gid), xs.len, ends, xs, ys)
+    var outCs: seq[TTContour] = @[]
+    var start = 0
+    for e in ends:
+      var nc: TTContour = @[]
+      for i in start .. e:
+        nc.add((xs[i], ys[i], flags[i]))
+      outCs.add(nc)
+      start = e + 1
+    return some(outCs)
   # Composite glyph.
   var acc: seq[TTContour] = @[]
   var total = 0
@@ -259,7 +290,7 @@ proc decodeGlyphOutlines*(bytes: seq[uint8], off, len: int,
       discard
     else:
       let sub = decodeGlyphOutlines(bytes, ga.off, ga.len, glyphAt,
-        depth + 1)
+        depth + 1, uint32(compGid), gvar)
       if sub.isNone:
         return none(seq[TTContour])
       var e, f: float64
@@ -319,10 +350,11 @@ proc decodeGlyphOutlines*(bytes: seq[uint8], off, len: int,
 
 proc drawGlyfGlyph*(bytes: seq[uint8], off, len: int,
     glyphAt: proc(gid: uint32): tuple[ok: bool, off, len: int] {.closure.},
-    cb: proc(op: DrawOp) {.closure.}): bool =
+    cb: proc(op: DrawOp) {.closure.}, gid: uint32 = 0u32,
+    gvar: GvarContext = noGvarContext()): bool =
   ## Emits draw ops for the glyph at `off`/`len`. Returns false when the
   ## glyph is empty or malformed.
-  let cs = decodeGlyphOutlines(bytes, off, len, glyphAt)
+  let cs = decodeGlyphOutlines(bytes, off, len, glyphAt, 0, gid, gvar)
   if cs.isNone or cs.get.len == 0:
     return false
   emitContours(cs.get, cb)
