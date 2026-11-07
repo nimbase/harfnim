@@ -1527,6 +1527,13 @@ proc ligated*(g: GlyphInfo): bool =
 proc multiplied*(g: GlyphInfo): bool =
   (g.glyphProps() and GlyphPropMultiplied) != 0
 
+proc ligatedAndDidntMultiply*(g: GlyphInfo): bool =
+  g.ligated() and not g.multiplied()
+
+proc clearLigatedAndMultiplied*(g: var GlyphInfo) =
+  g.setGlyphProps(g.glyphProps() and not
+    (GlyphPropLigated or GlyphPropMultiplied))
+
 proc ligNumCompsInLigation*(g: GlyphInfo): uint8 =
   if g.multiplied() and g.ligComp() != 0: 0u8 else: g.ligNumComps()
 

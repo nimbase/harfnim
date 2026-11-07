@@ -90,7 +90,8 @@ for i in 0 ..< buf.len:
 * [x] Hebrew shaper (presentation-form composition, mark reorder) and shaper dispatch
 * [x] Hangul shaper (LV/LVT composition, jamo features, tone reorder)
 * [x] Thai/Lao shaper (SARA AM split, PUA fallback shaping)
-* [ ] Indic, Khmer, Myanmar, USE, syllabic shapers
+* [x] Indic consonant-syllable shaper (reordering, staged features)
+* [ ] Khmer, Myanmar, USE shapers (syllabic core is shared)
 * [ ] MVAR metrics
 * [ ] AAT morx
 * [ ] stch stretching

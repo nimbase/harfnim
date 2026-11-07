@@ -3,9 +3,9 @@
 ## Mirrors harfrust shape.rs / ot/layout.rs. Arabic joining, fallback
 ## presentation forms (unicode and win1256), Hebrew composition and mark
 ## reorder, Hangul jamo composition, Thai SARA AM split and PUA fallback,
-## mark/cursive GPOS, and fallback mark positioning are implemented;
-## indic-family, khmer, myanmar, USE and syllabic shapers plus stch
-## stretching stay TODO.
+## Indic consonant-syllable reordering, mark/cursive GPOS, and fallback
+## mark positioning are implemented; khmer, myanmar, USE and syllabic
+## shapers plus stch stretching stay TODO.
 
 import std/options
 import std/bitops
@@ -24,6 +24,7 @@ import ./ot/gpos
 import ./ot/gsub
 import ./ot/hangul
 import ./ot/hebrew
+import ./ot/indic
 import ./ot/map
 import ./ot/shaper
 import ./ot/thai
@@ -590,6 +591,9 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     if gsubOpt.isSome:
       hasThaiGsub = gsubHasThai(gsubOpt.get)
     buf.preprocessThai(sf, hasThaiGsub)
+  if shaper == skIndic:
+    # Vowel-constraint splits happen on codepoints, pre-normalize.
+    buf.preprocessVowelConstraints()
   var nctx = sf.normalizeContextFor()
   if shaper == skHebrew:
     nctx.composeFn = hebrewComposeFn(hasGposMark)
@@ -597,7 +601,13 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
         last: int) {.closure.} =
       b.reorderMarksHebrew(first, last)
     nctx.reorderMarks = some(hebrewReorder)
-  let nmMode = if shaper == skHangul: nmNone else: nmComposedDiacritics
+  if shaper == skIndic:
+    nctx.decomposeFn = indicDecompose
+    nctx.composeFn = indicCompose
+  let nmMode =
+    if shaper == skHangul: nmNone
+    elif shaper == skIndic: nmComposedDiacriticsNoShortCircuit
+    else: nmComposedDiacritics
   buf.normalize(nmMode, hasGposMark, nctx)
   buf.deallocateUnicodeVars()
   # Arabic joining + mark reordering happen on Unicode codepoints.
@@ -615,6 +625,9 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     hangulMasks = buf.prepareHangulMasks()
     buf.setupMasksHangul(hangulMasks)
     haveHangulMasks = true
+  if shaper == skIndic:
+    # Syllabic categories attach on codepoints, before glyph mapping.
+    buf.setupIndicProperties()
   buf.mapGlyphsFast()
   buf.setContentType(some(contentGlyphs))
   buf.allocateGsubGposVars()
@@ -632,6 +645,14 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
         plan.features, hangulMasks)
     # Without GSUB there is nothing to apply: decomposition already
     # happened in preprocessing.
+  elif shaper == skIndic:
+    if gsubOpt.isSome:
+      var indicPlan = newIndicShapePlan(gsubOpt.get, plan.scriptTag,
+        plan.langTag, buf.script)
+      buf.applyIndicGsub(sf, gsubOpt.get, plan.scriptTag, plan.langTag,
+        plan.features, indicPlan)
+    else:
+      buf.clearSyllables()
   else:
     if gsubOpt.isSome:
       buf.applyGsubFeatures(gsubOpt.get, plan.scriptTag, plan.langTag,
@@ -677,10 +698,10 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
         kernRan = true
   # Fallback mark positioning runs only when neither GPOS nor legacy
   # kern positioning applied, mirroring harfrust position_by_plan
-  # (adjust_mark_positioning_when_zeroing). The Thai shaper (like the
-  # other syllabic shapers) opts out of fallback positioning.
+  # (adjust_mark_positioning_when_zeroing). The Thai and Indic shapers
+  # (like the other syllabic shapers) opt out of fallback positioning.
   let fallbackAllowed = not gposOpt.isSome and shaper != skThai and
-    (not kernRan or not hasCrossKern)
+    shaper != skIndic and (not kernRan or not hasCrossKern)
   # Late mark zeroing (arabic/hebrew/default) when GPOS did not attach.
   if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
     buf.zeroMarkWidths(buf.direction.isForward())

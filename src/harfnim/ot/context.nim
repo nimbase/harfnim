@@ -89,13 +89,16 @@ proc prevBackwardOutPos*(buf: var Buffer, props: uint32,
 
 proc matchInputSeq*(buf: Buffer, props, lookupMask: uint32,
     seq: seq[uint32], kind: ValueKind, classDef: ClassDef,
-    coverages: seq[Coverage]): Option[
+    coverages: seq[Coverage],
+    anchorSyllable: uint8 = 0u8): Option[
     tuple[positions: seq[int], matchEnd: int]] =
   ## Matches `seq` against input glyphs after the current one, skipping
   ## ignorables per `props`. First glyph (buf.idx) is implied by coverage.
   ## Requires the feature mask on every matched input glyph.
   ## `coverages` holds per-position coverages for format-3 input (same
-  ## length as `seq`); otherwise empty.
+  ## length as `seq`); otherwise empty. When `anchorSyllable` is
+  ## nonzero, consumed glyphs must share that syllable (per-syllable
+  ## matching for the Indic-family shapers).
   var positions = @[buf.idx]
   var j = buf.idx + 1
   for si in 0 ..< seq.len:
@@ -103,6 +106,8 @@ proc matchInputSeq*(buf: Buffer, props, lookupMask: uint32,
     if j >= buf.len or j >= buf.info.len:
       return none(tuple[positions: seq[int], matchEnd: int])
     let g = buf.info[j]
+    if anchorSyllable != 0u8 and g.syllable() != anchorSyllable:
+      return none(tuple[positions: seq[int], matchEnd: int])
     if (g.mask and lookupMask) == 0u32:
       return none(tuple[positions: seq[int], matchEnd: int])
     let ok =
@@ -122,15 +127,18 @@ proc matchInputSeq*(buf: Buffer, props, lookupMask: uint32,
 
 proc matchLookaheadSeq*(buf: Buffer, props: uint32, seq: seq[uint32],
     kind: ValueKind, classDef: ClassDef, coverages: seq[Coverage],
-    start: int): Option[int] =
+    start: int, anchorSyllable: uint8 = 0u8): Option[int] =
   ## Matches lookahead from `start` (input index after the input match).
   ## Returns the end index on success. Ignores the feature mask.
+  ## `anchorSyllable` constrains to one syllable when nonzero.
   var j = start
   for si in 0 ..< seq.len:
     j = nextForwardPos(buf, props, j)
     if j >= buf.len or j >= buf.info.len:
       return none(int)
     let g = buf.info[j]
+    if anchorSyllable != 0u8 and g.syllable() != anchorSyllable:
+      return none(int)
     let ok =
       case kind
       of vkGlyph:
@@ -147,10 +155,11 @@ proc matchLookaheadSeq*(buf: Buffer, props: uint32, seq: seq[uint32],
 
 proc matchBacktrackSeq*(buf: var Buffer, props: uint32, seq: seq[uint32],
     kind: ValueKind, classDef: ClassDef,
-    coverages: seq[Coverage]): bool =
+    coverages: seq[Coverage], anchorSyllable: uint8 = 0u8): bool =
   ## Matches backtrack against already-emitted output, nearest first.
   ## `seq[0]` is the glyph immediately before the current one.
-  ## Ignores the feature mask.
+  ## Ignores the feature mask. `anchorSyllable` constrains to one
+  ## syllable when nonzero.
   if seq.len == 0:
     return true
   var k =
@@ -165,6 +174,8 @@ proc matchBacktrackSeq*(buf: var Buffer, props: uint32, seq: seq[uint32],
       else:
         if k < buf.info.len: addr buf.info[k] else: nil
     if slot == nil:
+      return false
+    if anchorSyllable != 0u8 and slot[].syllable() != anchorSyllable:
       return false
     let gid = slot[].glyphId
     let ok =

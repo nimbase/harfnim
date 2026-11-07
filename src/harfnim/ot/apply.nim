@@ -57,6 +57,14 @@ proc replaceWithSubstitutedInplace*(buf: var Buffer, gid: uint32) =
   buf.info[buf.idx].setGlyphProps(
     buf.info[buf.idx].glyphProps() or GlyphPropSubstituted)
 
+proc anchorSyllableAt(buf: Buffer, perSyllable: bool): uint8 =
+  ## Syllable anchoring a per-syllable match starting at buf.idx
+  ## (0 disables the constraint, mirroring harfrust's Matcher).
+  if perSyllable and buf.idx >= 0 and buf.idx < buf.info.len:
+    buf.info[buf.idx].syllable()
+  else:
+    0u8
+
 proc lookupCovers(lookup: Lookup, gid: uint32): bool =
   for e in lookup.order:
     case e.kind
@@ -100,20 +108,23 @@ proc lookupCovers(lookup: Lookup, gid: uint32): bool =
 
 # Forward declarations for the contextual recurse (Nim is single-pass).
 proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
-  mask: uint32, nestingLeft: int = MaxNestingLevel): bool
+  mask: uint32, nestingLeft: int = MaxNestingLevel,
+  perSyllable: bool = false): bool
 proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
-  parentMask: uint32, nestingLeft: int): bool
+  parentMask: uint32, nestingLeft: int, perSyllable: bool = false): bool
 proc applyRecords(buf: var Buffer, gsub: GsubData,
   records: seq[LookupRecord], positions: seq[int], matchEnd: int,
-  parentMask: uint32, nestingLeft: int): bool
+  parentMask: uint32, nestingLeft: int, perSyllable: bool = false): bool
 proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
-  props, lookupMask: uint32, nestingLeft: int): bool
+  props, lookupMask: uint32, nestingLeft: int,
+  perSyllable: bool = false): bool
 proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
-  props, lookupMask: uint32, nestingLeft: int): bool
+  props, lookupMask: uint32, nestingLeft: int,
+  perSyllable: bool = false): bool
 proc applyReverseSubst(buf: var Buffer, sub: ReverseChainSubst,
-  props, lookupMask: uint32): bool
+  props, lookupMask: uint32, perSyllable: bool = false): bool
 proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
-  mask: uint32): bool
+  mask: uint32, perSyllable: bool = false): bool
 proc applyPosLookup*(buf: var Buffer, gpos: GposData, lookup: PosLookup,
   mask: uint32, scale: Scale,
   nestingLeft: int = MaxNestingLevel, store: VarStore = VarStore(),
@@ -195,9 +206,10 @@ proc applyAlternate(buf: var Buffer, sub: AlternateSubst, index: int,
   true
 
 proc matchComponents(buf: var Buffer, components: seq[uint32],
-    props: uint32): Option[tuple[positions: seq[int], matchEnd: int,
-    totalComps: int]] =
+    props: uint32, perSyllable: bool = false): Option[
+    tuple[positions: seq[int], matchEnd: int, totalComps: int]] =
   type MatchResult = tuple[positions: seq[int], matchEnd: int, totalComps: int]
+  let anchor = anchorSyllableAt(buf, perSyllable)
   let first = buf.cur(0)
   if first == nil:
     return none(MatchResult)
@@ -209,6 +221,8 @@ proc matchComponents(buf: var Buffer, components: seq[uint32],
     if j >= buf.len or j >= buf.info.len:
       return none(MatchResult)
     let g = buf.info[j]
+    if anchor != 0u8 and g.syllable() != anchor:
+      return none(MatchResult)
     if not checkGlyphProperty(g, props):
       inc j
       continue
@@ -244,8 +258,12 @@ proc ligateInput(buf: var Buffer, positions: seq[int], matchEnd: int,
     if first[].generalCategory() == GcNonSpacingMark:
       first[].setGeneralCategory(GcOtherLetter)
   var props = first[].glyphProps() or GlyphPropSubstituted
+  # HarfBuzz marks every ligature-substitution output ligated (and
+  # clears multiplied), even base+mark combinations: the is_ligature
+  # distinction only affects ligature-id allocation and the class
+  # guess, not the LIGATED bit itself.
+  props = (props or GlyphPropLigated) and not GlyphPropMultiplied
   if isLigature:
-    props = (props or GlyphPropLigated) and not GlyphPropMultiplied
     props = (props and GlyphPropPreserve) or GlyphPropLigature
   else:
     props = props and GlyphPropPreserve
@@ -287,12 +305,12 @@ proc ligateInput(buf: var Buffer, positions: seq[int], matchEnd: int,
       inc k
 
 proc applyLigature(buf: var Buffer, set: seq[Ligature],
-    props: uint32): bool =
+    props: uint32, perSyllable: bool = false): bool =
   for lig in set:
     if lig.components.len == 0:
       replaceWithSubstituted(buf, lig.ligGlyph)
       return true
-    let m = matchComponents(buf, lig.components, props)
+    let m = matchComponents(buf, lig.components, props, perSyllable)
     if m.isNone:
       continue
     ligateInput(buf, m.get.positions, m.get.matchEnd, m.get.totalComps,
@@ -301,21 +319,23 @@ proc applyLigature(buf: var Buffer, set: seq[Ligature],
   false
 
 proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
-    props, lookupMask: uint32, nestingLeft: int): bool =
+    props, lookupMask: uint32, nestingLeft: int,
+    perSyllable: bool = false): bool =
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
+  let anchor = anchorSyllableAt(buf, perSyllable)
   if sub.format == 1u16 or sub.format == 4u16:
     let ci = sub.coverage.coverageIndex(gid)
     if ci.isNone or int(ci.get) >= sub.ruleSets.len:
       return false
     for rule in sub.ruleSets[int(ci.get)]:
       let m = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
-        noClassDef(), @[])
+        noClassDef(), @[], anchor)
       if m.isNone:
         continue
       if applyRecords(buf, gsub, rule.records, m.get.positions,
-          m.get.matchEnd, lookupMask, nestingLeft):
+          m.get.matchEnd, lookupMask, nestingLeft, perSyllable):
         return true
       if not buf.successful:
         return false
@@ -329,11 +349,11 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
       return false
     for rule in sub.ruleSets[cls]:
       let m = matchInputSeq(buf, props, lookupMask, rule.input, vkClass,
-        sub.classDef, @[])
+        sub.classDef, @[], anchor)
       if m.isNone:
         continue
       if applyRecords(buf, gsub, rule.records, m.get.positions,
-          m.get.matchEnd, lookupMask, nestingLeft):
+          m.get.matchEnd, lookupMask, nestingLeft, perSyllable):
         return true
       if not buf.successful:
         return false
@@ -349,11 +369,11 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
       else: @[]
     let dummy = newSeq[uint32](rest.len)
     let m = matchInputSeq(buf, props, lookupMask, dummy, vkCoverage,
-      noClassDef(), rest)
+      noClassDef(), rest, anchor)
     if m.isNone:
       return false
     if applyRecords(buf, gsub, sub.records, m.get.positions,
-        m.get.matchEnd, lookupMask, nestingLeft):
+        m.get.matchEnd, lookupMask, nestingLeft, perSyllable):
       return true
     if not buf.successful:
       return false
@@ -362,28 +382,30 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
     false
 
 proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
-    props, lookupMask: uint32, nestingLeft: int): bool =
+    props, lookupMask: uint32, nestingLeft: int,
+    perSyllable: bool = false): bool =
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
+  let anchor = anchorSyllableAt(buf, perSyllable)
   if sub.format == 1u16 or sub.format == 4u16:
     let ci = sub.coverage.coverageIndex(gid)
     if ci.isNone or int(ci.get) >= sub.ruleSets.len:
       return false
     for rule in sub.ruleSets[int(ci.get)]:
       let mi = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
-        noClassDef(), @[])
+        noClassDef(), @[], anchor)
       if mi.isNone:
         continue
       let la = matchLookaheadSeq(buf, props, rule.lookahead, vkGlyph,
-        noClassDef(), @[], mi.get.matchEnd)
+        noClassDef(), @[], mi.get.matchEnd, anchor)
       if la.isNone:
         continue
       if not matchBacktrackSeq(buf, props, rule.backtrack, vkGlyph,
-          noClassDef(), @[]):
+          noClassDef(), @[], anchor):
         continue
       if applyRecords(buf, gsub, rule.records, mi.get.positions,
-          mi.get.matchEnd, lookupMask, nestingLeft):
+          mi.get.matchEnd, lookupMask, nestingLeft, perSyllable):
         return true
       if not buf.successful:
         return false
@@ -397,18 +419,18 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
       return false
     for rule in sub.ruleSets[cls]:
       let mi = matchInputSeq(buf, props, lookupMask, rule.input, vkClass,
-        sub.inputClassDef, @[])
+        sub.inputClassDef, @[], anchor)
       if mi.isNone:
         continue
       let la = matchLookaheadSeq(buf, props, rule.lookahead, vkClass,
-        sub.lookaheadClassDef, @[], mi.get.matchEnd)
+        sub.lookaheadClassDef, @[], mi.get.matchEnd, anchor)
       if la.isNone:
         continue
       if not matchBacktrackSeq(buf, props, rule.backtrack, vkClass,
-          sub.backtrackClassDef, @[]):
+          sub.backtrackClassDef, @[], anchor):
         continue
       if applyRecords(buf, gsub, rule.records, mi.get.positions,
-          mi.get.matchEnd, lookupMask, nestingLeft):
+          mi.get.matchEnd, lookupMask, nestingLeft, perSyllable):
         return true
       if not buf.successful:
         return false
@@ -424,22 +446,22 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
       else: @[]
     let dummyIn = newSeq[uint32](restInput.len)
     let mi = matchInputSeq(buf, props, lookupMask, dummyIn, vkCoverage,
-      noClassDef(), restInput)
+      noClassDef(), restInput, anchor)
     if mi.isNone:
       return false
     let dummyLa = newSeq[uint32](sub.lookaheadCoverages.len)
     let la = matchLookaheadSeq(buf, props, dummyLa, vkCoverage, noClassDef(),
-      sub.lookaheadCoverages, mi.get.matchEnd)
+      sub.lookaheadCoverages, mi.get.matchEnd, anchor)
     if la.isNone:
       return false
     let dummyBack = newSeq[uint32](sub.backtrackCoverages.len)
     # Silence unused warning: backtrack length drives the walk below.
     discard dummyBack
     if not matchBacktrackSeq(buf, props, dummyBack, vkCoverage, noClassDef(),
-        sub.backtrackCoverages):
+        sub.backtrackCoverages, anchor):
       return false
     if applyRecords(buf, gsub, sub.records, mi.get.positions,
-        mi.get.matchEnd, lookupMask, nestingLeft):
+        mi.get.matchEnd, lookupMask, nestingLeft, perSyllable):
       return true
     if not buf.successful:
       return false
@@ -448,7 +470,7 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
     false
 
 proc applyReverseSubst(buf: var Buffer, sub: ReverseChainSubst,
-    props, lookupMask: uint32): bool =
+    props, lookupMask: uint32, perSyllable: bool = false): bool =
   ## Reverse-chain single substitution at the current position, in place.
   ## Backtrack and lookahead ignore the feature mask; only the current
   ## glyph requires it (enforced by the backward scan, mirroring
@@ -459,17 +481,18 @@ proc applyReverseSubst(buf: var Buffer, sub: ReverseChainSubst,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
+  let anchor = anchorSyllableAt(buf, perSyllable)
   let ci = sub.coverage.coverageIndex(gid)
   if ci.isNone or int(ci.get) >= sub.substitutes.len:
     return false
   let dummyBack = newSeq[uint32](sub.backtrackCoverages.len)
   if not matchBacktrackSeq(buf, props, dummyBack, vkCoverage, noClassDef(),
-      sub.backtrackCoverages):
+      sub.backtrackCoverages, anchor):
     # TODO: unsafe_to_concat_from_outbuffer marking
     return false
   let dummyLook = newSeq[uint32](sub.lookaheadCoverages.len)
   let laEnd = matchLookaheadSeq(buf, props, dummyLook, vkCoverage,
-    noClassDef(), sub.lookaheadCoverages, buf.idx + 1)
+    noClassDef(), sub.lookaheadCoverages, buf.idx + 1, anchor)
   if laEnd.isNone:
     return false
   # TODO: unsafe_to_break_from_outbuffer marking
@@ -477,7 +500,7 @@ proc applyReverseSubst(buf: var Buffer, sub: ReverseChainSubst,
   buf.successful
 
 proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
-    mask: uint32): bool =
+    mask: uint32, perSyllable: bool = false): bool =
   ## In-place backward walk for reverse-chain lookups. Length never
   ## changes, so indices stay valid while scanning from the end.
   if lookup.order.len == 0:
@@ -503,7 +526,8 @@ proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
     for e in lookup.order:
       if e.kind != lkReverse:
         continue
-      if applyReverseSubst(buf, lookup.reverseSubsts[e.index], props, mask):
+      if applyReverseSubst(buf, lookup.reverseSubsts[e.index], props, mask,
+          perSyllable):
         done = true
         break
     if done:
@@ -514,7 +538,8 @@ proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
 
 proc applyRecords(buf: var Buffer, gsub: GsubData,
     records: seq[LookupRecord], positions: seq[int], matchEnd: int,
-    parentMask: uint32, nestingLeft: int): bool =
+    parentMask: uint32, nestingLeft: int,
+    perSyllable: bool = false): bool =
   if positions.len == 0:
     return false
   if positions.len > MaxContextLength:
@@ -553,7 +578,7 @@ proc applyRecords(buf: var Buffer, gsub: GsubData,
       buf.successful = false
       break
     let applied = applyNestedAt(buf, gsub, int(rec.lookupIndex), parentMask,
-      nestingLeft - 1)
+      nestingLeft - 1, perSyllable)
     if not applied:
       if not buf.successful:
         break
@@ -599,7 +624,8 @@ proc applyRecords(buf: var Buffer, gsub: GsubData,
   buf.successful
 
 proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
-    parentMask: uint32, nestingLeft: int): bool =
+    parentMask: uint32, nestingLeft: int,
+    perSyllable: bool = false): bool =
   if nestingLeft <= 0:
     buf.indexFailed()
     return false
@@ -643,15 +669,16 @@ proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
       let ci = sub.coverage.coverageIndex(gid)
       if ci.isNone or int(ci.get) >= sub.sets.len:
         continue
-      if applyLigature(buf, sub.sets[int(ci.get)], nestedProps):
+      if applyLigature(buf, sub.sets[int(ci.get)], nestedProps,
+          perSyllable):
         return true
     of lkContext:
       if applyContextSubst(buf, gsub, lookup.contextSubsts[e.index],
-          nestedProps, parentMask, nestingLeft):
+          nestedProps, parentMask, nestingLeft, perSyllable):
         return true
     of lkChain:
       if applyChainSubst(buf, gsub, lookup.chainSubsts[e.index],
-          nestedProps, parentMask, nestingLeft):
+          nestedProps, parentMask, nestingLeft, perSyllable):
         return true
     of lkReverse:
       # Reverse chaining lookups can't be nested.
@@ -661,7 +688,8 @@ proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
   false
 
 proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
-  mask: uint32, nestingLeft: int = MaxNestingLevel): bool =
+  mask: uint32, nestingLeft: int = MaxNestingLevel,
+  perSyllable: bool = false): bool =
   if lookup.order.len == 0:
     return false
   let props = lookup.lookupProps()
@@ -713,17 +741,18 @@ proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
         let ci = sub.coverage.coverageIndex(gid)
         if ci.isNone or int(ci.get) >= sub.sets.len:
           continue
-        if applyLigature(buf, sub.sets[int(ci.get)], props):
+        if applyLigature(buf, sub.sets[int(ci.get)], props,
+            perSyllable):
           done = true
           break
       of lkContext:
         if applyContextSubst(buf, gsub, lookup.contextSubsts[e.index],
-            props, mask, nestingLeft):
+            props, mask, nestingLeft, perSyllable):
           done = true
           break
       of lkChain:
         if applyChainSubst(buf, gsub, lookup.chainSubsts[e.index],
-            props, mask, nestingLeft):
+            props, mask, nestingLeft, perSyllable):
           done = true
           break
       of lkReverse:
@@ -737,7 +766,8 @@ proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
       buf.nextGlyph()
 
 proc applySubstLookups*(buf: var Buffer, gsub: GsubData,
-    lookupIndices: openArray[uint16], mask: uint32) =
+    lookupIndices: openArray[uint16], mask: uint32,
+    perSyllable: bool = false) =
   if buf.isEmpty() or mask == 0u32:
     return
   for li in lookupIndices:
@@ -753,11 +783,12 @@ proc applySubstLookups*(buf: var Buffer, gsub: GsubData,
       if buf.isEmpty():
         continue
       buf.idx = buf.len - 1
-      discard applyLookupBackward(buf, gsub, lookup, mask)
+      discard applyLookupBackward(buf, gsub, lookup, mask, perSyllable)
     else:
       buf.clearOutput()
       buf.idx = 0
-      discard applyLookup(buf, gsub, lookup, mask)
+      discard applyLookup(buf, gsub, lookup, mask, MaxNestingLevel,
+        perSyllable)
       discard buf.sync()
 
 # --------------------------------------------------------------------------
