@@ -163,33 +163,46 @@ type
     maskArray*: array[17, uint32]
     nextBit*: uint32
 
-proc lookupsForTag(gsub: GsubData, scriptTag, langTag: Tag,
+proc lookupsForTag(gsub: GsubData, lang: LangSys,
     tagStr: string): seq[uint16] =
-  result = @[]
-  let t = tagFromStr(tagStr).toU32()
-  for (tag, lks) in gsubFeaturesFor(gsub, scriptTag, langTag):
-    if tag == t:
-      result.add(lks)
+  gsubLookupsForLang(gsub, lang, tagFromStr(tagStr).toU32())
+
+proc lookupsForTagScript(gsub: GsubData, scriptTag, langTag: Tag,
+    tagStr: string): seq[uint16] =
+  gsubLookupsForTag(gsub, scriptTag, langTag, tagFromStr(tagStr).toU32())
 
 proc newIndicShapePlan*(gsub: GsubData, scriptTag, langTag: Tag,
     script: Option[Script]): IndicShapePlan =
   ## Builds per-shape state: config, old-spec detection from the
   ## chosen GSUB script, would-substitute lookup lists, and mask bits
-  ## for the per-position features.
+  ## for the per-position features. Resolves the LangSys once and
+  ## reuses it for all 22 tag lookups.
   result.config = indicConfigFor(script)
   let chosen = gsubScriptTagFor(gsub, scriptTag)
   result.isOldSpec = result.config.hasOldSpec and
     (chosen.isNone or (chosen.get.toU32() and 0xFFu32) != 0x32u32)
   result.zeroContext = result.isOldSpec and
     (script.isNone or script.get != Malayalam)
+  let langOpt = gsubLangSys(gsub, scriptTag, langTag)
+  if langOpt.isNone:
+    var nextBit0 = 8u32
+    for i in 0 ..< 17:
+      if IndicGlobalFeature[i]:
+        result.maskArray[i] = 0u32
+      else:
+        let (m, _) = allocMaskBit(nextBit0, 1u32)
+        result.maskArray[i] = m
+    result.nextBit = nextBit0
+    return
+  let lang = langOpt.get
   for i in 0 ..< 17:
-    result.lookups[i] = lookupsForTag(gsub, scriptTag, langTag,
+    result.lookups[i] = lookupsForTag(gsub, lang,
       IndicFeatureTags[i])
-  result.wouldBlwf = lookupsForTag(gsub, scriptTag, langTag, "blwf")
-  result.wouldVatu = lookupsForTag(gsub, scriptTag, langTag, "vatu")
-  result.wouldPstf = lookupsForTag(gsub, scriptTag, langTag, "pstf")
-  result.wouldPref = lookupsForTag(gsub, scriptTag, langTag, "pref")
-  result.wouldRphf = lookupsForTag(gsub, scriptTag, langTag, "rphf")
+  result.wouldBlwf = lookupsForTag(gsub, lang, "blwf")
+  result.wouldVatu = lookupsForTag(gsub, lang, "vatu")
+  result.wouldPstf = lookupsForTag(gsub, lang, "pstf")
+  result.wouldPref = lookupsForTag(gsub, lang, "pref")
+  result.wouldRphf = lookupsForTag(gsub, lang, "rphf")
   var nextBit = 8u32
   for i in 0 ..< 17:
     if IndicGlobalFeature[i]:
@@ -969,9 +982,9 @@ proc applyIndicGsub*(buf: var Buffer, sf: ShaperFont, gsub: GsubData,
   ## initial reordering, basic features, final reordering, remaining
   ## features, then user features.
   buf.applyIndicFeature(gsub, "locl",
-    lookupsForTag(gsub, scriptTag, langTag, "locl"), 0u32, true, plan)
+    lookupsForTagScript(gsub, scriptTag, langTag, "locl"), 0u32, true, plan)
   buf.applyIndicFeature(gsub, "ccmp",
-    lookupsForTag(gsub, scriptTag, langTag, "ccmp"), 0u32, true, plan)
+    lookupsForTagScript(gsub, scriptTag, langTag, "ccmp"), 0u32, true, plan)
   buf.setupSyllablesIndic()
   if not buf.successful:
     return
@@ -1004,11 +1017,7 @@ proc applyIndicGsub*(buf: var Buffer, sf: ShaperFont, gsub: GsubData,
     let (m, v) = allocMaskBit(uBit, f.value)
     if m == 0u32:
       continue
-    var lks: seq[uint16] = @[]
-    for (tag, ks) in gsubFeaturesFor(gsub, scriptTag, langTag):
-      if tag == f.tag.toU32():
-        lks = ks
-        break
+    let lks = gsubLookupsForTag(gsub, scriptTag, langTag, f.tag.toU32())
     if lks.len == 0:
       continue
     buf.setMasks(v, m, f.start, f.stop)

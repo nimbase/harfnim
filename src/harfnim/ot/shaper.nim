@@ -134,7 +134,5 @@ proc gposHasMark*(gpos: GposData, scriptTag, langTag: Tag): bool =
   ## Whether the `mark` feature resolves to lookups for the script.
   ## Mirrors harfrust `plan.has_gpos_mark` (used to gate Hebrew
   ## presentation-form composition).
-  for (tag, lks) in gposFeaturesFor(gpos, scriptTag, langTag):
-    if tag == tagFromStr("mark").toU32() and lks.len > 0:
-      return true
-  false
+  gposLookupsForTag(gpos, scriptTag, langTag,
+    tagFromStr("mark").toU32()).len > 0

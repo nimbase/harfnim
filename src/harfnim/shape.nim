@@ -183,18 +183,15 @@ proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
   let ligaMask = am.ligaMask
   let cligMask = am.cligMask
   let msetMask = am.msetMask
-  let available = gsubFeaturesFor(gsub, scriptTag, langTag)
-  proc lookupsForAvail(avail: seq[tuple[tag: uint32, lookups: seq[uint16]]],
-      tagStr: string): seq[uint16] =
-    let t = tagFromStr(tagStr).toU32()
-    result = @[]
-    for (tag, lks) in avail:
-      if tag == t:
-        result.add(lks)
+  let langOpt = gsubLangSys(gsub, scriptTag, langTag)
+  template lookupsFor(tagStr: string): seq[uint16] =
+    if langOpt.isNone: @[]
+    else: gsubLookupsForLang(gsub, langOpt.get,
+      tagFromStr(tagStr).toU32())
   # Order mirrors harfrust arabic collect_features (pauses between each).
   template applyMasked(tagStr: string, mask: uint32) =
     if mask != 0u32:
-      let lks = lookupsForAvail(available, tagStr)
+      let lks = lookupsFor(tagStr)
       if lks.len > 0:
         buf.applySubstLookups(gsub, lks, mask)
   applyMasked("stch", stchMask)
@@ -209,7 +206,7 @@ proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
   if isArab:
     var needsFallback = true
     for t in arabTags:
-      if lookupsForAvail(available, t).len > 0:
+      if lookupsFor(t).len > 0:
         needsFallback = false
         break
     if needsFallback and rligMask != 0u32:
@@ -297,13 +294,9 @@ proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
     let (m, v) = allocMaskBit(uBit, f.value)
     if m == 0u32:
       continue
-    let lks = block:
-      var r: seq[uint16] = @[]
-      for (tag, ks) in available:
-        if tag == f.tag.toU32():
-          r = ks
-          break
-      r
+    let lks =
+      if langOpt.isNone: @[]
+      else: gsubLookupsForLang(gsub, langOpt.get, f.tag.toU32())
     if lks.len == 0:
       continue
     buf.setMasks(v, m, f.start, f.stop)
@@ -367,7 +360,10 @@ proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     store: VarStore = VarStore(), coords: seq[float32] = @[]) =
   ## Applies mark/mkmk/curs/dist/abvm/blwm by default plus user features.
   const autoTags = ["abvm", "blwm", "mark", "mkmk", "curs", "dist"]
-  let available = gposFeaturesFor(gpos, scriptTag, langTag)
+  let langOpt = gposLangSys(gpos, scriptTag, langTag)
+  if langOpt.isNone:
+    return
+  let lang = langOpt.get
   var nextBit = 8u32
   var autoMasks: array[6, tuple[mask, val: uint32]]
   for i in 0 ..< 6:
@@ -376,12 +372,7 @@ proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     let (m, v) = autoMasks[i]
     if m == 0u32:
       continue
-    let tagU = tagFromStr(t).toU32()
-    var lks: seq[uint16] = @[]
-    for (tag, ks) in available:
-      if tag == tagU:
-        lks = ks
-        break
+    let lks = gposLookupsForLang(gpos, lang, tagFromStr(t).toU32())
     if lks.len == 0:
       continue
     buf.setMasks(v, m, GlobalStart, GlobalEnd)
@@ -402,11 +393,7 @@ proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     let (m, v) = allocMaskBit(uBit, f.value)
     if m == 0u32:
       continue
-    var lks: seq[uint16] = @[]
-    for (tag, ks) in available:
-      if tag == f.tag.toU32():
-        lks = ks
-        break
+    let lks = gposLookupsForLang(gpos, lang, f.tag.toU32())
     if lks.len == 0:
       continue
     buf.setMasks(v, m, f.start, f.stop)
@@ -672,11 +659,8 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     if kernOpt.isSome and kernOpt.get.subtables.len > 0:
       var hasGposKern = false
       if gposOpt.isSome:
-        for (tg, _) in gposFeaturesFor(gposOpt.get, plan.scriptTag,
-            plan.langTag):
-          if tg == kernTag.toU32():
-            hasGposKern = true
-            break
+        hasGposKern = gposLookupsForTag(gposOpt.get, plan.scriptTag,
+          plan.langTag, kernTag.toU32()).len > 0
       if not hasGposKern:
         for sub in kernOpt.get.subtables:
           if sub.crossStream:

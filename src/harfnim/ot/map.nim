@@ -36,6 +36,64 @@ proc resolveLangSys*(script: ScriptTable, langTag: Tag): Option[LangSys] =
       return some(l.lang)
   script.defaultLang
 
+proc gsubLangSys*(gsub: GsubData, scriptTag, langTag: Tag): Option[LangSys] =
+  ## Resolves the LangSys once per shape; callers reuse it for every
+  ## feature tag instead of rebuilding the full feature list.
+  let si = findScript(gsub, scriptTag)
+  if si.isNone:
+    return none(LangSys)
+  resolveLangSys(gsub.scripts[si.get].script, langTag)
+
+proc gposLangSys*(gpos: GposData, scriptTag, langTag: Tag): Option[LangSys] =
+  let si = findScriptGpos(gpos, scriptTag)
+  if si.isNone:
+    return none(LangSys)
+  resolveLangSys(gpos.scripts[si.get].script, langTag)
+
+proc gsubLookupsForLang*(gsub: GsubData, lang: LangSys,
+    tagU32: uint32): seq[uint16] =
+  ## Direct tag lookup without building the intermediate available list.
+  ## Accumulates across duplicate tags like the old lookupsForTag.
+  result = @[]
+  if lang.requiredFeature != 0xFFFFu16 and
+      int(lang.requiredFeature) < gsub.features.len:
+    let f = gsub.features[int(lang.requiredFeature)]
+    if f.tag == tagU32:
+      result.add(f.lookups)
+  for fi in lang.featureIndices:
+    if int(fi) < gsub.features.len:
+      let f = gsub.features[int(fi)]
+      if f.tag == tagU32:
+        result.add(f.lookups)
+
+proc gposLookupsForLang*(gpos: GposData, lang: LangSys,
+    tagU32: uint32): seq[uint16] =
+  result = @[]
+  if lang.requiredFeature != 0xFFFFu16 and
+      int(lang.requiredFeature) < gpos.features.len:
+    let f = gpos.features[int(lang.requiredFeature)]
+    if f.tag == tagU32:
+      result.add(f.lookups)
+  for fi in lang.featureIndices:
+    if int(fi) < gpos.features.len:
+      let f = gpos.features[int(fi)]
+      if f.tag == tagU32:
+        result.add(f.lookups)
+
+proc gsubLookupsForTag*(gsub: GsubData, scriptTag, langTag: Tag,
+    tagU32: uint32): seq[uint16] =
+  let lang = gsubLangSys(gsub, scriptTag, langTag)
+  if lang.isNone:
+    return @[]
+  gsubLookupsForLang(gsub, lang.get, tagU32)
+
+proc gposLookupsForTag*(gpos: GposData, scriptTag, langTag: Tag,
+    tagU32: uint32): seq[uint16] =
+  let lang = gposLangSys(gpos, scriptTag, langTag)
+  if lang.isNone:
+    return @[]
+  gposLookupsForLang(gpos, lang.get, tagU32)
+
 proc gsubFeaturesFor*(gsub: GsubData, scriptTag, langTag: Tag): seq[
     tuple[tag: uint32, lookups: seq[uint16]]] =
   let si = findScript(gsub, scriptTag)
@@ -56,9 +114,12 @@ proc gsubFeaturesFor*(gsub: GsubData, scriptTag, langTag: Tag): seq[
 
 proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
     langTag: Tag, features: openArray[Feature]) =
-  let available = gsubFeaturesFor(gsub, scriptTag, langTag)
-  if available.len == 0 or features.len == 0:
+  if features.len == 0:
     return
+  let langOpt = gsubLangSys(gsub, scriptTag, langTag)
+  if langOpt.isNone:
+    return
+  let lang = langOpt.get
   # Feature mask bits start above the glyph-flag bits, mirroring
   # harfrust's bit allocation: valued features occupy as many bits as
   # needed to hold their value so lookups can read it back.
@@ -69,11 +130,7 @@ proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
     let (mask, valueBits) = allocMaskBit(nextBit, f.value)
     if mask == 0u32:
       break
-    var lookups: seq[uint16] = @[]
-    for (tag, lks) in available:
-      if tag == f.tag.toU32():
-        lookups = lks
-        break
+    let lookups = gsubLookupsForLang(gsub, lang, f.tag.toU32())
     if lookups.len == 0:
       continue
     buf.setMasks(valueBits, mask, f.start, f.stop)
@@ -101,9 +158,12 @@ proc applyGposFeatures*(buf: var Buffer, gpos: GposData, scriptTag,
     langTag: Tag, features: openArray[Feature], scale: Scale,
     store: VarStore = VarStore(),
     coords: seq[float32] = @[]) =
-  let available = gposFeaturesFor(gpos, scriptTag, langTag)
-  if available.len == 0 or features.len == 0:
+  if features.len == 0:
     return
+  let langOpt = gposLangSys(gpos, scriptTag, langTag)
+  if langOpt.isNone:
+    return
+  let lang = langOpt.get
   if not buf.havePositions:
     buf.clearPositions()
   var nextBit = 8u32
@@ -113,11 +173,7 @@ proc applyGposFeatures*(buf: var Buffer, gpos: GposData, scriptTag,
     let (mask, valueBits) = allocMaskBit(nextBit, f.value)
     if mask == 0u32:
       break
-    var lookups: seq[uint16] = @[]
-    for (tag, lks) in available:
-      if tag == f.tag.toU32():
-        lookups = lks
-        break
+    let lookups = gposLookupsForLang(gpos, lang, f.tag.toU32())
     if lookups.len == 0:
       continue
     buf.setMasks(valueBits, mask, f.start, f.stop)

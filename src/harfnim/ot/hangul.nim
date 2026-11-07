@@ -305,17 +305,14 @@ proc applyHangulGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
   ## Applies ljmo/vjmo/tjmo/calt with per-glyph masks, then user
   ## features with fresh bits above the Hangul allocation (mirroring
   ## the arabic applier; already-applied tags are skipped).
-  let available = gsubFeaturesFor(gsub, scriptTag, langTag)
-  proc lookupsForAvail(avail: seq[tuple[tag: uint32, lookups: seq[uint16]]],
-      tagStr: string): seq[uint16] =
-    let t = tagFromStr(tagStr).toU32()
-    result = @[]
-    for (tag, lks) in avail:
-      if tag == t:
-        result.add(lks)
+  let langOpt = gsubLangSys(gsub, scriptTag, langTag)
+  template lookupsFor(tagStr: string): seq[uint16] =
+    if langOpt.isNone: @[]
+    else: gsubLookupsForLang(gsub, langOpt.get,
+      tagFromStr(tagStr).toU32())
   template applyMasked(tagStr: string, mask: uint32) =
     if mask != 0u32:
-      let lks = lookupsForAvail(available, tagStr)
+      let lks = lookupsFor(tagStr)
       if lks.len > 0:
         buf.applySubstLookups(gsub, lks, mask)
   applyMasked("ljmo", hm.ljmoMask)
@@ -337,11 +334,9 @@ proc applyHangulGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
     let (m, v) = allocHangulMaskBit(uBit, f.value)
     if m == 0u32:
       continue
-    var lks: seq[uint16] = @[]
-    for (tag, ks) in available:
-      if tag == f.tag.toU32():
-        lks = ks
-        break
+    let lks =
+      if langOpt.isNone: @[]
+      else: gsubLookupsForLang(gsub, langOpt.get, f.tag.toU32())
     if lks.len == 0:
       continue
     buf.setMasks(v, m, f.start, f.stop)
