@@ -10,6 +10,7 @@ import harfnim/normalize
 import harfnim/draw
 import harfnim/glyf
 import harfnim/cff
+import harfnim/variations
 import harfnim/font
 import harfnim/ot/map
 import harfnim/shape
@@ -26,6 +27,7 @@ export normalize
 export draw
 export glyf
 export cff
+export variations
 export font
 export map
 export shape

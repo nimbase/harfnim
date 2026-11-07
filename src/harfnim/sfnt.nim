@@ -20,6 +20,16 @@ type
     nameID*: uint16
     bytes*: seq[uint8]
 
+  FvarAxis* = object
+    tag*: uint32
+    min*: float32
+    default*: float32
+    max*: float32
+    hidden*: bool
+    nameID*: uint16
+
+  AvarSegment* = tuple[fromV, toV: float32]
+
   SfntFont* = object
     bytes*: seq[uint8]
     tables*: seq[TableEntry]
@@ -33,6 +43,8 @@ type
     cmapOffset*: int
     cmap14Offset*: int
     names*: seq[NameEntry]
+    fvarAxes*: seq[FvarAxis]
+    avarMaps*: seq[seq[AvarSegment]]
 
 proc tagOf(a, b, c, d: char): uint32 =
   (uint32(uint8(a)) shl 24) or (uint32(uint8(b)) shl 16) or
@@ -50,6 +62,9 @@ const
   TagVmtx = 0x766D7478u32
   TagCff = 0x43464620u32
   TagName = 0x6E616D65u32
+  TagFvar = 0x66766172u32
+  TagAvar = 0x61766172u32
+  TagGvar = 0x67766172u32
 
 proc checkBounds(bytes: openArray[uint8], off, size: int) =
   if off < 0 or size < 0 or off + size > bytes.len:
@@ -319,6 +334,110 @@ proc decodeNameBytes*(e: NameEntry): string =
         result.add(char(0xC0u32 or (cp shr 6)))
         result.add(char(0x80u32 or (cp and 0x3Fu32)))
 
+proc fixedToFloat*(v: int32): float32 =
+  float32(v) / 65536.0f32
+
+proc f2dot14ToFloat*(v: int16): float32 =
+  float32(v) / 16384.0f32
+
+proc parseFvarAxes*(bytes: seq[uint8], tableOff, tableLen: int): seq[
+    FvarAxis] =
+  ## Parses the `fvar` axis array. Instances are skipped. Malformed
+  ## tables yield an empty list (contained); the font then behaves as
+  ## static.
+  result = @[]
+  if tableOff < 0 or tableLen < 16 or tableOff + tableLen > bytes.len:
+    return
+  if readU32(bytes, tableOff) != 0x00010000u32:
+    return
+  let axesOff = int(readU16(bytes, tableOff + 4))
+  let axisCount = int(readU16(bytes, tableOff + 8))
+  let axisSize = int(readU16(bytes, tableOff + 10))
+  let instanceCount = int(readU16(bytes, tableOff + 12))
+  let instanceSize = int(readU16(bytes, tableOff + 14))
+  if axisCount < 0 or axisSize < 20 or instanceCount < 0 or instanceSize < 0:
+    return
+  if axesOff < 0 or axesOff + axisCount * axisSize > tableLen:
+    return
+  for i in 0 ..< axisCount:
+    let base = tableOff + axesOff + i * axisSize
+    if base + 20 > tableOff + tableLen or base + 20 > bytes.len:
+      return @[]
+    result.add(FvarAxis(
+      tag: readU32(bytes, base),
+      min: fixedToFloat(cast[int32](readU32(bytes, base + 4))),
+      default: fixedToFloat(cast[int32](readU32(bytes, base + 8))),
+      max: fixedToFloat(cast[int32](readU32(bytes, base + 12))),
+      hidden: (readU16(bytes, base + 16) and 0x0001u16) != 0u16,
+      nameID: readU16(bytes, base + 18)))
+
+proc parseAvarMaps*(bytes: seq[uint8], tableOff, tableLen,
+    axisCount: int): seq[seq[AvarSegment]] =
+  ## Parses the `avar` segment maps, one per axis in fvar order. Axes
+  ## without a map get an empty list (identity). Malformed tables
+  ## yield all-empty maps (contained).
+  result = newSeq[seq[AvarSegment]](max(axisCount, 0))
+  if tableOff < 0 or tableLen < 8 or tableOff + tableLen > bytes.len:
+    return
+  if readU32(bytes, tableOff) != 0x00010000u32:
+    return
+  if readU16(bytes, tableOff + 4) != 0u16:
+    return
+  let tableAxes = int(readU16(bytes, tableOff + 6))
+  if tableAxes < 0:
+    return
+  var pos = tableOff + 8
+  for a in 0 ..< min(tableAxes, axisCount):
+    if pos + 2 > tableOff + tableLen or pos + 2 > bytes.len:
+      return
+    let segCount = int(readU16(bytes, pos))
+    pos += 2
+    if segCount < 0 or pos + segCount * 4 > tableOff + tableLen or
+        pos + segCount * 4 > bytes.len:
+      return
+    for _ in 0 ..< segCount:
+      let fromV = f2dot14ToFloat(cast[int16](readU16(bytes, pos)))
+      let toV = f2dot14ToFloat(cast[int16](readU16(bytes, pos + 2)))
+      result[a].add((fromV, toV))
+      pos += 4
+
+proc normalizeAxisValue*(axis: FvarAxis, userValue: float32): float32 =
+  ## Maps a user-space axis value to [-1, 1] per the OT spec, guarding
+  ## degenerate ranges (min == default or max == default).
+  if userValue < axis.default:
+    if axis.default == axis.min:
+      return 0.0f32
+    result = (userValue - axis.default) / (axis.default - axis.min)
+  elif userValue > axis.default:
+    if axis.max == axis.default:
+      return 0.0f32
+    result = (userValue - axis.default) / (axis.max - axis.default)
+  else:
+    return 0.0f32
+  if result < -1.0f32:
+    return -1.0f32
+  elif result > 1.0f32:
+    return 1.0f32
+  else:
+    return result
+
+proc applyAvarMap*(segments: seq[AvarSegment], v: float32): float32 =
+  ## Piecewise-linear avar remap of a normalized coordinate. Empty maps
+  ## are identity; inputs outside the map clamp to its endpoints.
+  if segments.len == 0:
+    return v
+  if v <= segments[0].fromV:
+    return segments[0].toV
+  for i in 1 ..< segments.len:
+    if v <= segments[i].fromV:
+      let (f0, t0) = segments[i - 1]
+      let (f1, t1) = segments[i]
+      if f1 == f0:
+        return t1
+      let t = (v - f0) / (f1 - f0)
+      return t0 + t * (t1 - t0)
+  segments[^1].toV
+
 proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
   if bytes.len < 12:
     raise newException(FontError, "font too small for offset table")
@@ -377,6 +496,17 @@ proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
     result.names = parseNameRecords(bytes, name.offset, name.len)
   else:
     result.names = @[]
+  let fvar = result.tableData(TagFvar)
+  if fvar.ok:
+    result.fvarAxes = parseFvarAxes(bytes, fvar.offset, fvar.len)
+  else:
+    result.fvarAxes = @[]
+  let avar = result.tableData(TagAvar)
+  if avar.ok and result.fvarAxes.len > 0:
+    result.avarMaps = parseAvarMaps(bytes, avar.offset, avar.len,
+      result.fvarAxes.len)
+  else:
+    result.avarMaps = newSeq[seq[AvarSegment]](result.fvarAxes.len)
 
 proc parseFont*(data: openArray[uint8], faceIndex: int = 0): SfntFont =
   var bytes = newSeq[uint8](data.len)

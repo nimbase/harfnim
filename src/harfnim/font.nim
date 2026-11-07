@@ -5,10 +5,12 @@ import ./draw
 import ./normalize
 import ./scale
 import ./sfnt
+import ./variations
 
 export scale
 export sfnt
 export draw
+export variations
 
 type
   ShaperFont* = object
@@ -16,8 +18,9 @@ type
     unitsPerEm*: uint16
     scale*: Scale
     outlineCache*: OutlineCache
+    varCoords*: seq[float32]
     # TODO: FontFuncs overrides (custom nominal/metrics callbacks)
-    # TODO: OT/AAT layout caches, cmap cache, variation coordinates
+    # TODO: OT/AAT layout caches, cmap cache
 
 proc newShaperFont*(font: SfntFont): ShaperFont =
   ShaperFont(
@@ -25,6 +28,7 @@ proc newShaperFont*(font: SfntFont): ShaperFont =
     unitsPerEm: font.unitsPerEm,
     scale: identityScale(int32(font.unitsPerEm)),
     outlineCache: newOutlineCache(),
+    varCoords: newSeq[float32](font.fvarAxes.len),
   )
 
 proc setScale*(f: var ShaperFont, scale: int32) =
@@ -32,6 +36,19 @@ proc setScale*(f: var ShaperFont, scale: int32) =
 
 proc setScaleSeparate*(f: var ShaperFont, xScale, yScale: int32) =
   f.scale = newScale(xScale, yScale, int32(f.unitsPerEm))
+
+proc setVariations*(f: var ShaperFont,
+    vars: openArray[tuple[tag: uint32, value: float32]]) =
+  ## Sets the variation location from user-space axis values. Unknown
+  ## tags are ignored; unspecified axes reset to default. Cached
+  ## outlines are keyed by glyph only, so the cache is replaced to
+  ## avoid serving default-location outlines at the new location
+  ## (copies holding the old handle keep their own location's cache).
+  f.varCoords = normalizeCoords(f.font.fvarAxes, f.font.avarMaps, vars)
+  f.outlineCache = newOutlineCache(f.outlineCache.maxItems)
+
+proc normalizedCoords*(f: ShaperFont): seq[float32] =
+  f.varCoords
 
 proc nominalGlyph*(f: ShaperFont, cp: uint32): Option[GlyphId] =
   f.font.mapUnicode(cp)
