@@ -85,10 +85,12 @@ for i in 0 ..< buf.len:
 * [x] cmap format 14 variation sequences, name table
 * [x] Variable font coordinates (fvar/avar) and gvar outline variations
 * [x] HVAR/VVAR advance variation and CFF2 outlines with blend
+* [x] GPOS variation deltas from the GDEF item variation store
+* [x] Windows-1256 legacy Arabic fallback (signature, presents, ligatures)
 * [ ] Indic, Thai, Hangul, Hebrew, Khmer, Myanmar, USE, syllabic shapers
-* [ ] MVAR metrics and GPOS variation store application
+* [ ] MVAR metrics
 * [ ] AAT morx
-* [ ] stch stretching and win1256 legacy fallback
+* [ ] stch stretching
 
 ## Tools
 `hr-shape` is a small `hb-shape` compatible CLI (numeric glyph ids and

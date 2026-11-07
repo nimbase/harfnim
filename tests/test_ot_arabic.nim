@@ -343,3 +343,80 @@ test "arabic mark base positions via GPOS":
       check b.pos[i].yOffset == -50i32
       sawMark = true
   check sawMark
+
+proc win1256Cmap(extra: seq[tuple[cp, gid: uint16]] = @[]): seq[uint8] =
+  var pairs = @[
+    (0x0627u16, 199u16), (0x0644u16, 225u16), (0x0649u16, 236u16),
+    (0x064Au16, 237u16), (0x0652u16, 250u16),
+  ]
+  for e in extra:
+    pairs.add(e)
+  buildCmap(pairs)
+
+test "win1256 signature detection":
+  let f = parseFont(buildFontRaw(baseTables(win1256Cmap())))
+  var sf = newShaperFont(f)
+  let nominal = proc(cp: uint32): Option[GlyphId] = sf.nominalGlyph(cp)
+  check isWin1256Font(nominal)
+  # One entry off breaks the signature.
+  let f2 = parseFont(buildFontRaw(baseTables(win1256Cmap(
+    @[(0x0628u16, 198u16)]))))
+  var sf2 = newShaperFont(f2)
+  let nominal2 = proc(cp: uint32): Option[GlyphId] = sf2.nominalGlyph(cp)
+  check isWin1256Font(nominal2)
+  let f3 = parseFont(buildFontRaw(baseTables(buildCmap(
+    @[(0x0627u16, 200u16), (0x0644u16, 225u16), (0x0649u16, 236u16),
+      (0x064Au16, 237u16), (0x0652u16, 250u16)]))))
+  var sf3 = newShaperFont(f3)
+  let nominal3 = proc(cp: uint32): Option[GlyphId] = sf3.nominalGlyph(cp)
+  check (not isWin1256Font(nominal3))
+
+test "win1256 tables are sorted and bounded":
+  for t in [win1256Singles(0), win1256Singles(1), win1256Singles(2)]:
+    check t.len > 0
+    for i in 1 ..< t.len:
+      check t[i - 1].fromGid < t[i].fromGid
+  check win1256LamAlefLigs().len == 4
+  check win1256ShaddaLigs().len == 3
+  check win1256Singles(3).len == 0
+
+test "win1256 fallback shapes beh-beh":
+  # BEH U+0628 -> gid 198; init -> 162, fina -> 181.
+  # RTL output is in visual order, so the final (rightmost logical)
+  # glyph comes first.
+  let cmap = win1256Cmap(@[(0x0628u16, 198u16)])
+  let fontBytes = buildFontRaw(baseTables(cmap))
+  let f = parseFont(fontBytes)
+  var sf = newShaperFont(f)
+  var b = newBuffer()
+  b.pushStr("\u0628\u0628")
+  sf.shape(b, @[])
+  check b.len == 2
+  check b.info[0].glyphId == 181u32
+  check b.info[1].glyphId == 162u32
+
+test "win1256 fallback forms lam-alef ligature":
+  let cmap = win1256Cmap()
+  let fontBytes = buildFontRaw(baseTables(cmap))
+  let f = parseFont(fontBytes)
+  var sf = newShaperFont(f)
+  var b = newBuffer()
+  b.pushStr("\u0644\u0627")
+  sf.shape(b, @[])
+  check b.len == 1
+  check b.info[0].glyphId == 165u32
+
+test "non-win1256 font keeps base glyphs":
+  # Same text, but the signature is broken: no fallback applies.
+  let cmap = buildCmap(@[(0x0627u16, 200u16), (0x0644u16, 225u16),
+    (0x0649u16, 236u16), (0x064Au16, 237u16), (0x0652u16, 250u16),
+    (0x0628u16, 198u16)])
+  let fontBytes = buildFontRaw(baseTables(cmap))
+  let f = parseFont(fontBytes)
+  var sf = newShaperFont(f)
+  var b = newBuffer()
+  b.pushStr("\u0628\u0628")
+  sf.shape(b, @[])
+  check b.len == 2
+  check b.info[0].glyphId == 198u32
+  check b.info[1].glyphId == 198u32

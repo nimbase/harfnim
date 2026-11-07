@@ -1,9 +1,10 @@
 ## Full shaping orchestration: ShapePlan + shape() entry.
 ##
 ## Mirrors harfrust shape.rs / ot/layout.rs. Arabic joining, fallback
-## presentation forms, mark/cursive GPOS, and fallback mark positioning are
-## implemented; indic-family, thai, hangul, hebrew, khmer, myanmar, USE and
-## syllabic shapers, stch stretching, and win1256 legacy fallback stay TODO.
+## presentation forms (unicode and win1256), mark/cursive GPOS, and
+## fallback mark positioning are implemented; indic-family, thai,
+## hangul, hebrew, khmer, myanmar, USE and syllabic shapers plus stch
+## stretching stay TODO.
 
 import std/options
 import std/bitops
@@ -220,37 +221,61 @@ proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
       let s1 = buildFallbackSingles(nominal, 1)
       let s2 = buildFallbackSingles(nominal, 2)
       let s3 = buildFallbackSingles(nominal, 3)
-      let all = [(s0, 0), (s1, 1), (s2, 2), (s3, 3)]
-      # Map init/medi/fina/isol fallback to the arabic action masks.
-      # FALLBACK_FEATURES order is init, medi, fina, isol.
-      let actionForFeat = [ArabicInit, ArabicMedi, ArabicFina, ArabicIsol]
-      for k in 0 ..< 4:
-        let (mappings, fi) = all[k]
-        # Find which arabic tag this fallback corresponds to.
-        var featTag = ""
-        case fi
-        of 0: featTag = "init"
-        of 1: featTag = "medi"
-        of 2: featTag = "fina"
-        else: featTag = "isol"
-        # Determine mask: use the arabic action mask if the font lacks the
-        # feature, else the rlig mask is irrelevant here. We apply the
-        # fallback substitutions under the arabic action mask so only
-        # correctly joined glyphs are replaced.
-        var m = 0u32
-        for ai, at in arabTags:
-          if at == featTag:
-            m = maskArray[ai]
-            break
-        discard actionForFeat
-        if m != 0u32:
-          buf.applyFallbackSingle(mappings, m)
-      let lig3 = buildFallbackLigs(nominal, true, false)
-      let lig2 = buildFallbackLigs(nominal, false, false)
-      let ligM = buildFallbackLigs(nominal, false, true)
-      buf.applyFallbackLig(lig3, rligMask, true)
-      buf.applyFallbackLig(lig2, rligMask, true)
-      buf.applyFallbackLig(ligM, rligMask, false)
+      let lig3pre = buildFallbackLigs(nominal, true, false)
+      let lig2pre = buildFallbackLigs(nominal, false, false)
+      let ligMpre = buildFallbackLigs(nominal, false, true)
+      let unicodeEmpty = s0.len == 0 and s1.len == 0 and s2.len == 0 and
+        s3.len == 0 and lig3pre.len == 0 and lig2pre.len == 0 and
+        ligMpre.len == 0
+      if unicodeEmpty and isWin1256Font(nominal):
+        # Legacy Windows-1256 fonts with GSUB but no arab joining
+        # lookups: direct gid mappings, with the lam-alef ligature
+        # first (it must match before the singles replace its
+        # components).
+        buf.applyFallbackLig(win1256LamAlefLigs(), rligMask, true)
+        for fi in 0 ..< 3:
+          var featTagW = ""
+          case fi
+          of 0: featTagW = "init"
+          of 1: featTagW = "medi"
+          else: featTagW = "fina"
+          var mW = 0u32
+          for ai, at in arabTags:
+            if at == featTagW:
+              mW = maskArray[ai]
+              break
+          if mW != 0u32:
+            buf.applyFallbackSingle(win1256Singles(fi), mW)
+        buf.applyFallbackLig(win1256ShaddaLigs(), rligMask, false)
+      else:
+        let all = [(s0, 0), (s1, 1), (s2, 2), (s3, 3)]
+        # Map init/medi/fina/isol fallback to the arabic action masks.
+        # FALLBACK_FEATURES order is init, medi, fina, isol.
+        let actionForFeat = [ArabicInit, ArabicMedi, ArabicFina, ArabicIsol]
+        for k in 0 ..< 4:
+          let (mappings, fi) = all[k]
+          # Find which arabic tag this fallback corresponds to.
+          var featTag = ""
+          case fi
+          of 0: featTag = "init"
+          of 1: featTag = "medi"
+          of 2: featTag = "fina"
+          else: featTag = "isol"
+          # Determine mask: use the arabic action mask if the font lacks the
+          # feature, else the rlig mask is irrelevant here. We apply the
+          # fallback substitutions under the arabic action mask so only
+          # correctly joined glyphs are replaced.
+          var m = 0u32
+          for ai, at in arabTags:
+            if at == featTag:
+              m = maskArray[ai]
+              break
+          discard actionForFeat
+          if m != 0u32:
+            buf.applyFallbackSingle(mappings, m)
+        buf.applyFallbackLig(lig3pre, rligMask, true)
+        buf.applyFallbackLig(lig2pre, rligMask, true)
+        buf.applyFallbackLig(ligMpre, rligMask, false)
   applyMasked("calt", caltMask)
   applyMasked("liga", ligaMask)
   applyMasked("clig", cligMask)
@@ -292,8 +317,37 @@ proc applyArabicFallback*(buf: var Buffer, sf: ShaperFont,
   ## Fallback when the font has no GSUB: synthesize presentation forms.
   let nominal = proc(cp: uint32): Option[GlyphId] = sf.nominalGlyph(cp)
   const arabTags = ["isol", "fina", "fin2", "fin3", "medi", "med2", "init"]
+  let allSingles = [buildFallbackSingles(nominal, 0),
+    buildFallbackSingles(nominal, 1), buildFallbackSingles(nominal, 2),
+    buildFallbackSingles(nominal, 3)]
+  let allLig3 = buildFallbackLigs(nominal, true, false)
+  let allLig2 = buildFallbackLigs(nominal, false, false)
+  let allLigM = buildFallbackLigs(nominal, false, true)
+  let unicodeEmpty = allSingles[0].len == 0 and allSingles[1].len == 0 and
+    allSingles[2].len == 0 and allSingles[3].len == 0 and
+    allLig3.len == 0 and allLig2.len == 0 and allLigM.len == 0
+  if unicodeEmpty and isWin1256Font(nominal):
+    # Legacy Windows-1256 fonts: direct gid mappings, with the
+    # lam-alef ligature first (it must match before the singles
+    # replace its components).
+    buf.applyFallbackLig(win1256LamAlefLigs(), am.rligMask, true)
+    for fi in 0 ..< 3:
+      var featTag = ""
+      case fi
+      of 0: featTag = "init"
+      of 1: featTag = "medi"
+      else: featTag = "fina"
+      var m = 0u32
+      for ai, at in arabTags:
+        if at == featTag:
+          m = am.actions[ai]
+          break
+      if m != 0u32:
+        buf.applyFallbackSingle(win1256Singles(fi), m)
+    buf.applyFallbackLig(win1256ShaddaLigs(), am.rligMask, false)
+    return
   for fi in 0 ..< 4:
-    let mappings = buildFallbackSingles(nominal, fi)
+    let mappings = allSingles[fi]
     var featTag = ""
     case fi
     of 0: featTag = "init"
@@ -307,12 +361,9 @@ proc applyArabicFallback*(buf: var Buffer, sf: ShaperFont,
         break
     if m != 0u32:
       buf.applyFallbackSingle(mappings, m)
-  let lig3 = buildFallbackLigs(nominal, true, false)
-  let lig2 = buildFallbackLigs(nominal, false, false)
-  let ligM = buildFallbackLigs(nominal, false, true)
-  buf.applyFallbackLig(lig3, am.rligMask, true)
-  buf.applyFallbackLig(lig2, am.rligMask, true)
-  buf.applyFallbackLig(ligM, am.rligMask, false)
+  buf.applyFallbackLig(allLig3, am.rligMask, true)
+  buf.applyFallbackLig(allLig2, am.rligMask, true)
+  buf.applyFallbackLig(allLigM, am.rligMask, false)
 
 proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     langTag: Tag, userFeatures: openArray[Feature], scale: Scale,

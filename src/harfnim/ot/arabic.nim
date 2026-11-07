@@ -2,8 +2,9 @@
 ##
 ## Ported from harfrust `ot/shaper/arabic.rs` + `arabic_fallback.rs` at a
 ## static-font scope. Syriac shares the joining machinery; Mongolian
-## variation-selector propagation is included. stch stretching, win1256
-## legacy fallback, and pre/post-context across buffer boundaries stay TODO.
+## variation-selector propagation is included, as is the legacy
+## Windows-1256 fixed-gid fallback. stch stretching and pre/post-context
+## across buffer boundaries stay TODO.
 
 import std/options
 import std/sequtils
@@ -198,6 +199,57 @@ type
   FallbackSingle* = tuple[fromGid, toGid: uint16]
   FallbackLig* = tuple[first: uint16, rest: seq[uint16], lig: uint16]
 
+const
+  ## HarfBuzz signature identifying legacy Windows-1256 Arabic fonts:
+  ## these encode Arabic glyphs at fixed glyph IDs rather than
+  ## providing Unicode presentation forms.
+  Win1256Signature*: array[5, tuple[cp: uint32, gid: uint16]] = [
+    (0x0627u32, 199u16), # ALEF
+    (0x0644u32, 225u16), # LAM
+    (0x0649u32, 236u16), # ALEF MAKSURA
+    (0x064Au32, 237u16), # YEH
+    (0x0652u32, 250u16), # SUKUN
+  ]
+
+  Win1256InitMappings*: array[23, tuple[fromGid, toGid: uint16]] = [
+    (198u16, 162u16), (200u16, 4u16), (201u16, 5u16), (202u16, 5u16),
+    (203u16, 6u16), (204u16, 7u16), (205u16, 9u16), (206u16, 11u16),
+    (211u16, 13u16), (212u16, 14u16), (213u16, 15u16), (214u16, 26u16),
+    (218u16, 27u16), (219u16, 30u16), (221u16, 128u16), (222u16, 131u16),
+    (223u16, 140u16), (225u16, 141u16), (227u16, 142u16), (228u16, 143u16),
+    (229u16, 144u16), (236u16, 154u16), (237u16, 154u16),
+  ]
+
+  Win1256MediMappings*: array[27, tuple[fromGid, toGid: uint16]] = [
+    (165u16, 170u16), (178u16, 179u16), (180u16, 185u16), (198u16, 162u16),
+    (200u16, 4u16), (201u16, 5u16), (202u16, 5u16), (203u16, 6u16),
+    (204u16, 7u16), (205u16, 9u16), (206u16, 11u16), (211u16, 13u16),
+    (212u16, 14u16), (213u16, 15u16), (214u16, 26u16), (218u16, 28u16),
+    (219u16, 31u16), (221u16, 129u16), (222u16, 138u16), (223u16, 140u16),
+    (225u16, 141u16), (227u16, 142u16), (228u16, 143u16), (229u16, 149u16),
+    (236u16, 154u16), (237u16, 154u16), (252u16, 255u16),
+  ]
+
+  Win1256FinaMappings*: array[18, tuple[fromGid, toGid: uint16]] = [
+    (165u16, 170u16), (178u16, 179u16), (180u16, 185u16), (194u16, 2u16),
+    (195u16, 1u16), (197u16, 3u16), (198u16, 181u16), (199u16, 0u16),
+    (201u16, 159u16), (204u16, 8u16), (205u16, 10u16), (206u16, 12u16),
+    (218u16, 29u16), (219u16, 127u16), (229u16, 152u16), (236u16, 160u16),
+    (237u16, 156u16), (252u16, 255u16),
+  ]
+
+  Win1256LamAlefLigatures*: array[4,
+    tuple[first, second, lig: uint16]] = [
+    (225u16, 199u16, 165u16), (225u16, 195u16, 178u16),
+    (225u16, 194u16, 180u16), (225u16, 197u16, 252u16),
+  ]
+
+  Win1256ShaddaLigatures*: array[3,
+    tuple[first, second, lig: uint16]] = [
+    (248u16, 243u16, 172u16), (248u16, 245u16, 173u16),
+    (248u16, 246u16, 175u16),
+  ]
+
 proc shapingFormFor*(cp: uint16, featIdx: int): uint16 =
   # featIdx: 0 init, 1 medi, 2 fina, 3 isol.
   for e in ShapingTable:
@@ -303,6 +355,8 @@ proc applyFallbackSingle*(buf: var Buffer, mappings: seq[FallbackSingle],
     singleSubsts: @[sub], multipleSubsts: @[], alternateSubsts: @[],
     ligatureSubsts: @[], contextSubsts: @[], chainSubsts: @[],
     reverseSubsts: @[], order: @[(lkSingle, 0)])
+  # Each synthetic lookup scans the whole buffer like a shaping pass.
+  buf.idx = 0
   discard applyLookup(buf, GsubData(scripts: @[], features: @[],
     lookups: @[lookup]), lookup, mask)
 
@@ -334,8 +388,57 @@ proc applyFallbackLig*(buf: var Buffer, ligs: seq[FallbackLig], mask: uint32,
     multipleSubsts: @[], alternateSubsts: @[], ligatureSubsts: @[sub],
     contextSubsts: @[], chainSubsts: @[], reverseSubsts: @[],
     order: @[(lkLigature, 0)])
+  # Ligatures change the glyph count, so run through the output buffer
+  # (mirroring applySubstLookups) and compact afterwards. Single
+  # substitutions stay in place and need no output handling.
+  buf.clearOutput()
+  buf.idx = 0
   discard applyLookup(buf, GsubData(scripts: @[], features: @[],
     lookups: @[lookup]), lookup, mask)
+  discard buf.sync()
+
+proc isWin1256Font*(nominal: proc(cp: uint32): Option[GlyphId]): bool =
+  ## Detects legacy Windows-1256 Arabic fonts by their signature
+  ## codepoint-to-glyph mappings. All five must hold exactly.
+  for (cp, gid) in Win1256Signature:
+    let g = nominal(cp)
+    if g.isNone or g.get.value != uint32(gid):
+      return false
+  true
+
+proc win1256Singles*(featIdx: int): seq[FallbackSingle] =
+  ## Direct gid-to-gid presentation forms. featIdx: 0 init, 1 medi,
+  ## 2 fina. Sorted by fromGid for deterministic coverage order.
+  result = @[]
+  case featIdx
+  of 0:
+    for m in Win1256InitMappings:
+      result.add((m.fromGid, m.toGid))
+  of 1:
+    for m in Win1256MediMappings:
+      result.add((m.fromGid, m.toGid))
+  of 2:
+    for m in Win1256FinaMappings:
+      result.add((m.fromGid, m.toGid))
+  else:
+    discard
+  for i in 1 ..< result.len:
+    let cur = result[i]
+    var j = i
+    while j > 0 and result[j - 1].fromGid > cur.fromGid:
+      result[j] = result[j - 1]
+      dec j
+    result[j] = cur
+
+proc win1256LamAlefLigs*(): seq[FallbackLig] =
+  result = @[]
+  for l in Win1256LamAlefLigatures:
+    result.add((l.first, @[l.second], l.lig))
+
+proc win1256ShaddaLigs*(): seq[FallbackLig] =
+  result = @[]
+  for l in Win1256ShaddaLigatures:
+    result.add((l.first, @[l.second], l.lig))
 
 const ModifierCombiningMarks*: array[14, uint32] = [0x0654u32, 0x0655u32,
   0x0658u32, 0x06DCu32, 0x06E3u32, 0x06E7u32, 0x06E8u32, 0x08CAu32, 0x08CBu32,
