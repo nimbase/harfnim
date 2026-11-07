@@ -2,9 +2,9 @@
 ##
 ## Mirrors harfrust shape.rs / ot/layout.rs. Arabic joining, fallback
 ## presentation forms (unicode and win1256), Hebrew composition and mark
-## reorder, mark/cursive GPOS, and fallback mark positioning are
-## implemented; indic-family, thai, hangul, khmer, myanmar, USE and
-## syllabic shapers plus stch stretching stay TODO.
+## reorder, Hangul jamo composition, mark/cursive GPOS, and fallback
+## mark positioning are implemented; indic-family, thai, khmer, myanmar,
+## USE and syllabic shapers plus stch stretching stay TODO.
 
 import std/options
 import std/bitops
@@ -21,6 +21,7 @@ import ./varstore
 import ./ot/arabic
 import ./ot/gpos
 import ./ot/gsub
+import ./ot/hangul
 import ./ot/hebrew
 import ./ot/map
 import ./ot/shaper
@@ -196,10 +197,10 @@ proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
   proc lookupsForAvail(avail: seq[tuple[tag: uint32, lookups: seq[uint16]]],
       tagStr: string): seq[uint16] =
     let t = tagFromStr(tagStr).toU32()
+    result = @[]
     for (tag, lks) in avail:
       if tag == t:
-        return lks
-    @[]
+        result.add(lks)
   # Order mirrors harfrust arabic collect_features (pauses between each).
   template applyMasked(tagStr: string, mask: uint32) =
     if mask != 0u32:
@@ -576,6 +577,10 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
   insertDottedCircle(buf)
   formClusters(buf)
   # TODO: ensure_native_direction, per-syllable matching.
+  if shaper == skHangul:
+    # Hangul syllable processing happens on codepoints, pre-normalize
+    # (its normalization preference is None).
+    buf.preprocessHangul(sf)
   var nctx = sf.normalizeContextFor()
   if shaper == skHebrew:
     nctx.composeFn = hebrewComposeFn(hasGposMark)
@@ -583,7 +588,8 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
         last: int) {.closure.} =
       b.reorderMarksHebrew(first, last)
     nctx.reorderMarks = some(hebrewReorder)
-  buf.normalize(nmComposedDiacritics, hasGposMark, nctx)
+  let nmMode = if shaper == skHangul: nmNone else: nmComposedDiacritics
+  buf.normalize(nmMode, hasGposMark, nctx)
   buf.deallocateUnicodeVars()
   # Arabic joining + mark reordering happen on Unicode codepoints.
   var arabicMasks: ArabicMasks
@@ -593,6 +599,13 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     haveArabicMasks = true
     if buf.len > 1:
       buf.reorderMarksArabic(0, min(buf.len, buf.info.len))
+  # Hangul jamo masks attach on codepoints, before glyph mapping.
+  var hangulMasks: HangulMasks
+  var haveHangulMasks = false
+  if shaper == skHangul:
+    hangulMasks = buf.prepareHangulMasks()
+    buf.setupMasksHangul(hangulMasks)
+    haveHangulMasks = true
   buf.mapGlyphsFast()
   buf.setContentType(some(contentGlyphs))
   buf.allocateGsubGposVars()
@@ -604,6 +617,12 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
         plan.features, sf, arabicMasks)
     else:
       buf.applyArabicFallback(sf, arabicMasks)
+  elif shaper == skHangul and haveHangulMasks:
+    if gsubOpt.isSome:
+      buf.applyHangulGsub(gsubOpt.get, plan.scriptTag, plan.langTag,
+        plan.features, hangulMasks)
+    # Without GSUB there is nothing to apply: decomposition already
+    # happened in preprocessing.
   else:
     if gsubOpt.isSome:
       buf.applyGsubFeatures(gsubOpt.get, plan.scriptTag, plan.langTag,
