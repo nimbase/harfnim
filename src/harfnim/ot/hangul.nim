@@ -71,22 +71,6 @@ proc unsafeToBreakEmitted*(buf: var Buffer, start: int) =
       if i >= 0:
         buf.info[i].mask = buf.info[i].mask or 0x03u32
 
-proc rotateOutRightByOne(buf: var Buffer, start, fin: int): bool =
-  ## Rotates emitted glyphs [start..fin] right by one, working in
-  ## both in-place and separate-output modes. Returns false (after
-  ## failing the buffer) when a slot is missing.
-  if fin <= start:
-    return true
-  for k in start .. fin:
-    if buf.outAt(k) == nil:
-      buf.indexFailed()
-      return false
-  let tmp = buf.outAt(fin)[]
-  for k in countdown(fin, start + 1):
-    buf.outAt(k)[] = buf.outAt(k - 1)[]
-  buf.outAt(start)[] = tmp
-  true
-
 proc isZeroWidthChar(sf: ShaperFont, c: uint32): bool =
   sf.hAdvance(newGlyphId(c)) == 0i32
 

@@ -2,9 +2,10 @@
 ##
 ## Mirrors harfrust shape.rs / ot/layout.rs. Arabic joining, fallback
 ## presentation forms (unicode and win1256), Hebrew composition and mark
-## reorder, Hangul jamo composition, mark/cursive GPOS, and fallback
-## mark positioning are implemented; indic-family, thai, khmer, myanmar,
-## USE and syllabic shapers plus stch stretching stay TODO.
+## reorder, Hangul jamo composition, Thai SARA AM split and PUA fallback,
+## mark/cursive GPOS, and fallback mark positioning are implemented;
+## indic-family, khmer, myanmar, USE and syllabic shapers plus stch
+## stretching stay TODO.
 
 import std/options
 import std/bitops
@@ -25,6 +26,7 @@ import ./ot/hangul
 import ./ot/hebrew
 import ./ot/map
 import ./ot/shaper
+import ./ot/thai
 
 export buffer
 export feature
@@ -581,6 +583,13 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
     # Hangul syllable processing happens on codepoints, pre-normalize
     # (its normalization preference is None).
     buf.preprocessHangul(sf)
+  if shaper == skThai:
+    # SARA AM split (always) and PUA fallback shaping (Thai fonts
+    # without Thai GSUB only) happen on codepoints, pre-normalize.
+    var hasThaiGsub = false
+    if gsubOpt.isSome:
+      hasThaiGsub = gsubHasThai(gsubOpt.get)
+    buf.preprocessThai(sf, hasThaiGsub)
   var nctx = sf.normalizeContextFor()
   if shaper == skHebrew:
     nctx.composeFn = hebrewComposeFn(hasGposMark)
@@ -668,8 +677,9 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
         kernRan = true
   # Fallback mark positioning runs only when neither GPOS nor legacy
   # kern positioning applied, mirroring harfrust position_by_plan
-  # (adjust_mark_positioning_when_zeroing).
-  let fallbackAllowed = not gposOpt.isSome and
+  # (adjust_mark_positioning_when_zeroing). The Thai shaper (like the
+  # other syllabic shapers) opts out of fallback positioning.
+  let fallbackAllowed = not gposOpt.isSome and shaper != skThai and
     (not kernRan or not hasCrossKern)
   # Late mark zeroing (arabic/hebrew/default) when GPOS did not attach.
   if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:

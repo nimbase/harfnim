@@ -816,6 +816,22 @@ proc outAt*(b: var Buffer, i: int): ptr GlyphInfo =
     return nil
   addr b.info[i]
 
+proc rotateOutRightByOne*(b: var Buffer, start, fin: int): bool =
+  ## Rotates emitted glyphs [start..fin] right by one, working in
+  ## both in-place and separate-output modes. Returns false (after
+  ## failing the buffer) when a slot is missing.
+  if fin <= start:
+    return true
+  for k in start .. fin:
+    if b.outAt(k) == nil:
+      b.indexFailed()
+      return false
+  let tmp = b.outAt(fin)[]
+  for k in countdown(fin, start + 1):
+    b.outAt(k)[] = b.outAt(k - 1)[]
+  b.outAt(start)[] = tmp
+  true
+
 proc setOutInfo(b: var Buffer, i: int, g: GlyphInfo) =
   let slot = b.outAt(i)
   if slot == nil:

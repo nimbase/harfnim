@@ -89,7 +89,8 @@ for i in 0 ..< buf.len:
 * [x] Windows-1256 legacy Arabic fallback (signature, presents, ligatures)
 * [x] Hebrew shaper (presentation-form composition, mark reorder) and shaper dispatch
 * [x] Hangul shaper (LV/LVT composition, jamo features, tone reorder)
-* [ ] Indic, Thai, Khmer, Myanmar, USE, syllabic shapers
+* [x] Thai/Lao shaper (SARA AM split, PUA fallback shaping)
+* [ ] Indic, Khmer, Myanmar, USE, syllabic shapers
 * [ ] MVAR metrics
 * [ ] AAT morx
 * [ ] stch stretching
