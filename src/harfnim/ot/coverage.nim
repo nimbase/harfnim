@@ -149,9 +149,11 @@ proc parseCoverage*(bytes: openArray[uint8], off: int): Coverage =
   else:
     noCoverage()
 
-proc coverageIndex*(c: Coverage, gid: uint32): Option[uint32] =
+proc coverageIndexRaw*(c: Coverage, gid: uint32): int =
+  ## Hot-path coverage lookup without Option overhead.
+  ## Returns coverage index, or -1 on miss.
   if not c.present or gid > 0xFFFFFFu32:
-    return none(uint32)
+    return -1
   if c.glyphs.len > 0 or c.ranges.len == 0:
     var lo = 0
     var hi = c.glyphs.len
@@ -162,8 +164,8 @@ proc coverageIndex*(c: Coverage, gid: uint32): Option[uint32] =
       elif c.glyphs[mid] > gid:
         hi = mid
       else:
-        return some(uint32(mid))
-    return none(uint32)
+        return mid
+    return -1
   var lo = 0
   var hi = c.ranges.len
   while lo < hi:
@@ -174,8 +176,15 @@ proc coverageIndex*(c: Coverage, gid: uint32): Option[uint32] =
     elif r.first > gid:
       hi = mid
     else:
-      return some(r.index + (gid - r.first))
-  none(uint32)
+      return int(r.index + (gid - r.first))
+  -1
+
+proc coverageIndex*(c: Coverage, gid: uint32): Option[uint32] =
+  let idx = c.coverageIndexRaw(gid)
+  if idx < 0:
+    none(uint32)
+  else:
+    some(uint32(idx))
 
 proc covers*(c: Coverage, gid: uint32): bool =
-  c.coverageIndex(gid).isSome
+  c.coverageIndexRaw(gid) >= 0

@@ -422,8 +422,17 @@ proc enlarge*(b: var Buffer, size: int): bool =
   if size > b.maxLen:
     b.successful = false
     return false
-  b.info.setLen(size)
-  b.pos.setLen(size)
+  # Geometric growth amortizes repeated push/ensure during shaping.
+  # b.len stays logical; info/pos length is capacity.
+  var cap = max(size, 64)
+  if b.info.len > 0:
+    cap = max(cap, b.info.len * 2)
+  if cap > b.maxLen:
+    cap = b.maxLen
+  if size > cap:
+    cap = size
+  b.info.setLen(cap)
+  b.pos.setLen(cap)
   true
 
 proc setLength*(b: var Buffer, n: int): bool =

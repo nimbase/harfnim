@@ -8,7 +8,6 @@
 ## shapers plus stch stretching stay TODO.
 
 import std/options
-import std/bitops
 
 import ./buffer
 import ./direction
@@ -26,6 +25,7 @@ import ./ot/hangul
 import ./ot/hebrew
 import ./ot/indic
 import ./ot/map
+import ./ot/maskbits
 import ./ot/shaper
 import ./ot/thai
 
@@ -42,9 +42,9 @@ type
 
 proc newShapePlan*(scriptTag, langTag: Tag,
     features: openArray[Feature]): ShapePlan =
-  var feats: seq[Feature] = @[]
-  for f in features:
-    feats.add(f)
+  var feats = newSeq[Feature](features.len)
+  for i in 0 ..< features.len:
+    feats[i] = features[i]
   ShapePlan(scriptTag: scriptTag, langTag: langTag, features: feats)
 
 proc scriptTagForBuffer(b: Buffer): Tag =
@@ -128,20 +128,7 @@ proc synthesizeGlyphClasses*(buf: var Buffer) =
     let cls = if isMark: GlyphPropMark else: GlyphPropBaseGlyph
     g[].setGlyphProps((g[].glyphProps() and not GlyphPropClassMask) or cls)
 
-proc allocMaskBit(nextBit: var uint32, value: uint32): tuple[mask, val: uint32] =
-  if value == 0u32:
-    return (0u32, 0u32)
-  var bitsNeeded = 32u32 - uint32(countLeadingZeroBits(value))
-  if bitsNeeded == 0u32:
-    bitsNeeded = 1u32
-  if nextBit + bitsNeeded > 31u32:
-    return (0u32, 0u32)
-  let mask =
-    if nextBit + bitsNeeded >= 32u32: (not 0u32) shl nextBit
-    else: ((1u32 shl (nextBit + bitsNeeded)) - (1u32 shl nextBit))
-  let vb = value shl nextBit
-  nextBit += bitsNeeded
-  (mask, vb)
+export maskbits
 
 type
   ArabicMasks* = object

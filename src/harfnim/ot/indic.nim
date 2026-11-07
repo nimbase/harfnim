@@ -6,7 +6,6 @@
 ## the 17 shaping features apply in HarfBuzz stages constrained to
 ## syllables, and final reordering settles matras, reph, and pref.
 
-import std/bitops
 import std/options
 
 import ../buffer
@@ -19,6 +18,7 @@ import ./apply
 import ./gsub
 import ./indic_machine
 import ./map
+import ./maskbits
 import ./shaper
 import ./syllabic
 import ./vowel_constraints
@@ -149,22 +149,6 @@ proc isHalant*(g: GlyphInfo): bool =
 proc ligatedAndDidntMultiply*(g: GlyphInfo): bool =
   g.ligated() and not g.multiplied()
 
-proc allocIndicMaskBit(nextBit: var uint32, value: uint32): tuple[mask,
-    val: uint32] =
-  if value == 0u32:
-    return (0u32, 0u32)
-  var bitsNeeded = 32u32 - uint32(countLeadingZeroBits(value))
-  if bitsNeeded == 0u32:
-    bitsNeeded = 1u32
-  if nextBit + bitsNeeded > 31u32:
-    return (0u32, 0u32)
-  let mask =
-    if nextBit + bitsNeeded >= 32u32: (not 0u32) shl nextBit
-    else: ((1u32 shl (nextBit + bitsNeeded)) - (1u32 shl nextBit))
-  let vb = value shl nextBit
-  nextBit += bitsNeeded
-  (mask, vb)
-
 type
   IndicShapePlan* = object
     config*: IndicConfig
@@ -211,7 +195,7 @@ proc newIndicShapePlan*(gsub: GsubData, scriptTag, langTag: Tag,
     if IndicGlobalFeature[i]:
       result.maskArray[i] = 0u32
     else:
-      let (m, _) = allocIndicMaskBit(nextBit, 1u32)
+      let (m, _) = allocMaskBit(nextBit, 1u32)
       result.maskArray[i] = m
   result.nextBit = nextBit
 
@@ -219,11 +203,12 @@ proc classIs(cd: ClassDef, gid: uint32, cls: uint32): bool =
   cd.classOf(gid) == cls
 
 proc lookupWouldSubstitute(gsub: GsubData, lookup: Lookup,
-    glyphs: seq[uint32], zeroContext: bool): bool =
+    glyphs: openArray[uint32], zeroContext: bool): bool =
   ## Whether any subtable of `lookup` would rewrite exactly `glyphs`.
   ## Mirrors harfrust `WouldApplyContext`-driven `would_apply`: with
   ## `zeroContext`, context rules need empty backtrack/lookahead,
-  ## otherwise those are assumed matchable.
+  ## otherwise those are assumed matchable. Takes openArray to avoid
+  ## per-glyph seq allocations in consonant-position probing.
   if glyphs.len == 0:
     return false
   for e in lookup.order:
@@ -244,10 +229,10 @@ proc lookupWouldSubstitute(gsub: GsubData, lookup: Lookup,
       if e.index >= lookup.ligatureSubsts.len:
         continue
       let sub = lookup.ligatureSubsts[e.index]
-      let ci = sub.coverage.coverageIndex(glyphs[0])
-      if ci.isNone or int(ci.get) >= sub.sets.len:
+      let ci = sub.coverage.coverageIndexRaw(glyphs[0])
+      if ci < 0 or ci >= sub.sets.len:
         continue
-      for lig in sub.sets[int(ci.get)]:
+      for lig in sub.sets[ci]:
         if lig.components.len == glyphs.len - 1:
           var ok = true
           for k in 0 ..< lig.components.len:
@@ -261,10 +246,10 @@ proc lookupWouldSubstitute(gsub: GsubData, lookup: Lookup,
         continue
       let sub = lookup.contextSubsts[e.index]
       if sub.format == 1u16 or sub.format == 4u16:
-        let ci = sub.coverage.coverageIndex(glyphs[0])
-        if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+        let ci = sub.coverage.coverageIndexRaw(glyphs[0])
+        if ci < 0 or ci >= sub.ruleSets.len:
           continue
-        for rule in sub.ruleSets[int(ci.get)]:
+        for rule in sub.ruleSets[ci]:
           if rule.input.len == glyphs.len - 1:
             var ok = true
             for k in 0 ..< rule.input.len:
@@ -302,10 +287,10 @@ proc lookupWouldSubstitute(gsub: GsubData, lookup: Lookup,
         continue
       let sub = lookup.chainSubsts[e.index]
       if sub.format == 1u16 or sub.format == 4u16:
-        let ci = sub.coverage.coverageIndex(glyphs[0])
-        if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+        let ci = sub.coverage.coverageIndexRaw(glyphs[0])
+        if ci < 0 or ci >= sub.ruleSets.len:
           continue
-        for rule in sub.ruleSets[int(ci.get)]:
+        for rule in sub.ruleSets[ci]:
           if rule.input.len == glyphs.len - 1:
             var ok = true
             for k in 0 ..< rule.input.len:
@@ -356,8 +341,8 @@ proc lookupWouldSubstitute(gsub: GsubData, lookup: Lookup,
       discard
   false
 
-proc featureWouldSubstitute(gsub: GsubData, lookups: seq[uint16],
-    glyphs: seq[uint32], zeroContext: bool): bool =
+proc featureWouldSubstitute(gsub: GsubData, lookups: openArray[uint16],
+    glyphs: openArray[uint32], zeroContext: bool): bool =
   for li in lookups:
     if int(li) < gsub.lookups.len and lookupWouldSubstitute(gsub,
         gsub.lookups[int(li)], glyphs, zeroContext):
@@ -406,8 +391,9 @@ proc consonantPositionFromOt(gsub: GsubData, plan: IndicShapePlan,
   ## blwf/vatu/pstf/pref lookups with both virama orders, mirroring
   ## HarfBuzz (which also tolerates old-spec tables copied to new-spec
   ## fonts). Vatu is checked as well (harfbuzz#1587).
-  let vc = @[virama, consonant]
-  let cv = @[consonant, virama]
+  ## Stack arrays avoid per-glyph seq allocations in this hot probe.
+  let vc = [virama, consonant]
+  let cv = [consonant, virama]
   if featureWouldSubstitute(gsub, plan.wouldBlwf, vc,
       plan.zeroContext) or
       featureWouldSubstitute(gsub, plan.wouldBlwf, cv,
@@ -493,11 +479,20 @@ proc initialReorderingConsonantSyllable(buf: var Buffer, sf: ShaperFont,
         not buf.info[start + 2].isJoiner()) or
       (plan.config.rephMode == RephExplicit and
         buf.info[start + 2].indicCategory() == OtZwj)):
-    var glyphs = @[buf.info[start].glyphId, buf.info[start + 1].glyphId]
-    if plan.config.rephMode == RephExplicit:
-      glyphs.add(buf.info[start + 2].glyphId)
-    if featureWouldSubstitute(gsub, plan.wouldRphf, glyphs,
-        plan.zeroContext):
+    let g0 = buf.info[start].glyphId
+    let g1 = buf.info[start + 1].glyphId
+    let g2 = buf.info[start + 2].glyphId
+    # Stack buffers: implicit checks 2 glyphs, explicit checks 3.
+    let glyphs2 = [g0, g1]
+    let glyphs3 = [g0, g1, g2]
+    let isRphf =
+      if plan.config.rephMode == RephExplicit:
+        featureWouldSubstitute(gsub, plan.wouldRphf, glyphs3,
+          plan.zeroContext)
+      else:
+        featureWouldSubstitute(gsub, plan.wouldRphf, glyphs2,
+          plan.zeroContext)
+    if isRphf:
       limit += 2
       while limit < stop and buf.info[limit].isJoiner():
         inc limit
@@ -673,8 +668,8 @@ proc initialReorderingConsonantSyllable(buf: var Buffer, sf: ShaperFont,
       if k10 + 1 >= buf.info.len:
         buf.indexFailed()
         return false
-      if featureWouldSubstitute(gsub, plan.wouldPref,
-          @[buf.info[k10].glyphId, buf.info[k10 + 1].glyphId],
+      let pair = [buf.info[k10].glyphId, buf.info[k10 + 1].glyphId]
+      if featureWouldSubstitute(gsub, plan.wouldPref, pair,
           plan.zeroContext):
         buf.info[k10].mask = buf.info[k10].mask or
           plan.maskArray[IndicPref]
@@ -957,7 +952,7 @@ proc applyIndicFeature(buf: var Buffer, gsub: GsubData, tagStr: string,
   if lookups.len == 0:
     return
   if isGlobal:
-    let (m, v) = allocIndicMaskBit(plan.nextBit, 1u32)
+    let (m, v) = allocMaskBit(plan.nextBit, 1u32)
     if m == 0u32:
       return
     buf.setMasks(v, m, GlobalStart, GlobalEnd)
@@ -1006,7 +1001,7 @@ proc applyIndicGsub*(buf: var Buffer, sf: ShaperFont, gsub: GsubData,
         break
     if covered:
       continue
-    let (m, v) = allocIndicMaskBit(uBit, f.value)
+    let (m, v) = allocMaskBit(uBit, f.value)
     if m == 0u32:
       continue
     var lks: seq[uint16] = @[]

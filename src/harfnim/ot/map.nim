@@ -1,14 +1,12 @@
 import std/options
 
-import std/bitops
-import std/options
-
 import ../buffer
 import ../feature
 import ../scale
 import ../tag
 import ../varstore
 import ./apply
+import ./maskbits
 
 export apply
 
@@ -68,14 +66,9 @@ proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
   for f in features:
     if f.value == 0u32:
       continue
-    let bitsNeeded = 32u32 - uint32(countLeadingZeroBits(f.value))
-    if nextBit + bitsNeeded > 31u32:
+    let (mask, valueBits) = allocMaskBit(nextBit, f.value)
+    if mask == 0u32:
       break
-    let mask =
-      if nextBit + bitsNeeded >= 32u32: (not 0u32) shl nextBit
-      else: ((1u32 shl (nextBit + bitsNeeded)) - (1u32 shl nextBit))
-    let valueBits = f.value shl nextBit
-    nextBit += bitsNeeded
     var lookups: seq[uint16] = @[]
     for (tag, lks) in available:
       if tag == f.tag.toU32():
@@ -117,14 +110,9 @@ proc applyGposFeatures*(buf: var Buffer, gpos: GposData, scriptTag,
   for f in features:
     if f.value == 0u32:
       continue
-    let bitsNeeded = 32u32 - uint32(countLeadingZeroBits(f.value))
-    if nextBit + bitsNeeded > 31u32:
+    let (mask, valueBits) = allocMaskBit(nextBit, f.value)
+    if mask == 0u32:
       break
-    let mask =
-      if nextBit + bitsNeeded >= 32u32: (not 0u32) shl nextBit
-      else: ((1u32 shl (nextBit + bitsNeeded)) - (1u32 shl nextBit))
-    let valueBits = f.value shl nextBit
-    nextBit += bitsNeeded
     var lookups: seq[uint16] = @[]
     for (tag, lks) in available:
       if tag == f.tag.toU32():

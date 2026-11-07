@@ -326,10 +326,10 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
   let gid = buf.info[buf.idx].glyphId
   let anchor = anchorSyllableAt(buf, perSyllable)
   if sub.format == 1u16 or sub.format == 4u16:
-    let ci = sub.coverage.coverageIndex(gid)
-    if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+    let ci = sub.coverage.coverageIndexRaw(gid)
+    if ci < 0 or ci >= sub.ruleSets.len:
       return false
-    for rule in sub.ruleSets[int(ci.get)]:
+    for rule in sub.ruleSets[ci]:
       let m = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
         noClassDef(), @[], anchor)
       if m.isNone:
@@ -364,12 +364,14 @@ proc applyContextSubst(buf: var Buffer, gsub: GsubData, sub: ContextSubst,
       return false
     if not sub.coverages[0].covers(gid):
       return false
-    let rest =
-      if sub.coverages.len > 1: sub.coverages[1 .. ^1]
-      else: @[]
-    let dummy = newSeq[uint32](rest.len)
-    let m = matchInputSeq(buf, props, lookupMask, dummy, vkCoverage,
-      noClassDef(), rest, anchor)
+    let m =
+      if sub.coverages.len > 1:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(), sub.coverages.toOpenArray(1, sub.coverages.high),
+          anchor)
+      else:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(), [], anchor)
     if m.isNone:
       return false
     if applyRecords(buf, gsub, sub.records, m.get.positions,
@@ -389,10 +391,10 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
   let gid = buf.info[buf.idx].glyphId
   let anchor = anchorSyllableAt(buf, perSyllable)
   if sub.format == 1u16 or sub.format == 4u16:
-    let ci = sub.coverage.coverageIndex(gid)
-    if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+    let ci = sub.coverage.coverageIndexRaw(gid)
+    if ci < 0 or ci >= sub.ruleSets.len:
       return false
-    for rule in sub.ruleSets[int(ci.get)]:
+    for rule in sub.ruleSets[ci]:
       let mi = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
         noClassDef(), @[], anchor)
       if mi.isNone:
@@ -441,23 +443,21 @@ proc applyChainSubst(buf: var Buffer, gsub: GsubData, sub: ChainContextSubst,
       return false
     if not sub.inputCoverages[0].covers(gid):
       return false
-    let restInput =
-      if sub.inputCoverages.len > 1: sub.inputCoverages[1 .. ^1]
-      else: @[]
-    let dummyIn = newSeq[uint32](restInput.len)
-    let mi = matchInputSeq(buf, props, lookupMask, dummyIn, vkCoverage,
-      noClassDef(), restInput, anchor)
+    let mi =
+      if sub.inputCoverages.len > 1:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(),
+          sub.inputCoverages.toOpenArray(1, sub.inputCoverages.high), anchor)
+      else:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(), [], anchor)
     if mi.isNone:
       return false
-    let dummyLa = newSeq[uint32](sub.lookaheadCoverages.len)
-    let la = matchLookaheadSeq(buf, props, dummyLa, vkCoverage, noClassDef(),
+    let la = matchLookaheadSeq(buf, props, [], vkCoverage, noClassDef(),
       sub.lookaheadCoverages, mi.get.matchEnd, anchor)
     if la.isNone:
       return false
-    let dummyBack = newSeq[uint32](sub.backtrackCoverages.len)
-    # Silence unused warning: backtrack length drives the walk below.
-    discard dummyBack
-    if not matchBacktrackSeq(buf, props, dummyBack, vkCoverage, noClassDef(),
+    if not matchBacktrackSeq(buf, props, [], vkCoverage, noClassDef(),
         sub.backtrackCoverages, anchor):
       return false
     if applyRecords(buf, gsub, sub.records, mi.get.positions,
@@ -482,21 +482,19 @@ proc applyReverseSubst(buf: var Buffer, sub: ReverseChainSubst,
     return false
   let gid = buf.info[buf.idx].glyphId
   let anchor = anchorSyllableAt(buf, perSyllable)
-  let ci = sub.coverage.coverageIndex(gid)
-  if ci.isNone or int(ci.get) >= sub.substitutes.len:
+  let ci = sub.coverage.coverageIndexRaw(gid)
+  if ci < 0 or ci >= sub.substitutes.len:
     return false
-  let dummyBack = newSeq[uint32](sub.backtrackCoverages.len)
-  if not matchBacktrackSeq(buf, props, dummyBack, vkCoverage, noClassDef(),
+  if not matchBacktrackSeq(buf, props, [], vkCoverage, noClassDef(),
       sub.backtrackCoverages, anchor):
     # TODO: unsafe_to_concat_from_outbuffer marking
     return false
-  let dummyLook = newSeq[uint32](sub.lookaheadCoverages.len)
-  let laEnd = matchLookaheadSeq(buf, props, dummyLook, vkCoverage,
+  let laEnd = matchLookaheadSeq(buf, props, [], vkCoverage,
     noClassDef(), sub.lookaheadCoverages, buf.idx + 1, anchor)
   if laEnd.isNone:
     return false
   # TODO: unsafe_to_break_from_outbuffer marking
-  replaceWithSubstitutedInplace(buf, sub.substitutes[int(ci.get)])
+  replaceWithSubstitutedInplace(buf, sub.substitutes[ci])
   buf.successful
 
 proc applyLookupBackward*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
@@ -642,34 +640,34 @@ proc applyNestedAt(buf: var Buffer, gsub: GsubData, lookupIndex: int,
     case e.kind
     of lkSingle:
       let sub = lookup.singleSubsts[e.index]
-      let ci = sub.coverage.coverageIndex(gid)
-      if ci.isNone:
+      let ci = sub.coverage.coverageIndexRaw(gid)
+      if ci < 0:
         continue
-      let rep = sub.singleSubstitute(gid, ci.get)
+      let rep = sub.singleSubstitute(gid, uint32(ci))
       if rep.isNone:
         continue
       replaceWithSubstituted(buf, rep.get)
       return true
     of lkMultiple:
       let sub = lookup.multipleSubsts[e.index]
-      let ci = sub.coverage.coverageIndex(gid)
-      if ci.isNone:
+      let ci = sub.coverage.coverageIndexRaw(gid)
+      if ci < 0:
         continue
-      if applyMultiple(buf, sub, int(ci.get)):
+      if applyMultiple(buf, sub, ci):
         return true
     of lkAlternate:
       let sub = lookup.alternateSubsts[e.index]
-      let ci = sub.coverage.coverageIndex(gid)
-      if ci.isNone:
+      let ci = sub.coverage.coverageIndexRaw(gid)
+      if ci < 0:
         continue
-      if applyAlternate(buf, sub, int(ci.get), parentMask):
+      if applyAlternate(buf, sub, ci, parentMask):
         return true
     of lkLigature:
       let sub = lookup.ligatureSubsts[e.index]
-      let ci = sub.coverage.coverageIndex(gid)
-      if ci.isNone or int(ci.get) >= sub.sets.len:
+      let ci = sub.coverage.coverageIndexRaw(gid)
+      if ci < 0 or ci >= sub.sets.len:
         continue
-      if applyLigature(buf, sub.sets[int(ci.get)], nestedProps,
+      if applyLigature(buf, sub.sets[ci], nestedProps,
           perSyllable):
         return true
     of lkContext:
@@ -711,10 +709,10 @@ proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
       case e.kind
       of lkSingle:
         let sub = lookup.singleSubsts[e.index]
-        let ci = sub.coverage.coverageIndex(gid)
-        if ci.isNone:
+        let ci = sub.coverage.coverageIndexRaw(gid)
+        if ci < 0:
           continue
-        let rep = sub.singleSubstitute(gid, ci.get)
+        let rep = sub.singleSubstitute(gid, uint32(ci))
         if rep.isNone:
           continue
         replaceWithSubstituted(buf, rep.get)
@@ -722,26 +720,26 @@ proc applyLookup*(buf: var Buffer, gsub: GsubData, lookup: Lookup,
         break
       of lkMultiple:
         let sub = lookup.multipleSubsts[e.index]
-        let ci = sub.coverage.coverageIndex(gid)
-        if ci.isNone:
+        let ci = sub.coverage.coverageIndexRaw(gid)
+        if ci < 0:
           continue
-        if applyMultiple(buf, sub, int(ci.get)):
+        if applyMultiple(buf, sub, ci):
           done = true
           break
       of lkAlternate:
         let sub = lookup.alternateSubsts[e.index]
-        let ci = sub.coverage.coverageIndex(gid)
-        if ci.isNone:
+        let ci = sub.coverage.coverageIndexRaw(gid)
+        if ci < 0:
           continue
-        if applyAlternate(buf, sub, int(ci.get), mask):
+        if applyAlternate(buf, sub, ci, mask):
           done = true
           break
       of lkLigature:
         let sub = lookup.ligatureSubsts[e.index]
-        let ci = sub.coverage.coverageIndex(gid)
-        if ci.isNone or int(ci.get) >= sub.sets.len:
+        let ci = sub.coverage.coverageIndexRaw(gid)
+        if ci < 0 or ci >= sub.sets.len:
           continue
-        if applyLigature(buf, sub.sets[int(ci.get)], props,
+        if applyLigature(buf, sub.sets[ci], props,
             perSyllable):
           done = true
           break
@@ -920,10 +918,10 @@ proc applySinglePos(buf: var Buffer, sub: SinglePos, scale: Scale,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  let ci = sub.coverage.coverageIndex(gid)
-  if ci.isNone:
+  let ci = sub.coverage.coverageIndexRaw(gid)
+  if ci < 0:
     return false
-  let idx = int(ci.get)
+  let idx = ci
   if idx >= sub.values.len:
     return false
   discard applyValueRecord(buf, buf.idx, sub.values[idx], scale, isHorizontal, store, coords)
@@ -936,7 +934,7 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let first = buf.info[buf.idx].glyphId
-  if sub.coverage.coverageIndex(first).isNone:
+  if sub.coverage.coverageIndexRaw(first) < 0:
     return false
   let secondOpt = findSecondGlyph(buf, props, mask)
   if secondOpt.isNone:
@@ -944,10 +942,10 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
   let secondIdx = secondOpt.get
   let second = buf.info[secondIdx].glyphId
   if sub.format == 1u16 or sub.format == 3u16:
-    let covIdx = sub.coverage.coverageIndex(first).get
-    if int(covIdx) >= sub.pairSets.len:
+    let covIdx = sub.coverage.coverageIndexRaw(first)
+    if covIdx >= sub.pairSets.len:
       return false
-    let set = sub.pairSets[int(covIdx)]
+    let set = sub.pairSets[covIdx]
     for i, s in set.seconds:
       if s == second:
         let (v1, v2) = set.values[i]
@@ -1093,10 +1091,10 @@ proc applyMarkBase*(buf: var Buffer, sub: MarkSub, props, mask: uint32,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  let ci = sub.markCoverage.coverageIndex(gid)
-  if ci.isNone or int(ci.get) >= sub.markClasses.len:
+  let ci = sub.markCoverage.coverageIndexRaw(gid)
+  if ci < 0 or ci >= sub.markClasses.len:
     return false
-  let markIdx = int(ci.get)
+  let markIdx = ci
   let baseOpt = findMarkBase(buf, sub.baseCoverage, false)
   if baseOpt.isNone:
     buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
@@ -1105,15 +1103,15 @@ proc applyMarkBase*(buf: var Buffer, sub: MarkSub, props, mask: uint32,
   if basePos < 0 or basePos >= buf.info.len:
     return false
   let baseGid = buf.info[basePos].glyphId
-  let baseIdxOpt = sub.baseCoverage.coverageIndex(baseGid)
-  if baseIdxOpt.isNone:
+  let baseIdxOpt = sub.baseCoverage.coverageIndexRaw(baseGid)
+  if baseIdxOpt < 0:
     buf.unsafeToConcatFromOutbuffer(some(basePos), some(buf.idx + 1))
     return false
   let cls = sub.markClasses[markIdx]
   if int(cls) >= int(sub.classCount):
     buf.idx += 1
     return true
-  let baseIdx = int(baseIdxOpt.get)
+  let baseIdx = baseIdxOpt
   let anchorIdx = baseIdx * int(sub.classCount) + int(cls)
   if anchorIdx < 0 or anchorIdx >= sub.baseAnchors.len:
     buf.idx += 1
@@ -1127,10 +1125,10 @@ proc applyMarkMark*(buf: var Buffer, sub: MarkSub, props, mask: uint32,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  let ci = sub.markCoverage.coverageIndex(gid)
-  if ci.isNone or int(ci.get) >= sub.markClasses.len:
+  let ci = sub.markCoverage.coverageIndexRaw(gid)
+  if ci < 0 or ci >= sub.markClasses.len:
     return false
-  let markIdx = int(ci.get)
+  let markIdx = ci
   # Search back for previous mark, ignoring lookup flags except mark
   # filtering (harfrust strips IGNORE_FLAGS).
   let stripped = props and not uint32(LookupIgnoreFlags)
@@ -1161,15 +1159,15 @@ proc applyMarkMark*(buf: var Buffer, sub: MarkSub, props, mask: uint32,
   if not matches:
     buf.unsafeToConcatFromOutbuffer(some(mark2Pos), some(buf.idx + 1))
     return false
-  let m2IdxOpt = sub.baseCoverage.coverageIndex(prev.glyphId)
-  if m2IdxOpt.isNone:
+  let m2IdxOpt = sub.baseCoverage.coverageIndexRaw(prev.glyphId)
+  if m2IdxOpt < 0:
     buf.unsafeToConcatFromOutbuffer(some(mark2Pos), some(buf.idx + 1))
     return false
   let cls = sub.markClasses[markIdx]
   if int(cls) >= int(sub.classCount):
     buf.idx += 1
     return true
-  let anchorIdx = int(m2IdxOpt.get) * int(sub.classCount) + int(cls)
+  let anchorIdx = m2IdxOpt * int(sub.classCount) + int(cls)
   if anchorIdx < 0 or anchorIdx >= sub.baseAnchors.len:
     buf.idx += 1
     return true
@@ -1182,21 +1180,21 @@ proc applyMarkLig*(buf: var Buffer, sub: LigSub, props, mask: uint32,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  let ci = sub.markCoverage.coverageIndex(gid)
-  if ci.isNone or int(ci.get) >= sub.markClasses.len:
+  let ci = sub.markCoverage.coverageIndexRaw(gid)
+  if ci < 0 or ci >= sub.markClasses.len:
     return false
-  let markIdx = int(ci.get)
+  let markIdx = ci
   let ligOpt = findMarkBase(buf, sub.ligCoverage, true)
   if ligOpt.isNone:
     buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
     return false
   let ligPos = ligOpt.get
   let ligInfo = buf.info[ligPos]
-  let ligIdxOpt = sub.ligCoverage.coverageIndex(ligInfo.glyphId)
-  if ligIdxOpt.isNone or int(ligIdxOpt.get) >= sub.ligCount:
+  let ligIdxOpt = sub.ligCoverage.coverageIndexRaw(ligInfo.glyphId)
+  if ligIdxOpt < 0 or ligIdxOpt >= sub.ligCount:
     buf.unsafeToConcatFromOutbuffer(some(ligPos), some(buf.idx + 1))
     return false
-  let li = int(ligIdxOpt.get)
+  let li = ligIdxOpt
   if li >= sub.compOffsets.len or li >= sub.compCounts.len:
     buf.unsafeToConcatFromOutbuffer(some(ligPos), some(buf.idx + 1))
     return false
@@ -1229,10 +1227,10 @@ proc applyCursive*(buf: var Buffer, sub: CursiveSub, props: uint32,
   if buf.idx < 0 or buf.idx >= buf.len or buf.idx >= buf.info.len:
     return false
   let gid = buf.info[buf.idx].glyphId
-  let ci = sub.coverage.coverageIndex(gid)
-  if ci.isNone or int(ci.get) >= sub.entryAnchors.len:
+  let ci = sub.coverage.coverageIndexRaw(gid)
+  if ci < 0 or ci >= sub.entryAnchors.len:
     return false
-  let entry = sub.entryAnchors[int(ci.get)]
+  let entry = sub.entryAnchors[ci]
   if entry.format == 0u16:
     return false
   # Find previous non-skipped glyph.
@@ -1247,11 +1245,11 @@ proc applyCursive*(buf: var Buffer, sub: CursiveSub, props: uint32,
     buf.unsafeToConcatFromOutbuffer(some(0), some(buf.idx + 1))
     return false
   let prevGid = buf.info[prevPos].glyphId
-  let prevIdxOpt = sub.coverage.coverageIndex(prevGid)
-  if prevIdxOpt.isNone or int(prevIdxOpt.get) >= sub.exitAnchors.len:
+  let prevIdxOpt = sub.coverage.coverageIndexRaw(prevGid)
+  if prevIdxOpt < 0 or prevIdxOpt >= sub.exitAnchors.len:
     buf.unsafeToConcatFromOutbuffer(some(prevPos), some(buf.idx + 1))
     return false
-  let exit = sub.exitAnchors[int(prevIdxOpt.get)]
+  let exit = sub.exitAnchors[prevIdxOpt]
   if exit.format == 0u16:
     buf.unsafeToConcatFromOutbuffer(some(prevPos), some(buf.idx + 1))
     return false
@@ -1492,10 +1490,10 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
     return false
   let gid = buf.info[buf.idx].glyphId
   if sub.format == 1u16 or sub.format == 4u16:
-    let ci = sub.coverage.coverageIndex(gid)
-    if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+    let ci = sub.coverage.coverageIndexRaw(gid)
+    if ci < 0 or ci >= sub.ruleSets.len:
       return false
-    for rule in sub.ruleSets[int(ci.get)]:
+    for rule in sub.ruleSets[ci]:
       let m = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
         noClassDef(), @[])
       if m.isNone:
@@ -1530,12 +1528,13 @@ proc applyPosContextSubst(buf: var Buffer, gpos: GposData,
       return false
     if not sub.coverages[0].covers(gid):
       return false
-    let rest =
-      if sub.coverages.len > 1: sub.coverages[1 .. ^1]
-      else: @[]
-    let dummy = newSeq[uint32](rest.len)
-    let m = matchInputSeq(buf, props, lookupMask, dummy, vkCoverage,
-      noClassDef(), rest)
+    let m =
+      if sub.coverages.len > 1:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(), sub.coverages.toOpenArray(1, sub.coverages.high))
+      else:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(), [])
     if m.isNone:
       return false
     if applyPosRecords(buf, gpos, sub.records, m.get.positions,
@@ -1554,10 +1553,10 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
     return false
   let gid = buf.info[buf.idx].glyphId
   if sub.format == 1u16 or sub.format == 4u16:
-    let ci = sub.coverage.coverageIndex(gid)
-    if ci.isNone or int(ci.get) >= sub.ruleSets.len:
+    let ci = sub.coverage.coverageIndexRaw(gid)
+    if ci < 0 or ci >= sub.ruleSets.len:
       return false
-    for rule in sub.ruleSets[int(ci.get)]:
+    for rule in sub.ruleSets[ci]:
       let mi = matchInputSeq(buf, props, lookupMask, rule.input, vkGlyph,
         noClassDef(), @[])
       if mi.isNone:
@@ -1606,21 +1605,21 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
       return false
     if not sub.inputCoverages[0].covers(gid):
       return false
-    let restInput =
-      if sub.inputCoverages.len > 1: sub.inputCoverages[1 .. ^1]
-      else: @[]
-    let dummyIn = newSeq[uint32](restInput.len)
-    let mi = matchInputSeq(buf, props, lookupMask, dummyIn, vkCoverage,
-      noClassDef(), restInput)
+    let mi =
+      if sub.inputCoverages.len > 1:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(),
+          sub.inputCoverages.toOpenArray(1, sub.inputCoverages.high))
+      else:
+        matchInputSeq(buf, props, lookupMask, [], vkCoverage,
+          noClassDef(), [])
     if mi.isNone:
       return false
-    let dummyLa = newSeq[uint32](sub.lookaheadCoverages.len)
-    let la = matchLookaheadSeq(buf, props, dummyLa, vkCoverage, noClassDef(),
+    let la = matchLookaheadSeq(buf, props, [], vkCoverage, noClassDef(),
       sub.lookaheadCoverages, mi.get.matchEnd)
     if la.isNone:
       return false
-    let dummyBack = newSeq[uint32](sub.backtrackCoverages.len)
-    if not matchBacktrackSeq(buf, props, dummyBack, vkCoverage, noClassDef(),
+    if not matchBacktrackSeq(buf, props, [], vkCoverage, noClassDef(),
         sub.backtrackCoverages):
       return false
     if applyPosRecords(buf, gpos, sub.records, mi.get.positions,

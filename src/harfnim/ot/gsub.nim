@@ -1087,9 +1087,9 @@ proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
   let lookupOff = int(readU16(bytes, off + 8))
   let scripts = parseScriptList(bytes, off + scriptOff)
   let features = parseFeatureList(bytes, off + featureOff)
-  var lookups: seq[Lookup] = @[]
   let lookupBase = off + lookupOff
   let lookupCount = int(readU16(bytes, lookupBase))
+  var lookups = newSeqOfCap[Lookup](lookupCount)
   if lookupBase + 2 + lookupCount * 2 > bytes.len:
     raise newException(FontError, "short LookupList")
   for i in 0 ..< lookupCount:
