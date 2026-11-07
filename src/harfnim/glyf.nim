@@ -21,16 +21,23 @@ type
   TTContour* = seq[TTPoint]
 
   Reader = object
-    bytes: seq[uint8]
+    ## Borrowed view into the font bytes (the table outlives every
+    ## decode through the ShaperFont ref). A `seq` field here would
+    ## deep-copy megabytes per glyph; a pointer keeps decodes free.
+    data: ptr UncheckedArray[uint8]
     pos: int
     limit: int
     failed: bool
+
+proc reader(bytes: openArray[uint8], off, len: int): Reader =
+  Reader(data: cast[ptr UncheckedArray[uint8]](unsafeAddr bytes[0]),
+    pos: off, limit: off + len)
 
 proc rd8(r: var Reader): uint8 =
   if r.pos < 0 or r.pos >= r.limit:
     r.failed = true
     return 0u8
-  result = r.bytes[r.pos]
+  result = r.data[r.pos]
   inc r.pos
 
 proc rdU16(r: var Reader): uint16 =
@@ -187,7 +194,7 @@ proc xformPt(x, y: int32, a, b, c, d, e, f: float64): tuple[x, y: int32] =
   (draw.roundHalfAway(float64(x) * a + float64(y) * b + e),
     draw.roundHalfAway(float64(x) * c + float64(y) * d + f))
 
-proc decodeGlyphOutlines*(bytes: seq[uint8], off, len: int,
+proc decodeGlyphOutlines*(bytes: openArray[uint8], off, len: int,
     glyphAt: proc(gid: uint32): tuple[ok: bool, off, len: int] {.closure.},
     depth: int = 0, gid: uint32 = 0u32,
     gvar: GvarContext = noGvarContext()): Option[seq[TTContour]] =
@@ -198,11 +205,11 @@ proc decodeGlyphOutlines*(bytes: seq[uint8], off, len: int,
   ## glyphs.
   if depth > GlyfMaxDepth:
     return none(seq[TTContour])
-  if off < 0 or len < 10 or off + len > bytes.len:
+  if off < 0 or len < 10 or off + len > bytes.len or bytes.len == 0:
     # Shorter slices are empty (loca start == end) or malformed;
     # either way there is no outline to decode.
     return none(seq[TTContour])
-  var r = Reader(bytes: bytes, pos: off, limit: off + len)
+  var r = reader(bytes, off, len)
   let numContours = int(r.rdI16())
   if r.failed:
     return none(seq[TTContour])
@@ -348,7 +355,7 @@ proc decodeGlyphOutlines*(bytes: seq[uint8], off, len: int,
     return none(seq[TTContour])
   some(acc)
 
-proc drawGlyfGlyph*(bytes: seq[uint8], off, len: int,
+proc drawGlyfGlyph*(bytes: openArray[uint8], off, len: int,
     glyphAt: proc(gid: uint32): tuple[ok: bool, off, len: int] {.closure.},
     cb: proc(op: DrawOp) {.closure.}, gid: uint32 = 0u32,
     gvar: GvarContext = noGvarContext()): bool =
