@@ -102,6 +102,7 @@ type
     mA, mB, mC, mD, mTx, mTy: float64
 
 proc subrBias(count: int): int =
+  # Subroutine number bias by subr count.
   if count < 1240: 107
   elif count < 33900: 1131
   else: 32768
@@ -325,6 +326,7 @@ const
   OpSubrs = 19
 
 proc dictArg(e: DictEntry, i: int, ok: var bool): int =
+  # Reads one dictionary argument, failing the index when absent.
   if not ok or i < 0 or i >= e.args.len:
     ok = false
     return 0
@@ -496,6 +498,7 @@ proc parseCff*(bytes: seq[uint8], cffOff, cffLen: int,
 # ---------------------------------------------------------------------------
 
 proc fdFor*(f: CffFont, gid: int): tuple[ok: bool, fd: int] =
+  ## Selects the font dictionary for a glyph, reporting absence.
   let bytes = f.bytes
   if f.fdSelectOff < 0 or f.fdSelectOff + 1 > f.limit:
     return (false, 0)
@@ -649,6 +652,7 @@ proc combineM(top, sub: array[6, float64]): array[6, float64] =
     top[1] * sub[4] + top[3] * sub[5] + top[5]]
 
 proc resolveGlyph(f: CffFont, gid: uint32): ResolvedGlyph =
+  # Resolves a glyph to its charstring and subroutines.
   result.ok = false
   let g = int(gid)
   if g < 0 or g >= f.nGlyphs:
@@ -887,6 +891,7 @@ proc seacGid(f: CffFont, code: int): tuple[ok: bool, gid: int] =
   (false, 0)
 
 proc push(e: var Exec, v: float64) =
+  # Pushes a stack value, dropping on overflow.
   let cap = if e.cff2: 513 else: CffMaxStack
   if e.stack.len >= cap:
     e.failed = true
@@ -894,6 +899,7 @@ proc push(e: var Exec, v: float64) =
   e.stack.add(v)
 
 proc pop(e: var Exec): float64 =
+  # Pops a stack value, zero on underflow.
   if e.stack.len == 0:
     e.failed = true
     return 0.0
@@ -925,6 +931,7 @@ proc takeMoveArgs(e: var Exec, need: int): seq[float64] =
   e.stack = @[]
 
 proc tx(e: Exec, x, y: float64): DrawPoint =
+  # Transforms a point through the font matrix.
   (roundHalfAway(e.res.mA * x + e.res.mC * y + e.res.mTx),
     roundHalfAway(e.res.mB * x + e.res.mD * y + e.res.mTy))
 

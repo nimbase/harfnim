@@ -30,10 +30,12 @@ type
     failed: bool
 
 proc reader(bytes: openArray[uint8], off, len: int): Reader =
+  # Opens a bounded byte reader.
   Reader(data: cast[ptr UncheckedArray[uint8]](unsafeAddr bytes[0]),
     pos: off, limit: off + len)
 
 proc rd8(r: var Reader): uint8 =
+  # Reads one byte, zero past the limit.
   if r.pos < 0 or r.pos >= r.limit:
     r.failed = true
     return 0u8
@@ -41,6 +43,7 @@ proc rd8(r: var Reader): uint8 =
   inc r.pos
 
 proc rdU16(r: var Reader): uint16 =
+  # Reads a big endian uint16.
   let hi = uint16(r.rd8())
   let lo = uint16(r.rd8())
   if r.failed:
@@ -49,12 +52,15 @@ proc rdU16(r: var Reader): uint16 =
     (hi shl 8) or lo
 
 proc rdI16(r: var Reader): int16 =
+  # Reads a big endian int16.
   cast[int16](r.rdU16())
 
 proc f2dot14(v: int16): float64 =
+  # Converts 2.14 fixed point to float.
   float64(v) / 16384.0
 
 proc mid(a, b: int32): int32 =
+  # Midpoints two coordinates for implied on-curve points.
   (a + b) div 2
 
 proc emitContour*(pts: TTContour, cb: proc(op: DrawOp) {.closure.}) =
@@ -111,6 +117,7 @@ proc emitContours*(cs: seq[TTContour],
     emitContour(c, cb)
 
 proc decodeSimple(r: var Reader, numContours: int): Option[seq[TTContour]] =
+  # Decodes simple glyph contours.
   var ends: seq[int] = @[]
   for _ in 0 ..< numContours:
     ends.add(int(r.rdU16()))
@@ -191,6 +198,7 @@ proc decodeSimple(r: var Reader, numContours: int): Option[seq[TTContour]] =
   some(cs)
 
 proc xformPt(x, y: int32, a, b, c, d, e, f: float64): tuple[x, y: int32] =
+  # Transforms a point through a 2x2 matrix plus offset.
   (draw.roundHalfAway(float64(x) * a + float64(y) * b + e),
     draw.roundHalfAway(float64(x) * c + float64(y) * d + f))
 

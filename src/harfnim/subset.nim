@@ -34,14 +34,18 @@ import ./ot/gsub
 
 type
   SubsetError* = object of CatchableError
+    ## Subsetting failure.
 
   SubsetOpts* = object
+    ## Subset generation options.
     ## `downgradeCff2` mirrors hb-subset's flag: CFF2 input is rejected
     ## with a clear error either way (no Type2 downgrader yet); the
     ## flag only controls the message path.
     downgradeCff2*: bool
+    ## Reject CFF2 input with a clear error.
 
 proc defaultSubsetOpts*(): SubsetOpts =
+  ## Returns default subset options.
   SubsetOpts(downgradeCff2: true)
 
 # ---------------------------------------------------------------------------
@@ -49,30 +53,37 @@ proc defaultSubsetOpts*(): SubsetOpts =
 # ---------------------------------------------------------------------------
 
 proc u16At(b: openArray[uint8], off: int): uint16 =
+  # Reads an unchecked big endian uint16.
   (uint16(b[off]) shl 8) or uint16(b[off + 1])
 
 proc u32At(b: openArray[uint8], off: int): uint32 =
+  # Reads an unchecked big endian uint32.
   (uint32(b[off]) shl 24) or (uint32(b[off + 1]) shl 16) or
     (uint32(b[off + 2]) shl 8) or uint32(b[off + 3])
 
 proc putU16(d: var seq[uint8], v: uint16) =
+  # Appends a big endian uint16.
   d.add(uint8(v shr 8))
   d.add(uint8(v))
 
 proc putI16(d: var seq[uint8], v: int16) =
+  # Appends a big endian int16.
   putU16(d, cast[uint16](v))
 
 proc putU32(d: var seq[uint8], v: uint32) =
+  # Appends a big endian uint32.
   d.add(uint8(v shr 24))
   d.add(uint8(v shr 16))
   d.add(uint8(v shr 8))
   d.add(uint8(v))
 
 proc putBytes(d: var seq[uint8], b: openArray[uint8]) =
+  # Appends raw bytes.
   for x in b:
     d.add(x)
 
 proc pad4(d: var seq[uint8]) =
+  # Pads with zeros to a 4 byte boundary.
   while d.len mod 4 != 0:
     d.add(0u8)
 
@@ -139,6 +150,7 @@ const
   ]
 
 proc isDrop(tag: uint32): bool =
+  # True for tables dropped from subsets.
   for t in DropTags:
     if t == tag:
       return true
@@ -284,6 +296,7 @@ proc buildCmap4(pairs: seq[tuple[cp, gid: uint32]]): seq[uint8] =
   result[lenPos + 1] = uint8(total)
 
 proc buildCmap(pairs: seq[tuple[cp, gid: uint32]]): seq[uint8] =
+  # Builds a format 4 cmap for the subset.
   let c4 = buildCmap4(pairs)
   let c12 = buildCmap12(pairs)
   result = @[]
@@ -342,6 +355,7 @@ proc coverageByIndex(c: Coverage): seq[uint32] =
       result[p.idx] = p.g
 
 proc coverageIndex(c: Coverage, gid: uint32): int =
+  # Linear coverage index for small subset tables, -1 on miss.
   for i, g in c.glyphs:
     if g == gid:
       return i
@@ -514,6 +528,7 @@ proc gsubClosure(font: SfntFont, keep: var Table[uint32, bool]) =
 # ---------------------------------------------------------------------------
 
 proc cffEncodeInt(d: var seq[uint8], v: int) =
+  # Encodes a CFF integer operand.
   if v >= -107 and v <= 107:
     d.add(uint8(v + 139))
   elif v >= 108 and v <= 1131:
@@ -532,6 +547,7 @@ proc cffEncodeInt(d: var seq[uint8], v: int) =
     putU32(d, cast[uint32](cast[int32](v)))
 
 proc cffEncodeOp(d: var seq[uint8], op: int) =
+  # Encodes a CFF operator.
   if op > 255:
     d.add(12u8)
     d.add(uint8(op and 0xFF))
@@ -609,6 +625,7 @@ proc cffBuildTop(topEntries: seq[tuple[op: int, args: seq[float64]]],
     cffEncodeOp(result, ((12 shl 8) or 7))
 
 proc cffEncodeIndex(items: seq[seq[uint8]]): seq[uint8] =
+  # Encodes a CFF INDEX structure.
   result = @[]
   if items.len == 0:
     putU16(result, 0u16)
@@ -688,6 +705,7 @@ proc cffGidToSid(bytes: seq[uint8], f: CffFont): seq[int] =
       result[i] = i
 
 proc cffFdFor(f: CffFont, gid: int): int =
+  # Selects the font dictionary index, defaulting to zero.
   let (ok, fd) = fdFor(f, gid)
   if ok: fd else: 0
 

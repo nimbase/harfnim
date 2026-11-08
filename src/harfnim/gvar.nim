@@ -42,9 +42,11 @@ type
     coords*: seq[float32]
 
 proc noGvarContext*(): GvarContext =
+  ## Returns the empty gvar context.
   GvarContext(table: GvarTable(ok: false), coords: @[])
 
 proc hasData*(c: GvarContext): bool =
+  ## True when tuning data and coordinates are present.
   c.table.ok and c.coords.len > 0 and c.table.axisCount > 0
 
 type
@@ -55,6 +57,7 @@ type
     failed: bool
 
 proc need(c: var Cursor, n: int): bool =
+  # Advances the cursor, failing on overrun.
   if c.failed or n < 0 or c.pos + n > c.limit or
       c.pos + n > c.bytes.len:
     c.failed = true
@@ -62,12 +65,14 @@ proc need(c: var Cursor, n: int): bool =
   true
 
 proc u8(c: var Cursor): uint8 =
+  # Reads one byte.
   if not c.need(1):
     return 0u8
   result = c.bytes[c.pos]
   inc c.pos
 
 proc u16(c: var Cursor): uint16 =
+  # Reads a big endian uint16.
   let hi = uint16(c.u8())
   let lo = uint16(c.u8())
   if c.failed:
@@ -76,9 +81,11 @@ proc u16(c: var Cursor): uint16 =
     (hi shl 8) or lo
 
 proc i16(c: var Cursor): int16 =
+  # Reads a big endian int16.
   cast[int16](c.u16())
 
 proc u32(c: var Cursor): uint32 =
+  # Reads a big endian uint32.
   let a = uint32(c.u8())
   let b = uint32(c.u8())
   let d = uint32(c.u8())
@@ -89,9 +96,11 @@ proc u32(c: var Cursor): uint32 =
     (a shl 24) or (b shl 16) or (d shl 8) or e
 
 proc i32(c: var Cursor): int32 =
+  # Reads a big endian int32.
   cast[int32](c.u32())
 
 proc f2dot14(c: var Cursor): float64 =
+  # Reads a 2.14 fixed point number.
   float64(c.i16()) / 16384.0
 
 proc parseGvar*(bytes: seq[uint8], off, len: int): GvarTable =

@@ -66,6 +66,7 @@ const
   PosEnd* = 14u8
 
 proc combineCatPos(s, m: uint8): uint16 =
+  # Packs category and position into one lookup key.
   uint16(s) or (uint16(m) shl 8)
 
 const
@@ -175,6 +176,7 @@ const
   ]
 
 proc indicB4(a: openArray[uint8], i: int): uint8 =
+  # Reads one packed table nibble.
   uint8((uint32(a[i shr 1]) shr uint32((i and 1) shl 2)) and 15u32)
 
 proc indicCategoriesIndex*(u: int): uint8 =
@@ -200,6 +202,7 @@ proc indicCategory*(g: GlyphInfo): uint8 =
   g.otShaperCategory()
 
 proc setIndicCategory*(g: var GlyphInfo, v: uint8) =
+  ## Writes the Indic category byte.
   g.setOtShaperCategory(v)
 
 proc indicPosition*(g: GlyphInfo): uint8 =
@@ -208,4 +211,5 @@ proc indicPosition*(g: GlyphInfo): uint8 =
   g.otShaperAuxiliary()
 
 proc setIndicPosition*(g: var GlyphInfo, v: uint8) =
+  ## Writes the Indic position byte.
   g.setOtShaperAuxiliary(v)

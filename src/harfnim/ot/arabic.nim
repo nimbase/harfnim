@@ -47,6 +47,7 @@ const
     "medi", "med2", "init"]
 
 proc joiningTypeFor*(cp: uint32, gc: GeneralCategory): ArabicJoining =
+  ## Looks up the joining type, defaulting non spacing marks.
   let raw = arabicJoiningTypeRaw(int(cp))
   if raw != 7u8:
     return ArabicJoining(raw)
@@ -68,9 +69,11 @@ proc isWordCategory*(gc: GeneralCategory): bool =
     gc == GcMathSymbol or gc == GcOtherSymbol
 
 proc arabicAction*(g: GlyphInfo): uint8 =
+  ## Reads the Arabic joining action.
   g.otShaperAuxiliary()
 
 proc setArabicAction*(g: var GlyphInfo, v: uint8) =
+  ## Writes the Arabic joining action.
   g.setOtShaperAuxiliary(v)
 
 # State table: [state][joining-col] -> (prevAction, curAction, nextState).
@@ -101,6 +104,7 @@ const StateTable*: array[7, array[6,
 ]
 
 proc colForJoining*(j: ArabicJoining): int =
+  ## Maps a joining type to its state table column.
   case j
   of ajU: -1
   of ajL: 1
@@ -112,6 +116,7 @@ proc colForJoining*(j: ArabicJoining): int =
   of ajX: -1
 
 proc arabicJoining*(buf: var Buffer) =
+  ## Runs Arabic joining over codepoints.
   var prev: Option[int] = none(int)
   var state = 0
   # Pre-context: only first transparent run matters for initial state.
@@ -174,6 +179,7 @@ proc arabicJoining*(buf: var Buffer) =
     break
 
 proc mongolianVariationSelectors*(buf: var Buffer) =
+  ## Handles Mongolian variation selectors.
   if buf.len == 0 or buf.info.len == 0:
     return
   var action = buf.info[0].arabicAction()
@@ -431,11 +437,13 @@ proc win1256Singles*(featIdx: int): seq[FallbackSingle] =
     result[j] = cur
 
 proc win1256LamAlefLigs*(): seq[FallbackLig] =
+  ## Win1256 lam alef ligature fallbacks.
   result = @[]
   for l in Win1256LamAlefLigatures:
     result.add((l.first, @[l.second], l.lig))
 
 proc win1256ShaddaLigs*(): seq[FallbackLig] =
+  ## Win1256 shadda ligature fallbacks.
   result = @[]
   for l in Win1256ShaddaLigatures:
     result.add((l.first, @[l.second], l.lig))

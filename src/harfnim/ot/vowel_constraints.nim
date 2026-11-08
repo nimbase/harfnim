@@ -62,11 +62,13 @@ const
   ]
 
 proc curGlyphAt(buf: Buffer, i: int): uint32 =
+  # Reads the codepoint at a cursor offset, 0 when out of range.
   if buf.idx + i < 0 or buf.idx + i >= buf.info.len:
     return 0u32
   buf.info[buf.idx + i].glyphId
 
 proc outputDottedCircle(buf: var Buffer) =
+  # Emits a dotted circle placeholder.
   buf.outputGlyph(0x25CCu32)
   let slot = buf.outAt(buf.outLen - 1)
   if slot == nil:
@@ -75,6 +77,7 @@ proc outputDottedCircle(buf: var Buffer) =
     slot[].clearContinuation()
 
 proc outputWithDottedCircle(buf: var Buffer) =
+  # Emits the current glyph followed by a dotted circle.
   outputDottedCircle(buf)
   buf.nextGlyph()
 

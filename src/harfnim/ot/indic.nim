@@ -75,11 +75,17 @@ type
 
   IndicConfig* = object
     script*: Option[Script]
+    ## Target script, if any.
     hasOldSpec*: bool
+    ## True when the font follows the old spec.
     virama*: uint32
+    ## Virama codepoint.
     rephPos*: RephPosition
+    ## Reph rendition position.
     rephMode*: RephMode
+    ## How reph forms.
     blwfMode*: BlwfMode
+    ## Where below forms apply.
 
 const
   IndicConfigs*: array[11, IndicConfig] = [
@@ -119,6 +125,7 @@ const
   ]
 
 proc indicConfigFor*(script: Option[Script]): IndicConfig =
+  ## Selects the Indic config, defaulting to a generic one.
   if script.isSome:
     for c in IndicConfigs:
       if c.script.isSome and c.script.get == script.get:
@@ -126,6 +133,7 @@ proc indicConfigFor*(script: Option[Script]): IndicConfig =
   IndicConfigs[0]
 
 proc catFlag*(c: uint8): uint32 =
+  ## Single category bit, zero past 31.
   if c < 32u8: 1u32 shl c else: 0u32
 
 proc isOneOf*(g: GlyphInfo, flags: uint32): bool =
@@ -136,32 +144,47 @@ proc isOneOf*(g: GlyphInfo, flags: uint32): bool =
   (catFlag(g.indicCategory()) and flags) != 0u32
 
 proc isJoiner*(g: GlyphInfo): bool =
+  ## True for joiner glyphs, ignoring ligated ones.
   g.isOneOf(catFlag(OtZwj) or catFlag(OtZwnj))
 
 proc isConsonant*(g: GlyphInfo): bool =
+  ## True for consonant glyphs, ignoring ligated ones.
   g.isOneOf(catFlag(OtC) or catFlag(OtCs) or catFlag(OtRa) or
     catFlag(OtCm) or catFlag(OtV) or catFlag(OtPlaceholder) or
     catFlag(OtDottedCircle))
 
 proc isHalant*(g: GlyphInfo): bool =
+  ## True for halant glyphs, ignoring ligated ones.
   g.isOneOf(catFlag(OtH))
 
 proc ligatedAndDidntMultiply*(g: GlyphInfo): bool =
+  ## True for ligated glyphs that were not multiplied.
   g.ligated() and not g.multiplied()
 
 type
   IndicShapePlan* = object
     config*: IndicConfig
+    ## Script configuration.
     isOldSpec*: bool
+    ## True for old spec fonts.
     zeroContext*: bool
+    ## True when context probes ignore surroundings.
     lookups*: array[17, seq[uint16]]
+    ## Feature lookups per shaping stage.
     wouldBlwf*: seq[uint16]
+    ## Blwf probing lookups.
     wouldVatu*: seq[uint16]
+    ## Vatu probing lookups.
     wouldPstf*: seq[uint16]
+    ## Pstf probing lookups.
     wouldPref*: seq[uint16]
+    ## Pref probing lookups.
     wouldRphf*: seq[uint16]
+    ## Rphf probing lookups.
     maskArray*: array[17, uint32]
+    ## Masks per shaping stage.
     nextBit*: uint32
+    ## Next free mask bit.
 
 proc lookupsForTag(gsub: GsubData, lang: LangSys,
     tagStr: string): seq[uint16] =
@@ -213,6 +236,7 @@ proc newIndicShapePlan*(gsub: GsubData, scriptTag, langTag: Tag,
   result.nextBit = nextBit
 
 proc classIs(cd: ClassDef, gid: uint32, cls: uint32): bool =
+  # True when the glyph holds the class.
   cd.classOf(gid) == cls
 
 proc lookupWouldSubstitute(gsub: GsubData, lookup: Lookup,
@@ -467,6 +491,7 @@ proc rotateInfoLeftByOne(buf: var Buffer, first, last: int): bool =
   true
 
 proc infoInRange(buf: Buffer, i: int): bool =
+  # True when the index is a live glyph position.
   i >= 0 and i < buf.len and i < buf.info.len
 
 proc initialReorderingConsonantSyllable(buf: var Buffer, sf: ShaperFont,

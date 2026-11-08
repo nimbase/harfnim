@@ -31,33 +31,43 @@ const
   SBase = 0xAC00u32
 
 proc isCombiningL*(u: uint32): bool =
+  ## True for combining LV lead jamo.
   u >= LBase and u < LBase + LCount
 
 proc isCombiningV*(u: uint32): bool =
+  ## True for combining vowel jamo.
   u >= VBase and u < VBase + VCount
 
 proc isCombiningT*(u: uint32): bool =
+  ## True for combining trailing jamo.
   u >= TBase + 1u32 and u < TBase + TCount
 
 proc isCombinedS*(u: uint32): bool =
+  ## True for precomposed syllables without trailing jamo.
   u >= SBase and u < SBase + LCount * NCount
 
 proc isL*(u: uint32): bool =
+  ## True for lead jamo including extensions.
   (u >= 0x1100u32 and u <= 0x115Fu32) or (u >= 0xA960u32 and u <= 0xA97Cu32)
 
 proc isV*(u: uint32): bool =
+  ## True for vowel jamo including extensions.
   (u >= 0x1160u32 and u <= 0x11A7u32) or (u >= 0xD7B0u32 and u <= 0xD7C6u32)
 
 proc isT*(u: uint32): bool =
+  ## True for trailing jamo including extensions.
   (u >= 0x11A8u32 and u <= 0x11FFu32) or (u >= 0xD7CBu32 and u <= 0xD7FBu32)
 
 proc isHangulTone*(u: uint32): bool =
+  ## True for Hangul tone marks.
   u >= 0x302Eu32 and u <= 0x302Fu32
 
 proc hangulShapingFeature*(g: GlyphInfo): uint8 =
+  ## Reads the Hangul shaping feature.
   g.otShaperAuxiliary()
 
 proc setHangulShapingFeature*(g: var GlyphInfo, v: uint8) =
+  ## Writes the Hangul shaping feature.
   g.setOtShaperAuxiliary(v)
 
 proc unsafeToBreakEmitted*(buf: var Buffer, start: int) =
@@ -72,6 +82,7 @@ proc unsafeToBreakEmitted*(buf: var Buffer, start: int) =
         buf.info[i].mask = buf.info[i].mask or 0x03u32
 
 proc isZeroWidthChar(sf: ShaperFont, c: uint32): bool =
+  # True when the glyph has zero advance.
   sf.hAdvance(newGlyphId(c)) == 0i32
 
 proc allocHangulMaskBit(nextBit: var uint32, value: uint32): tuple[mask,
@@ -93,10 +104,15 @@ proc allocHangulMaskBit(nextBit: var uint32, value: uint32): tuple[mask,
 type
   HangulMasks* = object
     ljmoMask*, ljmoVal*: uint32
+    ## Ljmo mask and value.
     vjmoMask*, vjmoVal*: uint32
+    ## Vjmo mask and value.
     tjmoMask*, tjmoVal*: uint32
+    ## Tjmo mask and value.
     caltMask*, caltVal*: uint32
+    ## Calt mask and value.
     nextBit*: uint32
+    ## Next free mask bit.
 
 proc prepareHangulMasks*(buf: var Buffer): HangulMasks =
   ## Allocates ljmo/vjmo/tjmo/calt mask bits and enables calt

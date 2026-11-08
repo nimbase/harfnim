@@ -50,9 +50,11 @@ const ArabicJoiningBytes*: array[749, uint8] = [
 ]
 
 proc arabicJoiningB4*(a: openArray[uint8], i: int): uint8 =
+  ## Reads one packed joining nibble.
   uint8((uint16(a[i shr 1]) shr ((i and 1) shl 2)) and 15u16)
 
 proc arabicJoiningTypeRaw*(u: int): uint8 =
+  ## Raw packed joining type, defaulting past the table end.
   if u >= 125260: return 7u8
   let l1 = arabicJoiningB4(ArabicJoiningBytes, (((u shr 3) shr 3) shr 3))
   let l2i = 123 + (int(l1) shl 3) + (((u shr 3) shr 3) and 7)

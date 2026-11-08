@@ -42,6 +42,7 @@ proc getConsonantType*(u: uint32): Consonant =
     NotConsonant
 
 proc getMarkType*(u: uint32): Mark =
+  ## Classifies Thai and Lao marks.
   if u == 0x0E31u32 or (u >= 0x0E34u32 and u <= 0x0E37u32) or
       u == 0x0E47u32 or (u >= 0x0E4Du32 and u <= 0x0E4Eu32):
     Av
@@ -177,15 +178,19 @@ proc doPuaShaping(sf: ShaperFont, buf: var Buffer) =
     inc i
 
 proc isSaraAm*(u: uint32): bool =
+  ## True for SARA AM across Thai and Lao blocks.
   (u and not 0x0080u32) == 0x0E33u32
 
 proc nikhahitFromSaraAm*(u: uint32): uint32 =
+  ## Splits the nikhahit half out of SARA AM.
   u - 0x0E33u32 + 0x0E4Du32
 
 proc saraAaFromSaraAm*(u: uint32): uint32 =
+  ## Splits the sara aa half out of SARA AM.
   u - 1u32
 
 proc isAboveBaseMark(u: uint32): bool =
+  # True for above base marks.
   let v = u and not 0x0080u32
   (v >= 0x0E34u32 and v <= 0x0E37u32) or
     (v >= 0x0E47u32 and v <= 0x0E4Eu32) or v == 0x0E31u32 or

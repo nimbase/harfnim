@@ -34,6 +34,7 @@ type
     failed: bool
 
 proc need(c: var Cursor, n: int): bool =
+  # Advances the cursor, failing on overrun.
   if c.failed or n < 0 or c.pos + n > c.limit or
       c.pos + n > c.bytes.len:
     c.failed = true
@@ -41,12 +42,14 @@ proc need(c: var Cursor, n: int): bool =
   true
 
 proc u8(c: var Cursor): uint8 =
+  # Reads one byte.
   if not c.need(1):
     return 0u8
   result = c.bytes[c.pos]
   inc c.pos
 
 proc u16(c: var Cursor): uint16 =
+  # Reads a big endian uint16.
   let hi = uint16(c.u8())
   let lo = uint16(c.u8())
   if c.failed:
@@ -55,12 +58,15 @@ proc u16(c: var Cursor): uint16 =
     (hi shl 8) or lo
 
 proc i16(c: var Cursor): int16 =
+  # Reads a big endian int16.
   cast[int16](c.u16())
 
 proc i8(c: var Cursor): int8 =
+  # Reads a signed byte.
   cast[int8](c.u8())
 
 proc u24(c: var Cursor): uint32 =
+  # Reads a big endian uint24.
   let a = uint32(c.u8())
   let b = uint32(c.u8())
   let d = uint32(c.u8())
@@ -70,6 +76,7 @@ proc u24(c: var Cursor): uint32 =
     (a shl 16) or (b shl 8) or d
 
 proc u32(c: var Cursor): uint32 =
+  # Reads a big endian uint32.
   let a = uint32(c.u8())
   let b = uint32(c.u8())
   let d = uint32(c.u8())
@@ -80,6 +87,7 @@ proc u32(c: var Cursor): uint32 =
     (a shl 24) or (b shl 16) or (d shl 8) or e
 
 proc i32(c: var Cursor): int32 =
+  # Reads a big endian int32.
   cast[int32](c.u32())
 
 proc parseVarStoreInner(bytes: seq[uint8], off, len: int,
@@ -182,9 +190,11 @@ proc parseVarStoreInner(bytes: seq[uint8], off, len: int,
   result = VarStore(ok: true, regions: regions, datas: datas)
 
 proc parseItemVariationStore*(bytes: seq[uint8], off, len: int): VarStore =
+  ## Parses an item variation store, yielding empty on bad input.
   parseVarStoreInner(bytes, off, len, false)
 
 proc parseVarStore*(bytes: seq[uint8], off, len: int): VarStore =
+  ## Parses a variation store, yielding empty on bad input.
   parseVarStoreInner(bytes, off, len, true)
 
 proc parseDeltaSetIndexMap*(bytes: seq[uint8], off, len: int): DeltaSetIndexMap =
