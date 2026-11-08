@@ -30,48 +30,80 @@ export vowel_constraints
 
 const
   IndicNukt* = 0
+    ## Nukt stage index.
   IndicAkhn* = 1
+    ## Akhn stage index.
   IndicRphf* = 2
+    ## Rphf stage index.
   IndicRkrf* = 3
+    ## Rkrf stage index.
   IndicPref* = 4
+    ## Pref stage index.
   IndicBlwf* = 5
+    ## Blwf stage index.
   IndicAbvf* = 6
+    ## Abvf stage index.
   IndicHalf* = 7
+    ## Half stage index.
   IndicPstf* = 8
+    ## Pstf stage index.
   IndicVatu* = 9
+    ## Vatu stage index.
   IndicCjct* = 10
+    ## Cjct stage index.
   IndicInit* = 11
+    ## Init stage index.
   IndicPres* = 12
+    ## Pres stage index.
   IndicAbvs* = 13
+    ## Abvs stage index.
   IndicBlws* = 14
+    ## Blws stage index.
   IndicPsts* = 15
+    ## Psts stage index.
   IndicHaln* = 16
+    ## Haln stage index.
 
   IndicFeatureTags*: array[17, string] = ["nukt", "akhn", "rphf", "rkrf",
     "pref", "blwf", "abvf", "half", "pstf", "vatu", "cjct", "init",
     "pres", "abvs", "blws", "psts", "haln"]
+    ## Feature tag per shaping stage.
   # Features without F_GLOBAL: their masks are tagged per glyph during
   # initial reordering; the rest apply buffer-wide.
   IndicGlobalFeature*: array[17, bool] = [true, true, false, true, false,
     false, false, false, false, true, true, false, true, true, true, true,
     true]
+    ## Whether each stage applies buffer-wide.
 
 type
   RephPosition* = enum
+    ## Reph rendition position.
     RephAfterMain
+    ## After the main consonant.
     RephBeforeSub
+    ## Before subscript forms.
     RephAfterSub
+    ## After subscript forms.
     RephBeforePost
+    ## Before post-base forms.
     RephAfterPost
+    ## After post-base forms.
 
   RephMode* = enum
+    ## How reph forms.
     RephImplicit
+    ## Implicit Ra Halant sequence.
     RephExplicit
+    ## Explicit Ra Halant ZWJ sequence.
     RephLogRepha
+    ## Encoded repha character.
 
   BlwfMode* = enum
+    ## Where below forms apply.
     BlwfPreAndPost
+    ## Pre-base and post-base.
     BlwfPostOnly
+    ## Post-base only.
 
   IndicConfig* = object
     script*: Option[Script]
@@ -123,6 +155,7 @@ const
       rephPos: RephAfterPost, rephMode: RephExplicit,
       blwfMode: BlwfPreAndPost),
   ]
+    ## Per-script shaping configurations.
 
 proc indicConfigFor*(script: Option[Script]): IndicConfig =
   ## Selects the Indic config, defaulting to a generic one.

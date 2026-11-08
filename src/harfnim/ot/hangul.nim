@@ -103,6 +103,7 @@ proc allocHangulMaskBit(nextBit: var uint32, value: uint32): tuple[mask,
 
 type
   HangulMasks* = object
+    ## Precomputed Hangul feature masks.
     ljmoMask*, ljmoVal*: uint32
     ## Ljmo mask and value.
     vjmoMask*, vjmoVal*: uint32
