@@ -25,10 +25,13 @@ type
     Av, Bv, T, NotMark
     ## Above vowel, below vowel, tone, or other.
   AboveState = enum
+    # Above-base mark machine state.
     T0, T1, T2, T3
   BelowState = enum
+    # Below-base mark machine state.
     B0, B1, B2
   ThaiAction = enum
+    # SARA AM split action.
     Nop, Sd, Sl, Sdl, Rd
 
 proc getConsonantType*(u: uint32): Consonant =

@@ -13,12 +13,19 @@ export indic_table
 
 type
   SyllableType* = enum
+    ## Indic syllable shape.
     ConsonantSyllable = 0
+    ## Consonant syllable.
     VowelSyllable
+    ## Vowel syllable.
     StandaloneCluster
+    ## Standalone cluster.
     SymbolCluster
+    ## Symbol cluster.
     BrokenCluster
+    ## Broken cluster.
     NonIndicCluster
+    ## Non Indic cluster.
 
 const
   MachineStart = 31

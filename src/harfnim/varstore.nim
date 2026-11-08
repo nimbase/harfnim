@@ -11,27 +11,42 @@ type
   VarRegion* = tuple[start, peak, finish: float64]
 
   VarData* = object
+    ## One item variation data block.
     regionIndexes*: seq[int]
+    ## Region indexes.
     deltas*: seq[seq[int32]]
+    ## Delta rows.
 
   VarStore* = object
+    ## Parsed item variation store.
     ok*: bool
+    ## True when parsing succeeded.
     ## Per region, the per-axis triples.
     regions*: seq[seq[VarRegion]]
+    ## Variation regions.
     datas*: seq[VarData]
+    ## Variation data blocks.
 
   DeltaSetIndexMap* = object
+    ## Delta set index mapping.
     ok*: bool
+    ## True when parsing succeeded.
     entries*: seq[uint32]
+    ## Packed outer and inner indexes.
 
 const NoVariationIndex* = 0xFFFFFFFFu32
 
 type
   Cursor = object
+    # Bounded variation store cursor.
     bytes: seq[uint8]
+    # Input bytes.
     pos: int
+    # Read offset.
     limit: int
+    # Valid end offset.
     failed: bool
+    # True once a read overruns.
 
 proc need(c: var Cursor, n: int): bool =
   # Advances the cursor, failing on overrun.

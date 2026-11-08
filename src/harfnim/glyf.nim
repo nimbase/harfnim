@@ -18,16 +18,22 @@ const
 
 type
   TTPoint* = tuple[x, y: int32, onCurve: bool]
+    ## TrueType outline point.
   TTContour* = seq[TTPoint]
+    ## One contour of points.
 
   Reader = object
     ## Borrowed view into the font bytes (the table outlives every
     ## decode through the ShaperFont ref). A `seq` field here would
     ## deep-copy megabytes per glyph; a pointer keeps decodes free.
     data: ptr UncheckedArray[uint8]
+    ## Byte view into the font.
     pos: int
+    ## Read offset.
     limit: int
+    ## Valid end offset.
     failed: bool
+    ## True once a read overruns.
 
 proc reader(bytes: openArray[uint8], off, len: int): Reader =
   # Opens a bounded byte reader.
@@ -113,6 +119,7 @@ proc emitContour*(pts: TTContour, cb: proc(op: DrawOp) {.closure.}) =
 
 proc emitContours*(cs: seq[TTContour],
     cb: proc(op: DrawOp) {.closure.}) =
+  ## Emits all contours.
   for c in cs:
     emitContour(c, cb)
 

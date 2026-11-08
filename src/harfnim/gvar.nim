@@ -30,16 +30,26 @@ const
 
 type
   GvarTable* = object
+    ## Parsed gvar table.
     ok*: bool
+    ## True when parsing succeeded.
     axisCount*: int
+    ## Axis count.
     sharedTuples*: seq[seq[float64]]
+    ## Shared tuning tuples.
     glyphOffsets*: seq[int]
+    ## Per glyph data offsets.
     bytes*: seq[uint8]
+    ## Table bytes.
     base*, limit*: int
+    ## Table byte range.
 
   GvarContext* = object
+    ## Tuning context for one location.
     table*: GvarTable
+    ## Parsed table.
     coords*: seq[float32]
+    ## Normalized coordinates.
 
 proc noGvarContext*(): GvarContext =
   ## Returns the empty gvar context.
@@ -51,10 +61,15 @@ proc hasData*(c: GvarContext): bool =
 
 type
   Cursor = object
+    # Bounded gvar byte cursor.
     bytes: seq[uint8]
+    # Input bytes.
     pos: int
+    # Read offset.
     limit: int
+    # Valid end offset.
     failed: bool
+    # True once a read overruns.
 
 proc need(c: var Cursor, n: int): bool =
   # Advances the cursor, failing on overrun.

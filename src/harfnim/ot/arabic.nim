@@ -221,7 +221,9 @@ proc setupMasksArabic*(buf: var Buffer, maskArray: array[8, uint32],
 
 type
   FallbackSingle* = tuple[fromGid, toGid: uint16]
+    ## Fallback single substitution mapping.
   FallbackLig* = tuple[first: uint16, rest: seq[uint16], lig: uint16]
+    ## Fallback ligature mapping.
 
 const
   ## HarfBuzz signature identifying legacy Windows-1256 Arabic fonts:

@@ -65,41 +65,73 @@ const
 
 type
   Index* = object
+    ## CFF INDEX structure.
     ok*: bool
+    ## True when parsing succeeded.
     count*: int
+    ## Object count.
     dataOff*: int
+    ## Data offset.
     offBase*: int
+    ## Offset array base.
     offSize*: int
+    ## Offset entry size.
 
   DictEntry = tuple[op: int, args: seq[float64]]
 
   CffFont* = object
+    ## Parsed CFF font.
     bytes*: seq[uint8]
+    ## Table bytes.
     base*: int
+    ## Table base offset.
     limit*: int
+    ## Table end offset.
     upem*: int32
+    ## Design units per em.
     topM*: array[6, float64]
+    ## Font matrix.
     hasTopM*: bool
+    ## True when a font matrix was present.
     charstrings*: Index
+    ## Charstring INDEX.
     globalSubrs*: Index
+    ## Global subroutines.
     isCID*: bool
+    ## True for CID-keyed fonts.
     isCFF2*: bool
+    ## True for CFF2 tables.
     fdArray*: Index
+    ## Font dictionary array.
     fdSelectOff*: int
+    ## FDSelect offset.
     defaultSubrsOff*: int
+    ## Default subroutine offset.
     nGlyphs*: int
+    ## Glyph count.
     charsetOff*: int
+    ## Charset offset.
     sidToGid*: Table[int, int]
+    ## String id to glyph id map.
     varStore*: VarStore
+    ## Variation store for CFF2 blending.
 
   ResolvedGlyph = object
+    # Resolved charstring with subroutines and matrix.
     ok: bool
+    # True when resolution succeeded.
     csStart: int
+    # Charstring start.
     csEnd: int
+    # Charstring end.
     subrs: Index
+    # Local subroutines.
     hasSubrs: bool
+    # True when subroutines exist.
     vsindex: int
+    # Variation selector index.
     mA, mB, mC, mD, mTx, mTy: float64
+    # Font matrix.
 
 proc subrBias(count: int): int =
   # Subroutine number bias by subr count.
@@ -851,28 +883,50 @@ proc parseCff2*(bytes: seq[uint8], cffOff, cffLen: int,
 
 type
   ExecResult = enum
+    # Charstring execution outcome.
     erDone, erReturn
+    # Done or subroutine return.
 
   Exec = object
+    # Type 2 interpreter state.
     res: ResolvedGlyph
+    # Resolved glyph.
     font: CffFont
+    # Owning font.
     bytes: seq[uint8]
+    # Table bytes.
     globalSubrs: Index
+    # Global subroutines.
     stack: seq[float64]
+    # Operand stack.
     stems: int
+    # Stem hint count.
     first: bool
+    # True before the first path op.
     x, y: float64
+    # Current point.
     open: bool
+    # True while a subpath is open.
     nops: int
+    # Executed operator count.
     transient: array[CffMaxTransient, float64]
+    # Transient array.
     randState: uint32
+    # Random state.
     depth: int
+    # Subroutine depth.
     seacComponent: bool
+    # True inside a seac accent.
     cff2: bool
+    # True for CFF2 charstrings.
     coords: seq[float32]
+    # Normalized coordinates.
     vsindex: int
+    # Variation selector index.
     vsindexSet: bool
+    # True once vsindex was set.
     failed: bool
+    # True on decode failure.
 
 proc seacGid(f: CffFont, code: int): tuple[ok: bool, gid: int] =
   ## Resolves a Standard Encoding char code to a glyph id through the
