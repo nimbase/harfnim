@@ -10,11 +10,19 @@ import ./unicode
 
 type
   Mask* = uint32
+    ## Glyph mask holding flags and feature bits.
   GlyphId* = distinct uint32
+    ## Glyph identifier wrapping a raw id.
 
-proc newGlyphId*(v: uint32): GlyphId = GlyphId(v)
-proc value*(g: GlyphId): uint32 = uint32(g)
-proc `==`*(a, b: GlyphId): bool {.borrow.}
+proc newGlyphId*(v: uint32): GlyphId =
+  ## Wraps a raw id as a glyph id.
+  GlyphId(v)
+proc value*(g: GlyphId): uint32 =
+  ## Returns the raw id.
+  uint32(g)
+proc `==`*(a, b: GlyphId): bool =
+  ## True when both ids match.
+  uint32(a) == uint32(b)
 
 const
   ContextLength* = 5
@@ -31,22 +39,32 @@ const
 
 type
   GlyphPosition* = object
+    ## Scaled glyph positioning.
     xAdvance*: int32
+    ## Horizontal advance.
     yAdvance*: int32
+    ## Vertical advance.
     xOffset*: int32
+    ## Horizontal offset.
     yOffset*: int32
+    ## Vertical offset.
     posVar*: uint32
+    ## Packed attachment chain and type.
 
 proc attachChain*(p: GlyphPosition): int16 =
+  ## Attachment chain offset to the parent glyph.
   cast[int16](uint16(p.posVar and 0xFFFFu32))
 
 proc setAttachChain*(p: var GlyphPosition, n: int16) =
+  ## Sets the attachment chain offset.
   p.posVar = (p.posVar and 0xFFFF0000u32) or uint32(cast[uint16](n))
 
 proc attachType*(p: GlyphPosition): uint8 =
+  ## Attachment type of the positioned glyph.
   uint8((p.posVar shr 16) and 0xFFu32)
 
 proc setAttachType*(p: var GlyphPosition, n: uint8) =
+  ## Sets the attachment type.
   p.posVar = (p.posVar and 0xFF00FFFFu32) or (uint32(n) shl 16)
 
 # --------------------------------------------------------------------------
@@ -55,13 +73,19 @@ proc setAttachType*(p: var GlyphPosition, n: uint8) =
 
 type
   GlyphFlags* = distinct uint32
+    ## Break and safety flags stored in the mask low bits.
 
 const
   UnsafeToBreak* = GlyphFlags(0x0000_0001u32)
+    ## Breaking before this glyph is unsafe.
   UnsafeToConcat* = GlyphFlags(0x0000_0002u32)
+    ## Concatenating across this glyph is unsafe.
   SafeToInsertTatweel* = GlyphFlags(0x0000_0004u32)
+    ## Tatweel insertion is safe here.
   AllGlyphFlags* = GlyphFlags(0x0000_0007u32)
+    ## All defined glyph flag bits.
   DefinedGlyphFlagBits* = 0x0000_0007u32
+    ## Mask of defined glyph flag bits.
 
 # --------------------------------------------------------------------------
 # GlyphInfo
@@ -69,18 +93,29 @@ const
 
 type
   GlyphInfo* = object
+    ## Per glyph shaping state.
     glyphId*: uint32
+    ## Glyph id or codepoint depending on the pipeline stage.
     mask*: Mask
+    ## Feature and flag mask.
     cluster*: uint32
+    ## Source cluster index.
     infoVars*: array[2, uint32]
+    ## Packed property, ligature, syllable, and shaper state.
 
 proc flagsOf*(g: GlyphInfo): GlyphFlags =
+  ## Reads the glyph flags from the mask.
   GlyphFlags(g.mask)
 
-proc asCodepoint*(g: GlyphInfo): uint32 = g.glyphId
-proc asGlyph*(g: GlyphInfo): GlyphId = GlyphId(g.glyphId)
+proc asCodepoint*(g: GlyphInfo): uint32 =
+  ## Reads the id as a codepoint.
+  g.glyphId
+proc asGlyph*(g: GlyphInfo): GlyphId =
+  ## Reads the id as a glyph id.
+  GlyphId(g.glyphId)
 
 proc asGid16*(g: GlyphInfo): tuple[ok: bool, gid: uint16] =
+  ## Narrows the id to 16 bits, reporting overflow.
   if g.glyphId <= uint32(high(uint16)):
     (true, uint16(g.glyphId))
   else:
@@ -89,77 +124,135 @@ proc asGid16*(g: GlyphInfo): tuple[ok: bool, gid: uint16] =
 # --- packed var-word accessors (layout mirrors harfrust vars: [u32; 2]) ---
 
 proc getVarU8*(g: GlyphInfo, varIndex, index: int): uint8 =
+  ## Reads a packed byte from a var word.
   uint8((g.infoVars[varIndex] shr (index * 8)) and 0xFFu32)
 
 proc setVarU8*(g: var GlyphInfo, varIndex, index: int, v: uint8) =
+  ## Writes a packed byte into a var word.
   let shift = index * 8
   g.infoVars[varIndex] =
     (g.infoVars[varIndex] and not (0xFFu32 shl shift)) or (uint32(v) shl shift)
 
 proc getVarU16*(g: GlyphInfo, varIndex, index: int): uint16 =
+  ## Reads a packed half word from a var word.
   uint16((g.infoVars[varIndex] shr (index * 16)) and 0xFFFFu32)
 
 proc setVarU16*(g: var GlyphInfo, varIndex, index: int, v: uint16) =
+  ## Writes a packed half word into a var word.
   let shift = index * 16
   g.infoVars[varIndex] =
     (g.infoVars[varIndex] and not (0xFFFFu32 shl shift)) or (uint32(v) shl shift)
 
 proc getVarU32*(g: GlyphInfo, varIndex: int): uint32 =
+  ## Reads a whole var word.
   g.infoVars[varIndex]
 
 proc setVarU32*(g: var GlyphInfo, varIndex: int, v: uint32) =
+  ## Writes a whole var word.
   g.infoVars[varIndex] = v
 
 # var1 (infoVars[0]): low u16 = glyph props (OT phase) / whole word =
 # normalizer glyph index (normalize phase); byte 2 = lig props; byte 3 = syllable
 # var2 (infoVars[1]): low u16 = unicode props; bytes 2..3 = shaper scratch
 
-proc unicodeProps*(g: GlyphInfo): uint16 = g.getVarU16(1, 0)
-proc setUnicodeProps*(g: var GlyphInfo, v: uint16) = g.setVarU16(1, 0, v)
+proc unicodeProps*(g: GlyphInfo): uint16 =
+  ## Reads the Unicode property word.
+  g.getVarU16(1, 0)
+proc setUnicodeProps*(g: var GlyphInfo, v: uint16) =
+  ## Writes the Unicode property word.
+  g.setVarU16(1, 0, v)
 
-proc glyphProps*(g: GlyphInfo): uint16 = g.getVarU16(0, 0)
-proc setGlyphProps*(g: var GlyphInfo, v: uint16) = g.setVarU16(0, 0, v)
+proc glyphProps*(g: GlyphInfo): uint16 =
+  ## Reads the GDEF glyph class word.
+  g.getVarU16(0, 0)
+proc setGlyphProps*(g: var GlyphInfo, v: uint16) =
+  ## Writes the GDEF glyph class word.
+  g.setVarU16(0, 0, v)
 
-proc ligProps*(g: GlyphInfo): uint8 = g.getVarU8(0, 2)
-proc setLigProps*(g: var GlyphInfo, v: uint8) = g.setVarU8(0, 2, v)
+proc ligProps*(g: GlyphInfo): uint8 =
+  ## Reads the ligature property byte.
+  g.getVarU8(0, 2)
+proc setLigProps*(g: var GlyphInfo, v: uint8) =
+  ## Writes the ligature property byte.
+  g.setVarU8(0, 2, v)
 
-proc syllable*(g: GlyphInfo): uint8 = g.getVarU8(0, 3)
-proc setSyllable*(g: var GlyphInfo, v: uint8) = g.setVarU8(0, 3, v)
+proc syllable*(g: GlyphInfo): uint8 =
+  ## Reads the syllable index.
+  g.getVarU8(0, 3)
+proc setSyllable*(g: var GlyphInfo, v: uint8) =
+  ## Writes the syllable index.
+  g.setVarU8(0, 3, v)
 
-proc normalizerGlyphIndex*(g: GlyphInfo): uint32 = g.getVarU32(0)
-proc setNormalizerGlyphIndex*(g: var GlyphInfo, v: uint32) = g.setVarU32(0, v)
+proc normalizerGlyphIndex*(g: GlyphInfo): uint32 =
+  ## Reads the normalizer glyph index.
+  g.getVarU32(0)
+proc setNormalizerGlyphIndex*(g: var GlyphInfo, v: uint32) =
+  ## Writes the normalizer glyph index.
+  g.setVarU32(0, v)
 
-proc otShaperCategory*(g: GlyphInfo): uint8 = g.getVarU8(1, 2)
-proc setOtShaperCategory*(g: var GlyphInfo, v: uint8) = g.setVarU8(1, 2, v)
+proc otShaperCategory*(g: GlyphInfo): uint8 =
+  ## Reads the shaper category byte.
+  g.getVarU8(1, 2)
+proc setOtShaperCategory*(g: var GlyphInfo, v: uint8) =
+  ## Writes the shaper category byte.
+  g.setVarU8(1, 2, v)
 
-proc otShaperAuxiliary*(g: GlyphInfo): uint8 = g.getVarU8(1, 3)
-proc setOtShaperAuxiliary*(g: var GlyphInfo, v: uint8) = g.setVarU8(1, 3, v)
+proc otShaperAuxiliary*(g: GlyphInfo): uint8 =
+  ## Reads the shaper scratch byte.
+  g.getVarU8(1, 3)
+proc setOtShaperAuxiliary*(g: var GlyphInfo, v: uint8) =
+  ## Writes the shaper scratch byte.
+  g.setVarU8(1, 3, v)
 
 # --------------------------------------------------------------------------
 # GlyphFlags operators and predicates
 # --------------------------------------------------------------------------
 
-proc toBits*(f: GlyphFlags): uint32 = uint32(f)
+proc toBits*(f: GlyphFlags): uint32 =
+  ## Returns the raw flag bits.
+  uint32(f)
 proc fromBitsTruncate*(bits: uint32): GlyphFlags =
+  ## Builds flags keeping only defined bits.
   GlyphFlags(bits and DefinedGlyphFlagBits)
 
-proc contains*(a, b: GlyphFlags): bool = (uint32(a) and uint32(b)) == uint32(b)
-proc intersects*(a, b: GlyphFlags): bool = (uint32(a) and uint32(b)) != 0
+proc contains*(a, b: GlyphFlags): bool =
+  ## True when all bits of b are set in a.
+  (uint32(a) and uint32(b)) == uint32(b)
+proc intersects*(a, b: GlyphFlags): bool =
+  ## True when a and b share any bit.
+  (uint32(a) and uint32(b)) != 0
 
-proc `or`*(a, b: GlyphFlags): GlyphFlags = GlyphFlags(uint32(a) or uint32(b))
-proc `and`*(a, b: GlyphFlags): GlyphFlags = GlyphFlags(uint32(a) and uint32(b))
+proc `or`*(a, b: GlyphFlags): GlyphFlags =
+  ## Union of two flag sets.
+  GlyphFlags(uint32(a) or uint32(b))
+proc `and`*(a, b: GlyphFlags): GlyphFlags =
+  ## Intersection of two flag sets.
+  GlyphFlags(uint32(a) and uint32(b))
 proc `not`*(a: GlyphFlags): GlyphFlags =
+  ## Negation limited to defined bits.
   GlyphFlags((not uint32(a)) and DefinedGlyphFlagBits)
-proc `==`*(a, b: GlyphFlags): bool {.borrow.}
+proc `==`*(a, b: GlyphFlags): bool =
+  ## True when both flag sets match.
+  uint32(a) == uint32(b)
 
-proc isUnsafeToBreak*(f: GlyphFlags): bool = f.intersects(UnsafeToBreak)
-proc isUnsafeToConcat*(f: GlyphFlags): bool = f.intersects(UnsafeToConcat)
+proc isUnsafeToBreak*(f: GlyphFlags): bool =
+  ## True when breaking here is unsafe.
+  f.intersects(UnsafeToBreak)
+proc isUnsafeToConcat*(f: GlyphFlags): bool =
+  ## True when concatenating here is unsafe.
+  f.intersects(UnsafeToConcat)
 proc isSafeToInsertTatweel*(f: GlyphFlags): bool =
+  ## True when tatweel insertion is safe here.
   f.intersects(SafeToInsertTatweel)
 
-proc unsafeToBreak*(g: GlyphInfo): bool = g.flagsOf().isUnsafeToBreak()
-proc unsafeToConcat*(g: GlyphInfo): bool = g.flagsOf().isUnsafeToConcat()
+proc unsafeToBreak*(g: GlyphInfo): bool =
+  ## True when breaking before this glyph is unsafe.
+  g.flagsOf().isUnsafeToBreak()
+proc unsafeToConcat*(g: GlyphInfo): bool =
+  ## True when concatenating at this glyph is unsafe.
+  g.flagsOf().isUnsafeToConcat()
 proc safeToInsertTatweel*(g: GlyphInfo): bool =
+  ## True when tatweel insertion is safe at this glyph.
   g.flagsOf().isSafeToInsertTatweel()
 
 # --------------------------------------------------------------------------
@@ -168,35 +261,61 @@ proc safeToInsertTatweel*(g: GlyphInfo): bool =
 
 const
   GlyphPropBaseGlyph* = 0x02u16
+    ## Base glyph class bit.
   GlyphPropLigature* = 0x04u16
+    ## Ligature glyph class bit.
   GlyphPropMark* = 0x08u16
+    ## Mark glyph class bit.
   GlyphPropClassMask* = 0x0Eu16
+    ## Glyph class mask.
   GlyphPropSubstituted* = 0x10u16
+    ## Substituted glyph bit.
   GlyphPropLigated* = 0x20u16
+    ## Ligated glyph bit.
   GlyphPropMultiplied* = 0x40u16
+    ## Multiplied glyph bit.
   GlyphPropPreserve* = 0x70u16
+    ## Preserved bits across substitution.
 
 const
   UnicodePropGeneralCategory* = 0x001Fu16
+    ## General category bits.
   UnicodePropIgnorable* = 0x0020u16
+    ## Default ignorable bit.
   UnicodePropHidden* = 0x0040u16
+    ## Hidden glyph bit.
   UnicodePropContinuation* = 0x0080u16
+    ## Grapheme continuation bit.
   UnicodePropCfZwj* = 0x0100u16
+    ## ZWJ format bit.
   UnicodePropCfZwnj* = 0x0200u16
+    ## ZWNJ format bit.
   UnicodePropCfVs* = 0x0400u16
+    ## Variation selector format bit.
   UnicodePropCfAatDeleted* = 0x0800u16
+    ## AAT deleted format bit.
 
 const
   ScratchFlagDefault* = 0x0000_0000u32
+    ## No scratch state.
   ScratchFlagHasFractionSlash* = 0x0000_0001u32
+    ## Buffer holds a fraction slash.
   ScratchFlagHasDefaultIgnorables* = 0x0000_0002u32
+    ## Buffer holds default ignorables.
   ScratchFlagHasSpaceFallback* = 0x0000_0004u32
+    ## Buffer holds a space fallback.
   ScratchFlagHasGposAttachment* = 0x0000_0008u32
+    ## GPOS attached a mark.
   ScratchFlagHasCgj* = 0x0000_0010u32
+    ## Buffer holds a conjoining jamo.
   ScratchFlagHasBrokenSyllable* = 0x0000_0020u32
+    ## Buffer holds a broken syllable.
   ScratchFlagHasVariationSelectorFallback* = 0x0000_0040u32
+    ## Variation selector fallback ran.
   ScratchFlagHasContinuations* = 0x0000_0080u32
+    ## Buffer holds grapheme continuations.
   ScratchFlagShaper0* = 0x0100_0000u32
+    ## First shaper scratch bit.
 
 # --------------------------------------------------------------------------
 # ContentType / ClusterLevel / BufferFlags / SerializeFlags
@@ -204,24 +323,38 @@ const
 
 type
   ContentType* = enum
+    ## Buffer content stage.
     contentUnicode
+    ## Codepoints before mapping.
     contentGlyphs
+    ## Glyph ids after mapping.
 
 const
   ClusterLevelMonotoneGraphemes* = 0u32
+    ## Monotone grapheme clusters.
   ClusterLevelMonotoneCharacters* = 1u32
+    ## Monotone character clusters.
   ClusterLevelCharacters* = 2u32
+    ## Character clusters.
   ClusterLevelGraphemes* = 3u32
+    ## Grapheme clusters.
   ClusterLevelDefault* = ClusterLevelMonotoneGraphemes
+    ## Default cluster level.
 
 type
   ClusterLevel* = enum
+    ## Cluster merging level.
     clMonotoneGraphemes
+    ## Merge monotone graphemes.
     clMonotoneCharacters
+    ## Merge monotone characters.
     clCharacters
+    ## Merge characters.
     clGraphemes
+    ## Merge graphemes.
 
 proc clusterLevelFromCode*(code: uint32): ClusterLevel =
+  ## Decodes a cluster level, defaulting to monotone graphemes.
   case code
   of ClusterLevelMonotoneCharacters: clMonotoneCharacters
   of ClusterLevelCharacters: clCharacters
@@ -229,6 +362,7 @@ proc clusterLevelFromCode*(code: uint32): ClusterLevel =
   else: clMonotoneGraphemes
 
 proc clusterLevelCode*(l: ClusterLevel): uint32 =
+  ## Encodes a cluster level as a number.
   case l
   of clMonotoneGraphemes: ClusterLevelMonotoneGraphemes
   of clMonotoneCharacters: ClusterLevelMonotoneCharacters
@@ -236,47 +370,79 @@ proc clusterLevelCode*(l: ClusterLevel): uint32 =
   of clGraphemes: ClusterLevelGraphemes
 
 proc isMonotone*(l: ClusterLevel): bool =
+  ## True for monotone cluster levels.
   l == clMonotoneGraphemes or l == clMonotoneCharacters
 
 proc isGraphemes*(l: ClusterLevel): bool =
+  ## True for grapheme cluster levels.
   l == clMonotoneGraphemes or l == clGraphemes
 
 type
   BufferFlags* = distinct uint32
+    ## Buffer behavior flags.
 
 const
   BeginningOfText* = BufferFlags(0x0000_0001u32)
+    ## Start of text.
   EndOfText* = BufferFlags(0x0000_0002u32)
+    ## End of text.
   PreserveDefaultIgnorables* = BufferFlags(0x0000_0004u32)
+    ## Keep default ignorables.
   RemoveDefaultIgnorables* = BufferFlags(0x0000_0008u32)
+    ## Remove default ignorables.
   DoNotInsertDottedCircle* = BufferFlags(0x0000_0010u32)
+    ## Skip dotted circle insertion.
   BufferFlagVerify* = BufferFlags(0x0000_0020u32)
+    ## Verify buffer invariants.
   ProduceUnsafeToConcat* = BufferFlags(0x0000_0040u32)
+    ## Produce unsafe to concat marks.
   ProduceSafeToInsertTatweel* = BufferFlags(0x0000_0080u32)
+    ## Produce tatweel safety marks.
   DefinedBufferFlagBits* = 0x0000_00FFu32
+    ## Mask of defined buffer flag bits.
 
-proc toBits*(f: BufferFlags): uint32 = uint32(f)
-proc `==`*(a, b: BufferFlags): bool {.borrow.}
+proc toBits*(f: BufferFlags): uint32 =
+  ## Returns the raw flag bits.
+  uint32(f)
+proc `==`*(a, b: BufferFlags): bool =
+  ## True when both flag sets match.
+  uint32(a) == uint32(b)
 proc `or`*(a, b: BufferFlags): BufferFlags =
+  ## Union of two flag sets.
   BufferFlags(uint32(a) or uint32(b))
 proc `and`*(a, b: BufferFlags): BufferFlags =
+  ## Intersection of two flag sets.
   BufferFlags(uint32(a) and uint32(b))
-proc contains*(a, b: BufferFlags): bool = (uint32(a) and uint32(b)) == uint32(b)
+proc contains*(a, b: BufferFlags): bool =
+  ## True when all bits of b are set in a.
+  (uint32(a) and uint32(b)) == uint32(b)
 
 type
   SerializeFlags* = distinct uint8
+    ## Buffer serialization toggles.
 
 const
   NoClusters* = SerializeFlags(0b0000_0001u8)
+    ## Hide clusters.
   NoPositions* = SerializeFlags(0b0000_0010u8)
+    ## Hide positions.
   NoGlyphNames* = SerializeFlags(0b0000_0100u8)
+    ## Hide glyph names.
   SerializeGlyphExtents* = SerializeFlags(0b0000_1000u8)
+    ## Show glyph extents.
   GlyphFlagsFlag* = SerializeFlags(0b0001_0000u8)
+    ## Show glyph flags.
   NoAdvances* = SerializeFlags(0b0010_0000u8)
+    ## Hide advances.
 
-proc toBits*(f: SerializeFlags): uint8 = uint8(f)
-proc `==`*(a, b: SerializeFlags): bool {.borrow.}
+proc toBits*(f: SerializeFlags): uint8 =
+  ## Returns the raw flag bits.
+  uint8(f)
+proc `==`*(a, b: SerializeFlags): bool =
+  ## True when both flag sets match.
+  uint8(a) == uint8(b)
 proc contains*(a, b: SerializeFlags): bool =
+  ## True when all bits of b are set in a.
   (uint8(a) and uint8(b)) == uint8(b)
 
 # --------------------------------------------------------------------------
@@ -285,20 +451,29 @@ proc contains*(a, b: SerializeFlags): bool =
 
 type
   BufferVar* = tuple[width, varIndex, index: uint8]
+    ## Bit range descriptor for a packed buffer variable.
 
 proc varBits*(v: BufferVar): uint8 =
+  ## Computes the bit mask for a packed variable.
   let start = (v.varIndex - 1) * 4 + v.index * v.width
   let stop = start + v.width
   uint8(((uint16(1) shl stop) - (uint16(1) shl start)) and 0xFFu16)
 
 const
   GlyphPropsVar*: BufferVar = (2u8, 1u8, 0u8)
+    ## Glyph properties variable.
   LigPropsVar*: BufferVar = (1u8, 1u8, 2u8)
+    ## Ligature properties variable.
   SyllableVar*: BufferVar = (1u8, 1u8, 3u8)
+    ## Syllable variable.
   UnicodePropsVar*: BufferVar = (2u8, 2u8, 0u8)
+    ## Unicode properties variable.
   NormalizerGlyphIndexVar*: BufferVar = (4u8, 1u8, 0u8)
+    ## Normalizer glyph index variable.
   OtShaperCategoryVar*: BufferVar = (1u8, 2u8, 2u8)
+    ## Shaper category variable.
   OtShaperAuxiliaryVar*: BufferVar = (1u8, 2u8, 3u8)
+    ## Shaper scratch variable.
 
 # --------------------------------------------------------------------------
 # Buffer
@@ -306,33 +481,58 @@ const
 
 type
   Buffer* = object
+    ## Shaping buffer holding glyphs, positions, and state.
     flags*: BufferFlags
+    ## Behavior flags.
     clusterLevel*: uint32
+    ## Cluster merging level code.
     invisible*: Option[GlyphId]
+    ## Invisible glyph override.
     notFoundVs*: Option[uint32]
+    ## Not found variation selector glyph.
     contentType*: Option[ContentType]
+    ## Unicode or glyph content stage.
     direction*: Direction
+    ## Text direction.
     script*: Option[Script]
+    ## Text script, if guessed.
     language*: Option[Language]
+    ## Text language, if set.
     successful*: bool
+    ## False once shaping exhausts limits.
     haveOutput*: bool
+    ## Staging substitutions through the output buffer.
     haveSeparateOutput*: bool
+    ## Output lives in dedicated storage.
     havePositions*: bool
+    ## Positions are allocated.
     idx*: int
+    ## Current shaping index.
     len*: int
+    ## Logical glyph count.
     outLen*: int
+    ## Staged output count.
     info*: seq[GlyphInfo]
+    ## Glyph storage, capacity may exceed len.
     pos*: seq[GlyphPosition]
+    ## Position storage parallel to info.
     # Nim emulation of harfrust's pos-reinterpreted-as-output trick:
     # dedicated output storage used while haveSeparateOutput is set.
     outInfo*: seq[GlyphInfo]
     context*: array[2, array[ContextLength, uint32]]
+    ## Pre and post context codepoints.
     contextLen*: array[2, int]
+    ## Used context lengths.
     allocatedVarBits*: uint8
+    ## Allocated packed variable bits.
     serial*: uint8
+    ## Serial for ligature ids.
     scratchFlags*: uint32
+    ## Shaping scratch state.
     maxLen*: int
+    ## Maximum glyph capacity.
     maxOps*: int
+    ## Remaining shaping operation budget.
     # TODO: SetDigest digest + U32Set glyphSet (need set_digest/font modules)
 
 # Forward declarations (Nim compiles each module in a single pass)
@@ -371,6 +571,7 @@ proc clearPositions*(b: var Buffer)
 proc substituted*(g: GlyphInfo): bool
 
 proc newBuffer*(): Buffer =
+  ## Creates an empty shaping buffer.
   Buffer(
     flags: BufferFlags(0),
     clusterLevel: ClusterLevelDefault,
@@ -381,6 +582,7 @@ proc newBuffer*(): Buffer =
   )
 
 proc clear*(b: var Buffer) =
+  ## Clears content while keeping flags and cluster level.
   b.contentType = none(ContentType)
   b.direction = dirInvalid
   b.script = none(Script)
@@ -400,25 +602,36 @@ proc clear*(b: var Buffer) =
   b.scratchFlags = ScratchFlagDefault
 
 proc reset*(b: var Buffer) =
+  ## Clears content, flags, and cluster level.
   b.clear()
   b.flags = BufferFlags(0)
   b.clusterLevel = ClusterLevelDefault
   b.invisible = none(GlyphId)
   b.notFoundVs = none(uint32)
 
-proc contentType*(b: Buffer): Option[ContentType] = b.contentType
-proc setContentType*(b: var Buffer, t: Option[ContentType]) = b.contentType = t
+proc contentType*(b: Buffer): Option[ContentType] =
+  ## Returns the content stage.
+  b.contentType
+proc setContentType*(b: var Buffer, t: Option[ContentType]) =
+  ## Sets the content stage.
+  b.contentType = t
 
-proc length*(b: Buffer): int = b.len
-proc isEmpty*(b: Buffer): bool = b.len == 0
+proc length*(b: Buffer): int =
+  ## Returns the logical glyph count.
+  b.len
+proc isEmpty*(b: Buffer): bool =
+  ## True when the buffer holds no glyphs.
+  b.len == 0
 
 proc ensure*(b: var Buffer, size: int): bool =
+  ## Grows capacity to size; false when past maxLen.
   if size <= b.info.len:
     true
   else:
     b.enlarge(size)
 
 proc enlarge*(b: var Buffer, size: int): bool =
+  ## Geometric growth capped by maxLen.
   if size > b.maxLen:
     b.successful = false
     return false
@@ -436,6 +649,7 @@ proc enlarge*(b: var Buffer, size: int): bool =
   true
 
 proc setLength*(b: var Buffer, n: int): bool =
+  ## Sets the logical length, zero filling new slots.
   if not b.ensure(n):
     return false
   if n > b.len:
@@ -447,10 +661,15 @@ proc setLength*(b: var Buffer, n: int): bool =
   b.len = n
   true
 
-proc reserve*(b: var Buffer, size: int): bool = b.ensure(size)
-proc allocationSuccessful*(b: Buffer): bool = b.successful
+proc reserve*(b: var Buffer, size: int): bool =
+  ## Reserves capacity; mirrors ensure.
+  b.ensure(size)
+proc allocationSuccessful*(b: Buffer): bool =
+  ## True when no allocation or operation limit failed.
+  b.successful
 
 proc push*(b: var Buffer, codepoint, cluster: uint32) =
+  ## Pushes one codepoint with its cluster.
   b.contentType = some(contentUnicode)
   if not b.ensure(b.len + 1):
     return
@@ -458,6 +677,7 @@ proc push*(b: var Buffer, codepoint, cluster: uint32) =
   inc b.len
 
 proc pushCodepoints*(b: var Buffer, codepoints: openArray[uint32]) =
+  ## Pushes codepoints with index clusters.
   if not b.ensure(b.len + codepoints.len):
     return
   b.contentType = some(contentUnicode)
@@ -466,6 +686,7 @@ proc pushCodepoints*(b: var Buffer, codepoints: openArray[uint32]) =
     inc b.len
 
 proc pushGlyphInfos*(b: var Buffer, infos: openArray[GlyphInfo]): bool =
+  ## Pushes prebuilt glyph infos.
   if not b.ensure(b.len + infos.len):
     return false
   for i, g in infos:
@@ -474,6 +695,7 @@ proc pushGlyphInfos*(b: var Buffer, infos: openArray[GlyphInfo]): bool =
   true
 
 proc decodeUtf8At(s: string, pos: int): tuple[cp: uint32, size: int] =
+  # Decodes one UTF-8 sequence, returning U+FFFD on error.
   let b0 = uint8(s[pos])
   if b0 < 0x80u8:
     return (uint32(b0), 1)
@@ -506,6 +728,7 @@ proc decodeUtf8At(s: string, pos: int): tuple[cp: uint32, size: int] =
   (cp, size)
 
 proc pushStr*(b: var Buffer, text: string) =
+  ## Pushes a UTF-8 string with byte offset clusters.
   var count = 0
   var p = 0
   while p < text.len:
@@ -523,9 +746,11 @@ proc pushStr*(b: var Buffer, text: string) =
     p += size
 
 proc clearContext(b: var Buffer, side: int) =
+  # Clears one context side.
   b.contextLen[side] = 0
 
 proc setPreContext*(b: var Buffer, text: string) =
+  ## Sets pre-context from trailing UTF-8 text.
   b.clearContext(0)
   var chars: seq[tuple[cp: uint32, size: int]] = @[]
   var p = 0
@@ -538,17 +763,20 @@ proc setPreContext*(b: var Buffer, text: string) =
     inc b.contextLen[0]
 
 proc setPreContextCodepoints*(b: var Buffer, codepoints: openArray[uint32]) =
+  ## Sets pre-context from codepoints.
   b.clearContext(0)
   for i in 0 ..< min(codepoints.len, ContextLength):
     b.context[0][i] = codepoints[i]
     inc b.contextLen[0]
 
 proc preContextCodepoints*(b: Buffer): seq[uint32] =
+  ## Returns the pre-context codepoints.
   result = newSeq[uint32](b.contextLen[0])
   for i in 0 ..< b.contextLen[0]:
     result[i] = b.context[0][i]
 
 proc setPostContext*(b: var Buffer, text: string) =
+  ## Sets post-context from leading UTF-8 text.
   b.clearContext(1)
   var p = 0
   while p < text.len and b.contextLen[1] < ContextLength:
@@ -558,48 +786,80 @@ proc setPostContext*(b: var Buffer, text: string) =
     p += size
 
 proc setPostContextCodepoints*(b: var Buffer, codepoints: openArray[uint32]) =
+  ## Sets post-context from codepoints.
   b.clearContext(1)
   for i in 0 ..< min(codepoints.len, ContextLength):
     b.context[1][i] = codepoints[i]
     inc b.contextLen[1]
 
 proc postContextCodepoints*(b: Buffer): seq[uint32] =
+  ## Returns the post-context codepoints.
   result = newSeq[uint32](b.contextLen[1])
   for i in 0 ..< b.contextLen[1]:
     result[i] = b.context[1][i]
 
-proc direction*(b: Buffer): Direction = b.direction
-proc setDirection*(b: var Buffer, d: Direction) = b.direction = d
+proc direction*(b: Buffer): Direction =
+  ## Returns the text direction.
+  b.direction
+proc setDirection*(b: var Buffer, d: Direction) =
+  ## Sets the text direction.
+  b.direction = d
 
-proc script*(b: Buffer): Option[Script] = b.script
-proc setScript*(b: var Buffer, s: Option[Script]) = b.script = s
+proc script*(b: Buffer): Option[Script] =
+  ## Returns the guessed script.
+  b.script
+proc setScript*(b: var Buffer, s: Option[Script]) =
+  ## Sets the script.
+  b.script = s
 
-proc language*(b: Buffer): Option[Language] = b.language
-proc setLanguage*(b: var Buffer, l: Option[Language]) = b.language = l
+proc language*(b: Buffer): Option[Language] =
+  ## Returns the language.
+  b.language
+proc setLanguage*(b: var Buffer, l: Option[Language]) =
+  ## Sets the language.
+  b.language = l
 
-proc flags*(b: Buffer): BufferFlags = b.flags
-proc setFlags*(b: var Buffer, f: BufferFlags) = b.flags = f
+proc flags*(b: Buffer): BufferFlags =
+  ## Returns the behavior flags.
+  b.flags
+proc setFlags*(b: var Buffer, f: BufferFlags) =
+  ## Sets the behavior flags.
+  b.flags = f
 
 proc clusterLevel*(b: Buffer): ClusterLevel =
+  ## Decodes the cluster merging level.
   clusterLevelFromCode(b.clusterLevel)
 
 proc setClusterLevel*(b: var Buffer, l: ClusterLevel) =
+  ## Encodes the cluster merging level.
   b.clusterLevel = l.clusterLevelCode()
 
-proc invisibleGlyph*(b: Buffer): Option[GlyphId] = b.invisible
-proc setInvisibleGlyph*(b: var Buffer, g: Option[GlyphId]) = b.invisible = g
+proc invisibleGlyph*(b: Buffer): Option[GlyphId] =
+  ## Returns the invisible glyph override.
+  b.invisible
+proc setInvisibleGlyph*(b: var Buffer, g: Option[GlyphId]) =
+  ## Sets the invisible glyph override.
+  b.invisible = g
 
-proc notFoundVsGlyph*(b: Buffer): Option[uint32] = b.notFoundVs
-proc setNotFoundVsGlyph*(b: var Buffer, g: Option[uint32]) = b.notFoundVs = g
+proc notFoundVsGlyph*(b: Buffer): Option[uint32] =
+  ## Returns the not found variation selector glyph.
+  b.notFoundVs
+proc setNotFoundVsGlyph*(b: var Buffer, g: Option[uint32]) =
+  ## Sets the not found variation selector glyph.
+  b.notFoundVs = g
 
-proc glyphInfos*(b: var Buffer): var seq[GlyphInfo] = b.info
+proc glyphInfos*(b: var Buffer): var seq[GlyphInfo] =
+  ## Mutable access to glyph storage.
+  b.info
 proc glyphInfosView*(b: Buffer): seq[GlyphInfo] =
+  ## Logical slice of glyph storage.
   if b.len <= b.info.len:
     b.info[0 ..< b.len]
   else:
     @[]
 
 proc glyphPositions*(b: Buffer): seq[GlyphPosition] =
+  ## Logical slice of positions, empty without positions.
   if not b.havePositions:
     return @[]
   if b.len <= b.pos.len:
@@ -608,11 +868,13 @@ proc glyphPositions*(b: Buffer): seq[GlyphPosition] =
     @[]
 
 proc glyphPositionsMut*(b: var Buffer): var seq[GlyphPosition] =
+  ## Mutable positions, allocating them first.
   if not b.havePositions:
     b.clearPositions()
   b.pos
 
 proc reverseRange*(b: var Buffer, first, last: int) =
+  ## Reverses glyphs and positions in [first, last).
   if last - first < 2:
     return
   for i in 0 ..< (last - first) div 2:
@@ -622,15 +884,18 @@ proc reverseRange*(b: var Buffer, first, last: int) =
       swap(b.pos[first + i], b.pos[last - 1 - i])
 
 proc reverse*(b: var Buffer) =
+  ## Reverses the whole buffer.
   if b.isEmpty():
     return
   b.reverseRange(0, b.len)
 
 proc reverseClusters*(b: var Buffer) =
+  ## Reverses each cluster group in place.
   b.reverseGroups(
     proc(a, bb: GlyphInfo): bool {.closure.} = a.cluster == bb.cluster, false)
 
 proc resetClusters*(b: var Buffer) =
+  ## Resets clusters to glyph indices.
   for i in 0 ..< b.len:
     b.info[i].cluster = uint32(i)
 
@@ -639,6 +904,7 @@ proc resetClusters*(b: var Buffer) =
 # --------------------------------------------------------------------------
 
 proc initUnicodeProps*(g: var GlyphInfo, scratch: var uint32) =
+  ## Attaches Unicode properties and scratch flags to a glyph.
   let u = g.asCodepoint()
   let gc = generalCategoryFor(u)
   var props = uint16(uint8(gc))
@@ -671,59 +937,73 @@ proc initUnicodeProps*(g: var GlyphInfo, scratch: var uint32) =
   g.setUnicodeProps(props)
 
 proc unhide*(g: var GlyphInfo) =
+  ## Clears the hidden bit.
   g.setUnicodeProps(g.unicodeProps() and not UnicodePropHidden)
 
 # --- unicode_props helpers (mirror hb-ot-layout.hh getters) ---
 
 proc generalCategory*(g: GlyphInfo): GeneralCategory =
+  ## Reads the general category.
   GeneralCategory(uint8(g.unicodeProps() and UnicodePropGeneralCategory))
 
 proc setGeneralCategory*(g: var GlyphInfo, cat: GeneralCategory) =
+  ## Writes the general category.
   g.setUnicodeProps((g.unicodeProps() and not UnicodePropGeneralCategory) or
     uint16(uint8(cat)))
 
 proc isUnicodeMark*(g: GlyphInfo): bool =
+  ## True for Unicode marks.
   g.generalCategory().isMark()
 
 proc setModifiedCombiningClass*(g: var GlyphInfo, c: uint8) =
+  ## Writes the modified combining class of a mark.
   if not g.isUnicodeMark():
     return
   g.setUnicodeProps((uint16(c) shl 8) or (g.unicodeProps() and 0xFFu16))
 
 proc modifiedCombiningClass*(g: GlyphInfo): uint8 =
+  ## Reads the modified combining class, zero for non-marks.
   if g.isUnicodeMark():
     uint8(g.unicodeProps() shr 8)
   else:
     0u8
 
 proc isUnicodeSpace*(g: GlyphInfo): bool =
+  ## True for Unicode space separators.
   g.generalCategory() == GcSpaceSeparator
 
 proc setUnicodeSpaceFallbackType*(g: var GlyphInfo, s: uint8) =
+  ## Writes the space fallback type of a space.
   if not g.isUnicodeSpace():
     return
   g.setUnicodeProps((uint16(s) shl 8) or (g.unicodeProps() and 0xFFu16))
 
 proc unicodeSpaceFallbackType*(g: GlyphInfo): uint8 =
+  ## Reads the space fallback type, if the glyph is a space.
   if g.isUnicodeSpace():
     uint8(g.unicodeProps() shr 8)
   else:
     SpaceNotSpace
 
 proc isUnicodeFormat*(g: GlyphInfo): bool =
+  ## True for Unicode format characters.
   g.generalCategory() == GcFormat
 
 proc isZwnj*(g: GlyphInfo): bool =
+  ## True for ZWNJ.
   g.isUnicodeFormat() and (g.unicodeProps() and UnicodePropCfZwnj) != 0u16
 
 proc isZwj*(g: GlyphInfo): bool =
+  ## True for ZWJ.
   g.isUnicodeFormat() and (g.unicodeProps() and UnicodePropCfZwj) != 0u16
 
 proc isInfoVariationSelector*(g: GlyphInfo): bool =
+  ## True for variation selectors.
   g.generalCategory() == GcFormat and
     (g.unicodeProps() and UnicodePropCfVs) != 0u16
 
 proc setVariationSelector*(g: var GlyphInfo, customize: bool) =
+  ## Marks or unmarks a variation selector glyph.
   if customize:
     g.setGeneralCategory(GcFormat)
     g.setUnicodeProps(g.unicodeProps() or UnicodePropCfVs)
@@ -731,26 +1011,33 @@ proc setVariationSelector*(g: var GlyphInfo, customize: bool) =
     g.setGeneralCategory(GcNonSpacingMark)
 
 proc isInfoDefaultIgnorable*(g: GlyphInfo): bool =
+  ## True for unsubstituted default ignorables.
   let n = g.unicodeProps() and UnicodePropIgnorable
   n != 0u16 and not g.substituted()
 
 proc clearDefaultIgnorable*(g: var GlyphInfo) =
+  ## Clears the default ignorable bit.
   g.setUnicodeProps(g.unicodeProps() and not UnicodePropIgnorable)
 
 proc isHidden*(g: GlyphInfo): bool =
+  ## True when the hidden bit is set.
   (g.unicodeProps() and UnicodePropHidden) != 0u16
 
 proc setContinuation*(g: var GlyphInfo, scratch: var uint32) =
+  ## Marks a grapheme continuation.
   scratch = scratch or ScratchFlagHasContinuations
   g.setUnicodeProps(g.unicodeProps() or UnicodePropContinuation)
 
 proc clearContinuation*(g: var GlyphInfo) =
+  ## Clears the continuation bit.
   g.setUnicodeProps(g.unicodeProps() and not UnicodePropContinuation)
 
 proc isContinuation*(g: GlyphInfo): bool =
+  ## True for grapheme continuations.
   (g.unicodeProps() and UnicodePropContinuation) != 0u16
 
 proc guessSegmentProperties*(b: var Buffer) =
+  ## Guesses script and direction from buffer content.
   if b.script.isNone:
     for i in 0 ..< b.len:
       let s = scriptFor(b.info[i].glyphId)
@@ -770,11 +1057,13 @@ proc guessSegmentProperties*(b: var Buffer) =
 # --------------------------------------------------------------------------
 
 proc allocateVar*(b: var Buffer, v: BufferVar) =
+  ## Allocates packed variable bits, asserting no overlap.
   let bits = v.varBits()
   assert((b.allocatedVarBits and bits) == 0, "Variable already allocated")
   b.allocatedVarBits = b.allocatedVarBits or bits
 
 proc tryAllocateVar*(b: var Buffer, v: BufferVar): bool =
+  ## Allocates packed variable bits, false when taken.
   let bits = v.varBits()
   if (b.allocatedVarBits and bits) != 0:
     return false
@@ -782,27 +1071,34 @@ proc tryAllocateVar*(b: var Buffer, v: BufferVar): bool =
   true
 
 proc deallocateVar*(b: var Buffer, v: BufferVar) =
+  ## Frees packed variable bits, asserting ownership.
   let bits = v.varBits()
   assert((b.allocatedVarBits and bits) == bits, "Deallocating unallocated var")
   b.allocatedVarBits = b.allocatedVarBits and not bits
 
 proc indexFailed*(b: var Buffer) =
+  ## Marks the buffer failed from an out of range index.
   b.successful = false
 
-proc infoSliceMut*(b: var Buffer): var seq[GlyphInfo] = b.info
+proc infoSliceMut*(b: var Buffer): var seq[GlyphInfo] =
+  ## Mutable access to glyph storage.
+  b.info
 
 proc cur*(b: var Buffer, i: int): ptr GlyphInfo =
+  ## Pointer to the glyph at idx offset, nil when out of range.
   let at = b.idx + i
   if at < 0 or at >= b.info.len:
     return nil
   addr b.info[at]
 
 proc curPosMut*(b: var Buffer): ptr GlyphPosition =
+  ## Pointer to the position at idx, nil when out of range.
   if b.idx < 0 or b.idx >= b.pos.len:
     return nil
   addr b.pos[b.idx]
 
 proc prev*(b: var Buffer): ptr GlyphInfo =
+  ## Pointer to the last emitted glyph, nil when empty.
   let at = b.outLen - 1
   if b.outLen == 0:
     return nil
@@ -814,9 +1110,12 @@ proc prev*(b: var Buffer): ptr GlyphInfo =
     return nil
   addr b.info[at]
 
-proc prevMut*(b: var Buffer): ptr GlyphInfo = b.prev()
+proc prevMut*(b: var Buffer): ptr GlyphInfo =
+  ## Mutable pointer to the last emitted glyph.
+  b.prev()
 
 proc outAt*(b: var Buffer, i: int): ptr GlyphInfo =
+  ## Pointer to an output slot, nil when missing.
   if b.haveSeparateOutput:
     if i < 0 or i >= b.outInfo.len:
       return nil
@@ -826,9 +1125,8 @@ proc outAt*(b: var Buffer, i: int): ptr GlyphInfo =
   addr b.info[i]
 
 proc rotateOutRightByOne*(b: var Buffer, start, fin: int): bool =
-  ## Rotates emitted glyphs [start..fin] right by one, working in
-  ## both in-place and separate-output modes. Returns false (after
-  ## failing the buffer) when a slot is missing.
+  ## Rotates emitted glyphs [start..fin] right by one in both output
+  ## modes; fails the buffer and returns false on a missing slot.
   if fin <= start:
     return true
   for k in start .. fin:
@@ -842,6 +1140,7 @@ proc rotateOutRightByOne*(b: var Buffer, start, fin: int): bool =
   true
 
 proc setOutInfo(b: var Buffer, i: int, g: GlyphInfo) =
+  # Writes one output slot, failing the buffer when missing.
   let slot = b.outAt(i)
   if slot == nil:
     b.indexFailed()
@@ -849,6 +1148,7 @@ proc setOutInfo(b: var Buffer, i: int, g: GlyphInfo) =
     slot[] = g
 
 proc copyInfosToOut(b: var Buffer, src, dst, count: int) =
+  # Copies glyphs from input into output storage.
   if b.haveSeparateOutput:
     if dst < 0 or dst + count > b.outInfo.len or src < 0 or
         src + count > b.info.len:
@@ -865,6 +1165,7 @@ proc copyInfosToOut(b: var Buffer, src, dst, count: int) =
       b.info[dst + i] = b.info[src + i]
 
 proc copyOutToInfos(b: var Buffer, src, dst, count: int) =
+  # Copies glyphs from output back into input storage.
   if b.haveSeparateOutput:
     if src < 0 or src + count > b.outInfo.len or dst < 0 or
         dst + count > b.info.len:
@@ -881,11 +1182,15 @@ proc copyOutToInfos(b: var Buffer, src, dst, count: int) =
       b.info[dst + i] = b.info[src + i]
 
 proc backtrackLen*(b: Buffer): int =
+  ## Emitted length available for backtrack matching.
   if b.haveOutput: b.outLen else: b.idx
 
-proc lookaheadLen*(b: Buffer): int = b.len - b.idx
+proc lookaheadLen*(b: Buffer): int =
+  ## Remaining length available for lookahead matching.
+  b.len - b.idx
 
 proc nextSerial*(b: var Buffer): uint8 =
+  ## Allocates the next nonzero serial number.
   b.serial = uint8((uint16(b.serial) + 1u16) and 0xFFu16)
   if b.serial == 0:
     b.serial += 1
@@ -893,6 +1198,7 @@ proc nextSerial*(b: var Buffer): uint8 =
 
 proc groupEnd*(b: Buffer, start: int,
     group: proc(a, bb: GlyphInfo): bool {.closure.}): int =
+  ## Finds the end of a predicate group.
   result = start + 1
   while result < b.len:
     if result - 1 < 0 or result >= b.info.len:
@@ -903,6 +1209,7 @@ proc groupEnd*(b: Buffer, start: int,
 
 proc reverseGroups*(b: var Buffer,
     group: proc(a, bb: GlyphInfo): bool {.closure.}, mergeClusters: bool) =
+  ## Reverses each predicate group, merging clusters optionally.
   if b.isEmpty():
     return
   var start = 0
@@ -923,6 +1230,7 @@ proc reverseGroups*(b: var Buffer,
   b.reverse()
 
 proc sync*(b: var Buffer): bool =
+  ## Flushes staged output back into input order.
   assert(b.haveOutput)
   assert(b.idx <= b.len)
   if not b.successful:
@@ -941,6 +1249,7 @@ proc sync*(b: var Buffer): bool =
   true
 
 proc clearOutput*(b: var Buffer) =
+  ## Starts substitution staging.
   b.haveOutput = true
   b.havePositions = false
   b.idx = 0
@@ -948,6 +1257,7 @@ proc clearOutput*(b: var Buffer) =
   b.haveSeparateOutput = false
 
 proc clearPositions*(b: var Buffer) =
+  ## Starts positioning, zeroing all positions.
   b.haveOutput = false
   b.havePositions = true
   b.outLen = 0
@@ -956,6 +1266,7 @@ proc clearPositions*(b: var Buffer) =
     b.pos[i] = GlyphPosition()
 
 proc makeRoomFor(b: var Buffer, numIn, numOut: int): bool =
+  # Makes room for a replacement, entering separate output when needed.
   if not b.ensure(b.outLen + numOut):
     return false
   if b.outLen + numOut > b.maxLen:
@@ -973,12 +1284,14 @@ proc makeRoomFor(b: var Buffer, numIn, numOut: int): bool =
   true
 
 proc copyCurToOut(b: var Buffer, to: int) =
+  # Stages the current glyph into an output slot.
   if b.idx < 0 or b.idx >= b.info.len:
     b.indexFailed()
     return
   b.setOutInfo(to, b.info[b.idx])
 
 proc setOutGlyph(b: var Buffer, at: int, glyphIndex: uint32) =
+  # Replaces the glyph id of an output slot.
   let slot = b.outAt(at)
   if slot == nil:
     b.indexFailed()
@@ -986,6 +1299,7 @@ proc setOutGlyph(b: var Buffer, at: int, glyphIndex: uint32) =
     slot[].glyphId = glyphIndex
 
 proc replaceGlyphs*(b: var Buffer, numIn, numOut: int, glyphData: openArray[uint32]) =
+  ## Replaces input glyphs with new output glyphs.
   if not b.makeRoomFor(numIn, numOut):
     return
   assert(b.idx + numIn <= b.len)
@@ -1005,6 +1319,7 @@ proc replaceGlyphs*(b: var Buffer, numIn, numOut: int, glyphData: openArray[uint
   b.outLen += numOut
 
 proc replaceGlyph*(b: var Buffer, glyphIndex: uint32) =
+  ## Replaces the current glyph with a substituted glyph.
   if b.haveSeparateOutput or b.outLen != b.idx:
     if not b.makeRoomFor(1, 1):
       return
@@ -1014,6 +1329,7 @@ proc replaceGlyph*(b: var Buffer, glyphIndex: uint32) =
   b.outLen += 1
 
 proc outputGlyph*(b: var Buffer, glyphIndex: uint32) =
+  ## Emits a glyph without consuming input.
   if not b.makeRoomFor(0, 1):
     return
   if b.idx == b.len and b.outLen == 0:
@@ -1030,22 +1346,26 @@ proc outputGlyph*(b: var Buffer, glyphIndex: uint32) =
   b.outLen += 1
 
 proc outputInfo*(b: var Buffer, g: GlyphInfo) =
+  ## Emits a full glyph record without consuming input.
   if not b.makeRoomFor(0, 1):
     return
   b.setOutInfo(b.outLen, g)
   b.outLen += 1
 
 proc copyGlyph*(b: var Buffer) =
+  ## Copies the current glyph into the output.
   if not b.makeRoomFor(0, 1):
     return
   b.copyCurToOut(b.outLen)
   b.outLen += 1
 
 proc ensureOutCap(b: var Buffer, need: int) =
+  # Grows separate output storage to need.
   if b.haveSeparateOutput and b.outInfo.len < need:
     b.outInfo.setLen(need)
 
 proc nextGlyph*(b: var Buffer) =
+  ## Advances one glyph, staging a copy when output is active.
   if b.haveOutput:
     if b.haveSeparateOutput or b.outLen != b.idx:
       if not b.ensure(b.outLen + 1):
@@ -1056,6 +1376,7 @@ proc nextGlyph*(b: var Buffer) =
   b.idx += 1
 
 proc nextGlyphs*(b: var Buffer, n: int) =
+  ## Advances n glyphs, staging copies when output is active.
   if b.haveOutput:
     if b.haveSeparateOutput or b.outLen != b.idx:
       if not b.ensure(b.outLen + n):
@@ -1066,9 +1387,11 @@ proc nextGlyphs*(b: var Buffer, n: int) =
   b.idx += n
 
 proc skipGlyph*(b: var Buffer) =
+  ## Advances past one glyph without staging.
   b.idx += 1
 
 proc setMasks*(b: var Buffer, value, mask: Mask, clusterStart, clusterEnd: uint32) =
+  ## Tags feature bits over a cluster range, charging operation budget.
   if mask == 0:
     return
   let notMask = not mask
@@ -1085,6 +1408,7 @@ proc setMasks*(b: var Buffer, value, mask: Mask, clusterStart, clusterEnd: uint3
       b.info[i].mask = (b.info[i].mask and notMask) or v
 
 proc mergeClusters*(b: var Buffer, start, stop: int) =
+  ## Merges clusters over a range under monotone levels.
   if stop - start < 2:
     return
   if not b.clusterLevel.clusterLevelFromCode().isMonotone():
@@ -1093,6 +1417,7 @@ proc mergeClusters*(b: var Buffer, start, stop: int) =
   b.mergeClustersImpl(start, stop)
 
 proc mergeClustersImpl*(b: var Buffer, start, stop: int) =
+  ## Merges clusters, charging budget and failing on error.
   b.maxOps -= (stop - start)
   if b.maxOps < 0:
     b.successful = false
@@ -1100,6 +1425,7 @@ proc mergeClustersImpl*(b: var Buffer, start, stop: int) =
     b.indexFailed()
 
 proc tryMergeClusters*(b: var Buffer, start, stop: int): bool =
+  ## Merges clusters, false on out of range input.
   if start < 0 or stop > b.info.len or start >= stop:
     return false
   var cluster = high(uint32)
@@ -1129,6 +1455,7 @@ proc tryMergeClusters*(b: var Buffer, start, stop: int): bool =
   true
 
 proc mergeGraphemeClusters*(b: var Buffer, start, stop: int) =
+  ## Merges grapheme clusters over a range.
   if stop - start < 2:
     return
   if not b.clusterLevel.clusterLevelFromCode().isGraphemes():
@@ -1137,6 +1464,7 @@ proc mergeGraphemeClusters*(b: var Buffer, start, stop: int) =
   b.mergeClustersImpl(start, stop)
 
 proc mergeOutClusters*(b: var Buffer, start, stop: int) =
+  ## Merges output clusters over a range under monotone levels.
   if stop - start < 2:
     return
   if not b.clusterLevel.clusterLevelFromCode().isMonotone():
@@ -1144,6 +1472,7 @@ proc mergeOutClusters*(b: var Buffer, start, stop: int) =
   b.mergeOutClustersImpl(start, stop)
 
 proc mergeOutGraphemeClusters*(b: var Buffer, start, stop: int) =
+  ## Merges output grapheme clusters over a range.
   if stop - start < 2:
     return
   if not b.clusterLevel.clusterLevelFromCode().isGraphemes():
@@ -1151,6 +1480,7 @@ proc mergeOutGraphemeClusters*(b: var Buffer, start, stop: int) =
   b.mergeOutClustersImpl(start, stop)
 
 proc mergeOutClustersImpl*(b: var Buffer, start, stop: int) =
+  ## Merges output clusters, charging budget and failing on error.
   b.maxOps -= (stop - start)
   if b.maxOps < 0:
     b.successful = false
@@ -1158,12 +1488,14 @@ proc mergeOutClustersImpl*(b: var Buffer, start, stop: int) =
     b.indexFailed()
 
 proc outClusterAt(b: var Buffer, i: int): tuple[ok: bool, c: uint32] =
+  # Reads one output cluster, reporting a missing slot.
   let slot = b.outAt(i)
   if slot == nil:
     return (false, 0)
   (true, slot[].cluster)
 
 proc tryMergeOutClusters*(b: var Buffer, start, stop: int): bool =
+  ## Merges output clusters, false on out of range input.
   if start < 0 or stop <= start:
     return false
   var s = start
@@ -1208,11 +1540,13 @@ proc tryMergeOutClusters*(b: var Buffer, start, stop: int): bool =
   true
 
 proc deleteGlyph*(b: var Buffer) =
+  ## Deletes the current glyph, merging its cluster.
   if not b.mergeDeletedCluster():
     b.indexFailed()
   b.skipGlyph()
 
 proc mergeDeletedCluster*(b: var Buffer): bool =
+  ## Merges a deleted glyph cluster into its neighbor.
   if b.idx < 0 or b.idx >= b.info.len:
     return false
   let cluster = b.info[b.idx].cluster
@@ -1249,6 +1583,7 @@ proc mergeDeletedCluster*(b: var Buffer): bool =
 
 proc deleteGlyphsInplace*(b: var Buffer,
     filter: proc(g: GlyphInfo): bool {.closure.}) =
+  ## Deletes matching glyphs in place, fixing survivor clusters.
   var j = 0
   for i in 0 ..< b.len:
     let info = b.info[i]
@@ -1279,31 +1614,37 @@ proc deleteGlyphsInplace*(b: var Buffer,
   b.len = j
 
 proc unsafeToBreakRange*(b: var Buffer, start, stop: Option[int]) =
+  ## Marks a range unsafe to break and concat across.
   b.setGlyphFlagsRange(
     UnsafeToBreak or UnsafeToConcat, start, stop, some(true), none(bool))
 
 proc safeToInsertTatweelRange*(b: var Buffer, start, stop: Option[int]) =
+  ## Marks a range safe for tatweel insertion when produced.
   if not b.flags.contains(ProduceSafeToInsertTatweel):
     b.unsafeToBreakRange(start, stop)
     return
   b.setGlyphFlagsRange(SafeToInsertTatweel, start, stop, some(true), none(bool))
 
 proc unsafeToConcatRange*(b: var Buffer, start, stop: Option[int]) =
+  ## Marks a range unsafe to concat across when produced.
   if not b.flags.contains(ProduceUnsafeToConcat):
     return
   b.setGlyphFlagsRange(UnsafeToConcat, start, stop, some(false), none(bool))
 
 proc unsafeToBreakFromOutbuffer*(b: var Buffer, start, stop: Option[int]) =
+  ## Marks an output range unsafe to break and concat across.
   b.setGlyphFlagsRange(UnsafeToBreak or UnsafeToConcat, start, stop, some(true),
     some(true))
 
 proc unsafeToConcatFromOutbuffer*(b: var Buffer, start, stop: Option[int]) =
+  ## Marks an output range unsafe to concat across when produced.
   if not b.flags.contains(ProduceUnsafeToConcat):
     return
   b.setGlyphFlagsRange(UnsafeToConcat, start, stop, some(false), some(true))
 
 proc setGlyphFlagsRange*(b: var Buffer, flags: GlyphFlags, start, stop: Option[int],
     interior, fromOutBuffer: Option[bool]) =
+  ## Applies glyph flags over an optional range.
   var s = start
   var e = stop
   if s.isSome and e.isSome:
@@ -1319,6 +1660,7 @@ proc setGlyphFlagsRange*(b: var Buffer, flags: GlyphFlags, start, stop: Option[i
 
 proc setGlyphFlagsImpl*(b: var Buffer, mask: uint32, start, stop: int,
     interior, fromOutBuffer: bool) =
+  ## Applies a flag mask over input or output storage.
   if not fromOutBuffer or not b.haveOutput:
     if not interior:
       for i in start ..< min(stop, b.info.len):
@@ -1350,6 +1692,7 @@ proc setGlyphFlagsImpl*(b: var Buffer, mask: uint32, start, stop: int,
 
 proc infosFindMinCluster*(b: Buffer, infos: seq[GlyphInfo], start, stop: int,
     cluster: Option[uint32]): uint32 =
+  ## Finds the minimum cluster over a range.
   result = cluster.get(high(uint32))
   if start == stop:
     return
@@ -1364,6 +1707,7 @@ proc infosFindMinCluster*(b: Buffer, infos: seq[GlyphInfo], start, stop: int,
 
 proc infosSetGlyphFlags*(b: var Buffer, outInfos: bool, start, stop: int,
     cluster: uint32, mask: uint32) =
+  ## Applies a flag mask over input or output infos.
   if start == stop:
     return
   if outInfos:
@@ -1374,6 +1718,7 @@ proc infosSetGlyphFlags*(b: var Buffer, outInfos: bool, start, stop: int,
       b.indexFailed()
 
 proc moveTo*(b: var Buffer, i: int): bool =
+  ## Moves the shaping cursor, shuffling staged output as needed.
   if not b.haveOutput:
     assert(i <= b.len)
     b.idx = i
@@ -1407,6 +1752,7 @@ proc moveTo*(b: var Buffer, i: int): bool =
   true
 
 proc shiftForward*(b: var Buffer, count: int): bool =
+  ## Shifts input forward to make room for staged output.
   assert(b.haveOutput)
   if not b.ensure(b.len + count):
     return false
@@ -1426,6 +1772,7 @@ proc shiftForward*(b: var Buffer, count: int): bool =
 
 proc sort*(b: var Buffer, start, stop: int,
     cmp: proc(a, bb: GlyphInfo): bool {.closure.}) =
+  ## Stable insertion sort merging clusters as items move.
   assert(not b.havePositions)
   for i in start + 1 ..< stop:
     if i >= b.info.len:
@@ -1443,42 +1790,51 @@ proc sort*(b: var Buffer, start, stop: int,
     b.info[j] = item
 
 proc setCluster*(g: var GlyphInfo, cluster: uint32, mask: Mask) =
+  ## Sets cluster and flag bits, preserving unrelated mask bits.
   if g.cluster != cluster:
     g.mask = (g.mask and not DefinedGlyphFlagBits) or (mask and DefinedGlyphFlagBits)
   g.cluster = cluster
 
 proc enter*(b: var Buffer) =
+  ## Opens a shaping pass, sizing budgets from the length.
   b.serial = 0
   b.scratchFlags = ScratchFlagDefault
   b.maxLen = max(b.len * MaxLenFactor, MaxLenMin)
   b.maxOps = max(b.len * MaxOpsFactor, MaxOpsMin)
 
 proc leave*(b: var Buffer) =
+  ## Closes a shaping pass, restoring default limits.
   b.maxLen = MaxLenDefault
   b.maxOps = MaxOpsDefault
   b.serial = 0
 
 proc allocateLigId*(b: var Buffer): uint8 =
+  ## Allocates a nonzero ligature id.
   var ligId = b.nextSerial() and 0x07u8
   if ligId == 0:
     ligId = b.allocateLigId()
   ligId
 
 proc allocateUnicodeVars*(b: var Buffer) =
+  ## Allocates the Unicode property variable.
   b.allocateVar(UnicodePropsVar)
 
 proc deallocateUnicodeVars*(b: var Buffer) =
+  ## Frees the Unicode property variable.
   b.deallocateVar(UnicodePropsVar)
 
 proc allocateGsubGposVars*(b: var Buffer) =
+  ## Allocates GSUB and GPOS packed variables.
   b.allocateVar(LigPropsVar)
   b.allocateVar(GlyphPropsVar)
 
 proc deallocateGsubGposVars*(b: var Buffer) =
+  ## Frees GSUB and GPOS packed variables.
   b.deallocateVar(LigPropsVar)
   b.deallocateVar(GlyphPropsVar)
 
 proc nextSyllable*(b: Buffer, start: int, maxSyllableLength: int = 64): int =
+  ## Finds the end of the syllable starting at start.
   if start >= b.len:
     return start
   let stop = start + min(b.len - start, maxSyllableLength)
@@ -1495,59 +1851,79 @@ proc nextSyllable*(b: Buffer, start: int, maxSyllableLength: int = 64): int =
 # --- ligature / glyph-class helpers (mirror hb-ot-layout.hh) ---
 
 const IsLigBase* = 0x10u8
+    ## Ligature base marker bit.
 
 proc setLigPropsForLigature*(g: var GlyphInfo, ligId, ligNumComps: uint8) =
+  ## Tags a ligature base with its id and component count.
   g.setLigProps((ligId shl 5) or IsLigBase or (ligNumComps and 0x0Fu8))
 
 proc setLigPropsForMark*(g: var GlyphInfo, ligId, ligComp: uint8) =
+  ## Tags a mark with its ligature id and component.
   g.setLigProps((ligId shl 5) or (ligComp and 0x0Fu8))
 
 proc setLigPropsForComponent*(g: var GlyphInfo, comp: uint8) =
+  ## Tags a multiple substitution component.
   g.setLigPropsForMark(0, comp)
 
-proc ligId*(g: GlyphInfo): uint8 = g.ligProps() shr 5
+proc ligId*(g: GlyphInfo): uint8 =
+  ## Reads the ligature id.
+  g.ligProps() shr 5
 
-proc ligatedInternal*(g: GlyphInfo): bool = (g.ligProps() and IsLigBase) != 0
+proc ligatedInternal*(g: GlyphInfo): bool =
+  ## True when the glyph is a ligature base.
+  (g.ligProps() and IsLigBase) != 0
 
 proc ligComp*(g: GlyphInfo): uint8 =
+  ## Reads the ligature component index.
   if g.ligatedInternal(): 0u8 else: g.ligProps() and 0x0Fu8
 
 proc ligNumComps*(g: GlyphInfo): uint8 =
+  ## Reads the ligature component count.
   if (g.glyphProps() and GlyphPropLigature) != 0 and g.ligatedInternal():
     g.ligProps() and 0x0Fu8
   else:
     1u8
 
 proc isBaseGlyph*(g: GlyphInfo): bool =
+  ## True for base glyphs.
   (g.glyphProps() and GlyphPropBaseGlyph) != 0
 
 proc isLigature*(g: GlyphInfo): bool =
+  ## True for ligature glyphs.
   (g.glyphProps() and GlyphPropLigature) != 0
 
 proc isMarkGlyph*(g: GlyphInfo): bool =
+  ## True for mark glyphs.
   (g.glyphProps() and GlyphPropMark) != 0
 
 proc substituted*(g: GlyphInfo): bool =
+  ## True once a glyph was substituted.
   (g.glyphProps() and GlyphPropSubstituted) != 0
 
 proc ligated*(g: GlyphInfo): bool =
+  ## True for ligated glyphs.
   (g.glyphProps() and GlyphPropLigated) != 0
 
 proc multiplied*(g: GlyphInfo): bool =
+  ## True for multiplied glyphs.
   (g.glyphProps() and GlyphPropMultiplied) != 0
 
 proc ligatedAndDidntMultiply*(g: GlyphInfo): bool =
+  ## True for ligated glyphs that were not multiplied.
   g.ligated() and not g.multiplied()
 
 proc clearLigatedAndMultiplied*(g: var GlyphInfo) =
+  ## Clears ligated and multiplied bits.
   g.setGlyphProps(g.glyphProps() and not
     (GlyphPropLigated or GlyphPropMultiplied))
 
 proc ligNumCompsInLigation*(g: GlyphInfo): uint8 =
+  ## Component count used while ligating.
   if g.multiplied() and g.ligComp() != 0: 0u8 else: g.ligNumComps()
 
 proc setClusterFlags*(infos: var seq[GlyphInfo], clusterLevel: uint32,
     start, stop: int, cluster: uint32, mask: Mask): bool =
+  ## Applies flag bits over survivors of a cluster merge.
   if start < 0 or stop > infos.len or start >= stop:
     return false
   let clusterFirst = infos[start].cluster
@@ -1581,6 +1957,7 @@ proc setClusterFlags*(infos: var seq[GlyphInfo], clusterLevel: uint32,
 # --------------------------------------------------------------------------
 
 proc serialize*(b: Buffer, flags: SerializeFlags): string =
+  ## Serializes the buffer in hb-shape style.
   result = ""
   let infos = b.glyphInfosView()
   if b.contentType == some(contentUnicode):
@@ -1618,4 +1995,5 @@ proc serialize*(b: Buffer, flags: SerializeFlags): string =
     result.add("]")
 
 proc `$`*(b: Buffer): string =
+  ## Summarizes the buffer for debugging.
   fmt"Buffer(contentType={b.contentType}, direction={b.direction}, len={b.len})"
