@@ -3,41 +3,61 @@ import ./tag
 
 type
   Feature* = object
+    ## OpenType feature request over a cluster range.
     tag*: Tag
+    ## Feature tag.
     value*: uint32
+    ## Feature value; 0 disables.
     start*: uint32
+    ## First cluster the feature applies to.
     stop*: uint32
+    ## One past the last cluster the feature applies to.
 
 const
   GlobalStart* = 0u32
+    ## Cluster range start covering the whole buffer.
   GlobalEnd* = high(uint32)
+    ## Cluster range end covering the whole buffer.
 
 proc newFeature*(t: Tag, value: uint32, first, last: uint32): Feature =
+  ## Builds a feature for the given cluster range.
   Feature(tag: t, value: value, start: first, stop: last)
 
 proc globalFeature*(t: Tag, value: uint32 = 1): Feature =
+  ## Builds a feature covering the whole buffer.
   Feature(tag: t, value: value, start: GlobalStart, stop: GlobalEnd)
 
 proc isGlobal*(f: Feature): bool =
+  ## True when the feature covers the whole buffer.
   f.start == GlobalStart and f.stop == GlobalEnd
 
 proc `==`*(a, b: Feature): bool =
+  ## True when tag, value, and range all match.
   a.tag == b.tag and a.value == b.value and a.start == b.start and a.stop == b.stop
 
 # --- feature string parsing (hb-feature syntax) ---
 
 type Parser = object
+  # Single use hb-feature string cursor.
   s: string
+  # Remaining input text.
   pos: int
+  # Byte offset of the cursor.
 
-proc atEnd(p: Parser): bool = p.pos >= p.s.len
-proc curr(p: Parser): char = p.s[p.pos]
+proc atEnd(p: Parser): bool =
+  # True when the cursor reached the input end.
+  p.pos >= p.s.len
+proc curr(p: Parser): char =
+  # Returns the character under the cursor.
+  p.s[p.pos]
 
 proc skipSpaces(p: var Parser) =
+  # Advances past ASCII whitespace.
   while not p.atEnd() and p.curr() in {' ', '\t', '\n', '\r'}:
     inc p.pos
 
 proc consumeByte(p: var Parser, c: char): bool =
+  # Consumes one expected byte; false when it is missing.
   if not p.atEnd() and p.s[p.pos] == c:
     inc p.pos
     true
@@ -45,6 +65,7 @@ proc consumeByte(p: var Parser, c: char): bool =
     false
 
 proc consumeQuote(p: var Parser): char =
+  # Consumes an opening quote, if any; '\0' when absent.
   if not p.atEnd() and p.curr() in {'\'', '"'}:
     result = p.curr()
     inc p.pos
@@ -52,6 +73,7 @@ proc consumeQuote(p: var Parser): char =
     result = '\0'
 
 proc consumeTag(p: var Parser): tuple[ok: bool, tag: Tag] =
+  # Consumes a 1 to 4 character tag name.
   let start = p.pos
   while not p.atEnd() and (p.curr().isAlphaNumeric() or p.curr() == '_'):
     inc p.pos
@@ -61,6 +83,7 @@ proc consumeTag(p: var Parser): tuple[ok: bool, tag: Tag] =
   (true, tagFromStr(name))
 
 proc consumeI32(p: var Parser): tuple[ok: bool, v: int32] =
+  # Consumes an optional signed integer.
   let start = p.pos
   if not p.atEnd() and p.curr() in {'-', '+'}:
     inc p.pos
@@ -75,6 +98,7 @@ proc consumeI32(p: var Parser): tuple[ok: bool, v: int32] =
     (false, 0i32)
 
 proc consumeBool(p: var Parser): tuple[ok: bool, v: bool] =
+  # Consumes an on or off word.
   p.skipSpaces()
   let start = p.pos
   while not p.atEnd() and p.curr().isAlphaAscii():
@@ -89,6 +113,7 @@ proc consumeBool(p: var Parser): tuple[ok: bool, v: bool] =
     (false, false)
 
 proc parseFeature*(s: string): Feature =
+  ## Parses hb-feature syntax; raises ValueError on invalid input.
   var p = Parser(s: s, pos: 0)
   if s.len == 0:
     raise newException(ValueError, "invalid feature")

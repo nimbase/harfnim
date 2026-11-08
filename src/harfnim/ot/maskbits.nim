@@ -8,6 +8,7 @@
 import std/bitops
 
 proc allocMaskBit*(nextBit: var uint32, value: uint32): tuple[mask, val: uint32] =
+  ## Allocates mask bits for a feature value above the glyph flag bits.
   if value == 0u32:
     return (0u32, 0u32)
   var bitsNeeded = 32u32 - uint32(countLeadingZeroBits(value))

@@ -6,18 +6,27 @@ import ./emoji_table
 
 type
   Codepoint* = uint32
+    ## Unicode scalar value.
 
   DecomposedKind* = enum
+    ## Decomposition shape.
     dkSingleton
+    ## Single codepoint decomposition.
     dkPair
+    ## Pair decomposition.
 
   Decomposed* = object
+    ## Canonical decomposition result.
+    ## Which decomposition shape this holds.
     case kind*: DecomposedKind
     of dkSingleton:
       single*: uint32
+      ## The decomposed codepoint.
     of dkPair:
       first*: uint32
+      ## First codepoint of the pair.
       second*: uint32
+      ## Second codepoint of the pair.
 
 # --------------------------------------------------------------------------
 # GeneralCategory
@@ -25,55 +34,93 @@ type
 
 type
   GeneralCategory* = distinct uint8
+    ## Unicode general category value.
 
 const
   GcControl* = GeneralCategory(0)
+    ## Control category.
   GcFormat* = GeneralCategory(1)
+    ## Format category.
   GcUnassigned* = GeneralCategory(2)
+    ## Unassigned category.
   GcPrivateUse* = GeneralCategory(3)
+    ## Private Use category.
   GcSurrogate* = GeneralCategory(4)
+    ## Surrogate category.
   GcLowercaseLetter* = GeneralCategory(5)
+    ## Lowercase Letter category.
   GcModifierLetter* = GeneralCategory(6)
+    ## Modifier Letter category.
   GcOtherLetter* = GeneralCategory(7)
+    ## Other Letter category.
   GcTitlecaseLetter* = GeneralCategory(8)
+    ## Titlecase Letter category.
   GcUppercaseLetter* = GeneralCategory(9)
+    ## Uppercase Letter category.
   GcSpacingMark* = GeneralCategory(10)
+    ## Spacing Mark category.
   GcEnclosingMark* = GeneralCategory(11)
+    ## Enclosing Mark category.
   GcNonSpacingMark* = GeneralCategory(12)
+    ## Non Spacing Mark category.
   GcDecimalNumber* = GeneralCategory(13)
+    ## Decimal Number category.
   GcLetterNumber* = GeneralCategory(14)
+    ## Letter Number category.
   GcOtherNumber* = GeneralCategory(15)
+    ## Other Number category.
   GcConnectPunctuation* = GeneralCategory(16)
+    ## Connect Punctuation category.
   GcDashPunctuation* = GeneralCategory(17)
+    ## Dash Punctuation category.
   GcClosePunctuation* = GeneralCategory(18)
+    ## Close Punctuation category.
   GcFinalPunctuation* = GeneralCategory(19)
+    ## Final Punctuation category.
   GcInitialPunctuation* = GeneralCategory(20)
+    ## Initial Punctuation category.
   GcOtherPunctuation* = GeneralCategory(21)
+    ## Other Punctuation category.
   GcOpenPunctuation* = GeneralCategory(22)
+    ## Open Punctuation category.
   GcCurrencySymbol* = GeneralCategory(23)
+    ## Currency Symbol category.
   GcModifierSymbol* = GeneralCategory(24)
+    ## Modifier Symbol category.
   GcMathSymbol* = GeneralCategory(25)
+    ## Math Symbol category.
   GcOtherSymbol* = GeneralCategory(26)
+    ## Other Symbol category.
   GcLineSeparator* = GeneralCategory(27)
+    ## Line Separator category.
   GcParagraphSeparator* = GeneralCategory(28)
+    ## Paragraph Separator category.
   GcSpaceSeparator* = GeneralCategory(29)
+    ## Space Separator category.
 
-proc `==`*(a, b: GeneralCategory): bool {.borrow.}
+proc `==`*(a, b: GeneralCategory): bool =
+  ## True when both categories match.
+  uint8(a) == uint8(b)
 
 proc isMark*(g: GeneralCategory): bool =
+  ## True for spacing, enclosing, and nonspacing marks.
   g == GcSpacingMark or g == GcEnclosingMark or g == GcNonSpacingMark
 
 proc isLetter*(g: GeneralCategory): bool =
+  ## True for lowercase, modifier, other, titlecase, and uppercase letters.
   g == GcLowercaseLetter or g == GcModifierLetter or g == GcOtherLetter or
     g == GcTitlecaseLetter or g == GcUppercaseLetter
 
 proc gcFlag*(g: GeneralCategory): uint32 =
+  ## Single bit mask for the category.
   1u32 shl uint8(g)
 
 proc gcFlagUnsafe*(g: GeneralCategory): uint32 =
+  ## Bit mask, or zero when the category value exceeds 31.
   if uint8(g) < 32u8: 1u32 shl uint8(g) else: 0u32
 
 proc inRangeInclusive*(g, first, last: GeneralCategory): bool =
+  ## True when the category falls in the inclusive range.
   let rangeMask = (1u32 shl (uint8(last) + 1u8)) - (1u32 shl uint8(first))
   (g.gcFlagUnsafe() and rangeMask) != 0
 
@@ -83,26 +130,47 @@ proc inRangeInclusive*(g, first, last: GeneralCategory): bool =
 
 const
   CcNotReordered* = 0u8
+    ## Not Reordered combining class (0).
   CcOverlay* = 1u8
+    ## Overlay combining class (1).
   CcNukta* = 7u8
+    ## Nukta combining class (7).
   CcKanaVoicing* = 8u8
+    ## Kana Voicing combining class (8).
   CcVirama* = 9u8
+    ## Virama combining class (9).
   CcAttachedBelowLeft* = 200u8
+    ## Attached Below Left combining class (200).
   CcAttachedBelow* = 202u8
+    ## Attached Below combining class (202).
   CcAttachedAbove* = 214u8
+    ## Attached Above combining class (214).
   CcAttachedAboveRight* = 216u8
+    ## Attached Above Right combining class (216).
   CcBelowLeft* = 218u8
+    ## Below Left combining class (218).
   CcBelow* = 220u8
+    ## Below combining class (220).
   CcBelowRight* = 222u8
+    ## Below Right combining class (222).
   CcLeft* = 224u8
+    ## Left combining class (224).
   CcRight* = 226u8
+    ## Right combining class (226).
   CcAboveLeft* = 228u8
+    ## Above Left combining class (228).
   CcAbove* = 230u8
+    ## Above combining class (230).
   CcAboveRight* = 232u8
+    ## Above Right combining class (232).
   CcDoubleBelow* = 233u8
+    ## Double Below combining class (233).
   CcDoubleAbove* = 234u8
+    ## Double Above combining class (234).
   CcIotaSubscript* = 240u8
+    ## Iota Subscript combining class (240).
   CcInvalid* = 255u8
+    ## Invalid combining class (255).
 
 # --------------------------------------------------------------------------
 # Space fallback codes
@@ -110,18 +178,31 @@ const
 
 const
   SpaceNotSpace* = 0u8
+    ## Not Space space fallback code (0).
   SpaceEm* = 1u8
+    ## Em space fallback code (1).
   SpaceEm2* = 2u8
+    ## Em 2 space fallback code (2).
   SpaceEm3* = 3u8
+    ## Em 3 space fallback code (3).
   SpaceEm4* = 4u8
+    ## Em 4 space fallback code (4).
   SpaceEm5* = 5u8
+    ## Em 5 space fallback code (5).
   SpaceEm6* = 6u8
+    ## Em 6 space fallback code (6).
   SpaceEm16* = 16u8
+    ## Em 16 space fallback code (16).
   Space4Em18* = 17u8
+    ## 4 Em18 space fallback code (17).
   SpaceSpace* = 18u8
+    ## Space space fallback code (18).
   SpaceFigure* = 19u8
+    ## Figure space fallback code (19).
   SpacePunctuation* = 20u8
+    ## Punctuation space fallback code (20).
   SpaceNarrow* = 21u8
+    ## Narrow space fallback code (21).
 
 # --------------------------------------------------------------------------
 # Modified combining class table
@@ -161,12 +242,14 @@ const modifiedCombiningClassTable*: array[256, uint8] = [
   240, 241, 242, 243, 244, 245, 246, 247,
   248, 249, 250, 251, 252, 253, 254, 255,
 ]
+    ## HarfBuzz modified combining class remap table.
 
 # --------------------------------------------------------------------------
 # Raw packtab lookups (direct ports of the generated Rust functions)
 # --------------------------------------------------------------------------
 
 proc ucdGc*(u: uint32): uint8 =
+  ## Packed general category lookup; unassigned past the table end.
   if u >= 1114110u32:
     return 2u8
   let uu = int(u)
@@ -176,6 +259,7 @@ proc ucdGc*(u: uint32): uint8 =
   ucdU8[7944 + (int(c) shl 1) + (uu and 1)]
 
 proc ucdCcc*(u: uint32): uint8 =
+  ## Packed canonical combining class lookup; zero past the table end.
   if u >= 125259u32:
     return 0u8
   let uu = int(u)
@@ -185,9 +269,11 @@ proc ucdCcc*(u: uint32): uint8 =
   ucdU8[10432 + (int(c) shl 2) + (uu and 3)]
 
 proc ucdB4(a: openArray[uint8], i: int): uint8 =
+  # Reads one packed nibble.
   (a[i shr 1] shr ((i and 1) shl 2)) and 15u8
 
 proc ucdBmg*(u: uint32): int32 =
+  ## Packed mirroring delta; zero when the codepoint does not mirror.
   if u >= 121617u32:
     return 0i32
   let uu = int(u)
@@ -198,6 +284,7 @@ proc ucdBmg*(u: uint32): int32 =
   ucdPalette[int(c)]
 
 proc ucdSc*(u: uint32): uint8 =
+  ## Packed script code lookup.
   if u >= 918000u32:
     return 2u8
   let uu = int(u)
@@ -207,6 +294,7 @@ proc ucdSc*(u: uint32): uint8 =
   ucdU8[12721 + int(c) + (uu and 7)]
 
 proc ucdDm*(u: uint32): uint16 =
+  ## Packed decomposition index; zero when absent.
   if u >= 195102u32:
     return 0u16
   let uu = int(u)
@@ -215,12 +303,15 @@ proc ucdDm*(u: uint32): uint16 =
   ucdU16[7816 + (int(b) shl 4) + (uu and 15)]
 
 proc emojiB4(a: openArray[uint8], i: int): uint8 =
+  # Reads one packed nibble.
   (a[i shr 1] shr ((i and 1) shl 2)) and 15u8
 
 proc emojiB1(a: openArray[uint8], base, i: int): uint8 =
+  # Reads one packed bit at a base offset.
   (a[base + (i shr 3)] shr (i and 7)) and 1u8
 
 proc emojiIsExtendedPictographicU8(u: int): uint8 =
+  # Packed extended pictographic test.
   if u < 131070:
     let inner = emojiB4(emojiU8, (u shr 6) shr 4)
     let mid = int(emojiU8[64 + (int(inner) shl 4) + ((u shr 6) and 15)])
@@ -233,18 +324,22 @@ proc emojiIsExtendedPictographicU8(u: int): uint8 =
 # --------------------------------------------------------------------------
 
 proc scriptFor*(cp: uint32): Script =
+  ## Looks up the script; unknown past the valid range.
   if cp > 0x10FFFFu32:
     Unknown
   else:
     ucdScMap[int(ucdSc(cp))]
 
 proc generalCategoryFor*(cp: uint32): GeneralCategory =
+  ## Looks up the general category.
   GeneralCategory(ucdGc(cp))
 
 proc combiningClassFor*(cp: uint32): uint8 =
+  ## Looks up the canonical combining class.
   ucdCcc(cp)
 
 proc mirroringFor*(cp: uint32): Option[uint32] =
+  ## Mirrored counterpart, if the codepoint mirrors.
   let delta = ucdBmg(cp)
   if delta == 0i32:
     none(uint32)
@@ -252,9 +347,11 @@ proc mirroringFor*(cp: uint32): Option[uint32] =
     some(uint32(int64(cp) + int64(delta)))
 
 proc isEmojiExtendedPictographic*(cp: uint32): bool =
+  ## True for extended pictographic codepoints.
   emojiIsExtendedPictographicU8(int(cp)) != 0u8
 
 proc spaceFallback*(cp: uint32): uint8 =
+  ## Space fallback code for the codepoint, if any.
   case cp
   of 0x0020u32, 0x00A0u32: SpaceSpace
   of 0x2000u32: SpaceEm2
@@ -274,6 +371,7 @@ proc spaceFallback*(cp: uint32): uint8 =
   else: SpaceNotSpace
 
 proc modifiedCombiningClass*(cp: uint32): uint8 =
+  ## HarfBuzz modified combining class with Tai Tham and Mongolian fixes.
   if cp == 0x1A60u32:
     return 254u8
   if cp == 0x0FC6u32:
@@ -283,6 +381,7 @@ proc modifiedCombiningClass*(cp: uint32): uint8 =
   modifiedCombiningClassTable[int(combiningClassFor(cp))]
 
 proc isDefaultIgnorable*(cp: uint32): bool =
+  ## True for default ignorable codepoints.
   let plane = cp shr 16
   if plane == 0u32:
     let page = cp shr 8
@@ -307,10 +406,12 @@ proc isDefaultIgnorable*(cp: uint32): bool =
     else: false
 
 proc isVariationSelector*(cp: uint32): bool =
+  ## True for variation selectors.
   (cp >= 0xFE00u32 and cp <= 0xFE0Fu32) or
     (cp >= 0xE0100u32 and cp <= 0xE01EFu32)
 
 proc verticalAlternate*(cp: uint32): Option[uint32] =
+  ## Vertical presentation alternate, if defined.
   case cp shr 8
   of 0x20u32:
     case cp
@@ -362,31 +463,56 @@ proc verticalAlternate*(cp: uint32): Option[uint32] =
 # --------------------------------------------------------------------------
 
 const
+  # Hangul arithmetic constants.
   HangulSBase = 0xAC00u32
+  # Syllable base.
   HangulLBase = 0x1100u32
+  # Leading consonant base.
   HangulVBase = 0x1161u32
+  # Vowel base.
   HangulTBase = 0x11A7u32
+  # Trailing consonant base.
   HangulLCount = 19u32
+  # Leading consonant count.
   HangulVCount = 21u32
+  # Vowel count.
   HangulTCount = 28u32
+  # Trailing consonant count.
   HangulNCount = HangulVCount * HangulTCount
+  # Vowel by trailing block size.
   HangulSCount = HangulLCount * HangulNCount
+  # Total precomposed syllable count.
 
 proc encode3(x, y, z: uint32): uint64 =
+  # Packs three 21 bit values into one key.
   (uint64(x) shl 42) or (uint64(y) shl 21) or uint64(z)
 
-proc decode3_1(v: uint64): uint32 = uint32(v shr 42)
-proc decode3_2(v: uint64): uint32 = uint32((v shr 21) and 0x001FFFFFu64)
-proc decode3_3(v: uint64): uint32 = uint32(v and 0x001FFFFFu64)
+proc decode3_1(v: uint64): uint32 =
+  # Unpacks the first value.
+  uint32(v shr 42)
+proc decode3_2(v: uint64): uint32 =
+  # Unpacks the second value.
+  uint32((v shr 21) and 0x001FFFFFu64)
+proc decode3_3(v: uint64): uint32 =
+  # Unpacks the third value.
+  uint32(v and 0x001FFFFFu64)
 
 proc encode3_11_7_14(x, y, z: uint32): uint32 =
+  # Packs 11, 7, and 14 bit values into one key.
   ((x and 0x07FFu32) shl 21) or ((y and 0x007Fu32) shl 14) or (z and 0x3FFFu32)
 
-proc decode3_11_7_14_1(v: uint32): uint32 = v shr 21
-proc decode3_11_7_14_2(v: uint32): uint32 = ((v shr 14) and 0x007Fu32) or 0x0300u32
-proc decode3_11_7_14_3(v: uint32): uint32 = v and 0x3FFFu32
+proc decode3_11_7_14_1(v: uint32): uint32 =
+  # Unpacks the first value.
+  v shr 21
+proc decode3_11_7_14_2(v: uint32): uint32 =
+  # Unpacks the second value with the 0x300 bias.
+  ((v shr 14) and 0x007Fu32) or 0x0300u32
+proc decode3_11_7_14_3(v: uint32): uint32 =
+  # Unpacks the third value.
+  v and 0x3FFFu32
 
 proc composeHangul(a, b: uint32): Option[uint32] =
+  # Hangul LV and LVT composition.
   if HangulLBase <= a and a < HangulLBase + HangulLCount and
       HangulVBase <= b and b < HangulVBase + HangulVCount:
     some(HangulSBase + (a - HangulLBase) * HangulNCount +
@@ -399,6 +525,7 @@ proc composeHangul(a, b: uint32): Option[uint32] =
     none(uint32)
 
 proc decomposeHangul(ab: uint32): Option[tuple[a, b: uint32]] =
+  # Hangul syllable decomposition.
   if ab < HangulSBase or ab >= HangulSBase + HangulSCount:
     return none(tuple[a, b: uint32])
   let si = ab - HangulSBase
@@ -410,6 +537,7 @@ proc decomposeHangul(ab: uint32): Option[tuple[a, b: uint32]] =
       HangulVBase + (si mod HangulNCount) div HangulTCount))
 
 proc binarySearchMaskedU32(arr: openArray[uint32], key, mask: uint32): int =
+  # Masked binary search; index or -1.
   var lo = 0
   var hi = arr.len
   while lo < hi:
@@ -424,6 +552,7 @@ proc binarySearchMaskedU32(arr: openArray[uint32], key, mask: uint32): int =
   -1
 
 proc binarySearchMaskedU64(arr: openArray[uint64], key, mask: uint64): int =
+  # Masked binary search; index or -1.
   var lo = 0
   var hi = arr.len
   while lo < hi:
@@ -438,6 +567,7 @@ proc binarySearchMaskedU64(arr: openArray[uint64], key, mask: uint64): int =
   -1
 
 proc composeImpl*(a, b: uint32): Option[uint32] =
+  ## Canonical composition with Hangul handling.
   let hangul = composeHangul(a, b)
   if hangul.isSome:
     return hangul
@@ -459,6 +589,7 @@ proc composeImpl*(a, b: uint32): Option[uint32] =
   if u == 0u32: none(uint32) else: some(u)
 
 proc decomposeImpl*(ab: uint32): Option[tuple[a, b: uint32]] =
+  ## Canonical decomposition with Hangul handling.
   let hangul = decomposeHangul(ab)
   if hangul.isSome:
     return hangul
@@ -480,9 +611,11 @@ proc decomposeImpl*(ab: uint32): Option[tuple[a, b: uint32]] =
   some((decode3_1(v), decode3_2(v)))
 
 proc compose*(a, b: uint32): Option[uint32] =
+  ## Composes two codepoints, if a composition exists.
   composeImpl(a, b)
 
 proc decompose*(cp: uint32): Option[Decomposed] =
+  ## Decomposes a codepoint into singleton or pair form.
   let d = decomposeImpl(cp)
   if d.isNone:
     none(Decomposed)
@@ -492,4 +625,5 @@ proc decompose*(cp: uint32): Option[Decomposed] =
     some(Decomposed(kind: dkPair, first: d.get.a, second: d.get.b))
 
 proc isMarkCodepoint*(cp: uint32): bool =
+  ## True when the codepoint has a mark general category.
   generalCategoryFor(cp).isMark()
