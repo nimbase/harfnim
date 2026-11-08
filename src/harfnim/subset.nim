@@ -1,12 +1,21 @@
 ## Font subsetter: pure-Nim sfnt subset for PDF embedding.
 ##
 ## Covers TrueType (`glyf`) and CFF (`CFF `) outlines; CFF2 is rejected
-## (needs a Type2 downgrader). Layout (`GSUB`/`GPOS`/`GDEF`/etc),
-## variation (`fvar`/`gvar`/`avar`/`HVAR`/`VVAR`/`MVAR`/`STAT`),
-## color (`COLR`/`CPAL`/`CBDT`/`CBLC`/`sbix`/`SVG `), legacy `kern`,
-## and device-metric tables are dropped: PDF shows pre-shaped glyphs
-## via `/CIDToGIDMap`, so no layout is needed at render time. This is
-## implicitly "pinned to default" (base outlines/advances, no deltas).
+## (needs a Type2 downgrader). Fonts with no outlines at all (e.g.
+## CBDT bitmap emoji) get a synthesized empty `glyf` so cmap/hmtx stay
+## correct: text extracts and measures, color bitmaps are dropped.
+## Layout (`GSUB`/`GPOS`/`GDEF`/etc), variation (`fvar`/`gvar`/`avar`/
+## `HVAR`/`VVAR`/`MVAR`/`STAT`), color (`COLR`/`CPAL`/`CBDT`/`CBLC`/
+## `sbix`/`SVG `), legacy `kern`, and device-metric tables are dropped:
+## PDF shows pre-shaped glyphs via `/CIDToGIDMap`, so no layout is
+## needed at render time. This is implicitly "pinned to default"
+## (base outlines/advances, no deltas).
+##
+## Retention is unicode-driven with full closure: GSUB substitutions
+## whose inputs are kept (single/multiple/alternate/ligature/reverse,
+## plus conservative one-level contextual outputs) and composite
+## components are pulled in to fixpoint, so every glyph that shaping
+## the full font can produce survives the subset.
 ##
 ## Output is a single sfnt (never TTC) with rebuilt `cmap` (format 4 +
 ## 12), `glyf`/`loca` or `CFF `, `hmtx` (`vmtx`), `maxp`, `hhea`
@@ -21,6 +30,7 @@ import std/tables
 import ./cff
 import ./buffer
 import ./sfnt
+import ./ot/gsub
 
 type
   SubsetError* = object of CatchableError
@@ -288,6 +298,216 @@ proc buildCmap(pairs: seq[tuple[cp, gid: uint32]]): seq[uint8] =
   putU32(result, uint32(20 + c4.len))
   putBytes(result, c4)
   putBytes(result, c12)
+
+# ---------------------------------------------------------------------------
+# GSUB closure (shaped-glyph retention)
+# ---------------------------------------------------------------------------
+
+const MaxClosureGlyphs = 1 shl 20
+
+proc coverageGlyphs(c: Coverage, cap = 65536): seq[uint32] =
+  ## All glyphs in a coverage, capped (malformed ranges stay bounded).
+  result = c.glyphs
+  for r in c.ranges:
+    if r.last < r.first:
+      continue
+    let n = int(r.last - r.first) + 1
+    if result.len + n > cap:
+      return
+    for g in r.first .. r.last:
+      result.add(g)
+
+proc coverageByIndex(c: Coverage): seq[uint32] =
+  ## Glyph at each coverage index (format 1: position; format 2: stored
+  ## base + offset). Gaps yield 0xFFFFFFFF (no glyph).
+  var pairs: seq[tuple[idx: int, g: uint32]] = @[]
+  for i, g in c.glyphs:
+    pairs.add((i, g))
+  for r in c.ranges:
+    if r.last < r.first or r.last - r.first > 65535u32:
+      continue
+    for g in r.first .. r.last:
+      pairs.add((int(r.index) + int(g - r.first), g))
+  if pairs.len == 0:
+    return @[]
+  pairs.sort(proc(a, b: tuple[idx: int, g: uint32]): int = cmp(a.idx, b.idx))
+  let top = pairs[^1].idx
+  if top < 0 or top > MaxClosureGlyphs:
+    return @[]
+  result = newSeq[uint32](top + 1)
+  for i in 0 .. top:
+    result[i] = 0xFFFFFFFFu32
+  for p in pairs:
+    if p.idx >= 0 and result[p.idx] == 0xFFFFFFFFu32:
+      result[p.idx] = p.g
+
+proc coverageIndex(c: Coverage, gid: uint32): int =
+  for i, g in c.glyphs:
+    if g == gid:
+      return i
+  for r in c.ranges:
+    if gid >= r.first and gid <= r.last:
+      return int(r.index) + int(gid - r.first)
+  -1
+
+proc nestedOutputs(gsub: GsubData, li: int, keep: var Table[uint32, bool],
+    numGlyphs: int): bool =
+  ## Adds every glyph a nested lookup can output (single/multiple/
+  ## alternate/ligature/reverse only, one level). Returns true when
+  ## anything was added.
+  if li < 0 or li >= gsubLookupCount(gsub):
+    return false
+  let lk = getGsubLookup(gsub, li)
+  template add(g: uint32) =
+    if g < uint32(numGlyphs) and not keep.hasKey(g):
+      keep[g] = true
+      result = true
+  for s in lk.singleSubsts:
+    let order = coverageByIndex(s.coverage)
+    for i, g in order:
+      if g == 0xFFFFFFFFu32:
+        continue
+      case s.kind
+      of ssDelta:
+        let outG = int32(g) + s.delta
+        if outG >= 0:
+          add(uint32(outG))
+      of ssArray:
+        if i < s.substitutes.len:
+          add(s.substitutes[i])
+  for m in lk.multipleSubsts:
+    for seqG in m.sequences:
+      for g in seqG:
+        add(g)
+  for a in lk.alternateSubsts:
+    for setG in a.sets:
+      for g in setG:
+        add(g)
+  for l in lk.ligatureSubsts:
+    for set in l.sets:
+      for lig in set:
+        add(lig.ligGlyph)
+  for r in lk.reverseSubsts:
+    for g in r.substitutes:
+      add(g)
+
+proc gsubClosureStep(font: SfntFont, gsub: GsubData,
+    keep: var Table[uint32, bool]): bool =
+  ## One closure pass over every lookup; true when the set grew.
+  let n = int(font.numGlyphs)
+  template add(g: uint32) =
+    if g < uint32(n) and not keep.hasKey(g):
+      keep[g] = true
+      result = true
+  for li in 0 ..< gsubLookupCount(gsub):
+    let lk = getGsubLookup(gsub, li)
+    for s in lk.singleSubsts:
+      for g in coverageGlyphs(s.coverage):
+        if not keep.hasKey(g):
+          continue
+        case s.kind
+        of ssDelta:
+          let outG = int32(g) + s.delta
+          if outG >= 0:
+            add(uint32(outG))
+        of ssArray:
+          let idx = coverageIndex(s.coverage, g)
+          if idx >= 0 and idx < s.substitutes.len:
+            add(s.substitutes[idx])
+    for m in lk.multipleSubsts:
+      let order = coverageByIndex(m.coverage)
+      for i, g in order:
+        if g == 0xFFFFFFFFu32 or not keep.hasKey(g):
+          continue
+        if i < m.sequences.len:
+          for o in m.sequences[i]:
+            add(o)
+    for a in lk.alternateSubsts:
+      let order = coverageByIndex(a.coverage)
+      for i, g in order:
+        if g == 0xFFFFFFFFu32 or not keep.hasKey(g):
+          continue
+        if i < a.sets.len:
+          for o in a.sets[i]:
+            add(o)
+    for l in lk.ligatureSubsts:
+      let order = coverageByIndex(l.coverage)
+      for si, set in l.sets:
+        if si >= order.len:
+          continue
+        let first = order[si]
+        if first == 0xFFFFFFFFu32 or not keep.hasKey(first):
+          continue
+        for lig in set:
+          var ok = true
+          for c in lig.components:
+            if not keep.hasKey(c):
+              ok = false
+              break
+          if ok:
+            add(lig.ligGlyph)
+    for r in lk.reverseSubsts:
+      let order = coverageByIndex(r.coverage)
+      for i, g in order:
+        if g == 0xFFFFFFFFu32 or not keep.hasKey(g):
+          continue
+        if i < r.substitutes.len:
+          add(r.substitutes[i])
+    # Contextual lookups (format 1 rules carry concrete glyphs, format
+    # 2 classes, format 3 coverages): when the first-position coverage
+    # can match a kept glyph, the nested lookups could fire, so add
+    # their full one-level output. Over-approximate but bounded, and
+    # never misses a shaped glyph.
+    for cs in lk.contextSubsts:
+      var fires = false
+      for g in coverageGlyphs(cs.coverage):
+        if keep.hasKey(g):
+          fires = true
+          break
+      if not fires:
+        continue
+      for rs in cs.ruleSets:
+        for rule in rs:
+          for rec in rule.records:
+            if nestedOutputs(gsub, int(rec.lookupIndex), keep, n):
+              result = true
+      for rec in cs.records:
+        if nestedOutputs(gsub, int(rec.lookupIndex), keep, n):
+          result = true
+    for ch in lk.chainSubsts:
+      var fires = false
+      for g in coverageGlyphs(ch.coverage):
+        if keep.hasKey(g):
+          fires = true
+          break
+      if not fires:
+        continue
+      for rs in ch.ruleSets:
+        for rule in rs:
+          for rec in rule.records:
+            if nestedOutputs(gsub, int(rec.lookupIndex), keep, n):
+              result = true
+      for rec in ch.records:
+        if nestedOutputs(gsub, int(rec.lookupIndex), keep, n):
+          result = true
+
+proc gsubClosure(font: SfntFont, keep: var Table[uint32, bool]) =
+  ## Grows `keep` with every glyph GSUB can produce from it (to
+  ## fixpoint). Shaping the full font can only yield kept glyphs, so a
+  ## later subset always contains every drawn glyph id.
+  let gopt =
+    try:
+      parseGsub(font)
+    except FontError:
+      return
+  if gopt.isNone:
+    return
+  let gsub = gopt.get
+  var guard = 0
+  while gsubClosureStep(font, gsub, keep):
+    inc guard
+    if guard > 32 or keep.len > MaxClosureGlyphs:
+      break
 
 # ---------------------------------------------------------------------------
 # CFF helpers (INDEX + DICT encode, charset/FDSelect rebuild)
@@ -821,8 +1041,10 @@ proc subsetImpl(data: seq[uint8], unicodes: openArray[uint32],
       "CFF2 subsetting not supported (downgrade unimplemented)")
   let hasGlyf = font.tableData(TagGlyfU).ok and font.tableData(TagLocaU).ok
   let hasCff = font.tableData(TagCffU).ok
-  if not hasGlyf and not hasCff:
-    raise newException(SubsetError, "font has neither glyf nor CFF outlines")
+  # Outline-less fonts (e.g. CBDT bitmap emoji: no glyf, no CFF) get a
+  # synthesized empty glyf: cmap/hmtx stay correct so text extracts and
+  # measures, but color bitmaps are dropped (documented limitation).
+  let synthGlyf = not hasGlyf and not hasCff
   # --- unicode -> old gid ---
   var oldSet = initTable[uint32, bool]()
   oldSet[0u32] = true
@@ -830,11 +1052,12 @@ proc subsetImpl(data: seq[uint8], unicodes: openArray[uint32],
     let g = font.mapUnicode(u)
     if g.isSome:
       oldSet[g.get.value] = true
-  if hasGlyf:
-    # Composite closure.
-    var changed = true
-    while changed:
-      changed = false
+  # Closure to fixpoint: GSUB substitutions (ligatures etc. that
+  # shaping can produce from kept glyphs) plus composite components.
+  var guard = 0
+  while true:
+    let before = oldSet.len
+    if hasGlyf:
       var keys: seq[uint32] = @[]
       for k in oldSet.keys: keys.add(k)
       for og in keys:
@@ -844,11 +1067,13 @@ proc subsetImpl(data: seq[uint8], unicodes: openArray[uint32],
         for c in compositeComponents(bytes, s, ln):
           if c < uint32(font.numGlyphs) and not oldSet.hasKey(c):
             oldSet[c] = true
-            changed = true
-  else:
     # CFF: no composite closure needed (charstrings reference subrs by
     # index, not glyphs; seac references resolve at render, kept whole).
-    discard
+    gsubClosure(font, oldSet)
+    inc guard
+    if oldSet.len == before or guard > 8 or
+        oldSet.len > MaxClosureGlyphs:
+      break
   var keepOld: seq[int] = @[]
   var olds: seq[uint32] = @[]
   for k in oldSet.keys: olds.add(k)
@@ -925,18 +1150,20 @@ proc subsetImpl(data: seq[uint8], unicodes: openArray[uint32],
       let vm = font.tableData(TagVmtxU)
       if not vm.ok:
         hasV = false
-  # --- glyf/loca or CFF ---
+  # --- glyf/loca or CFF (or synthesized empty glyf) ---
   var glyfBlob: seq[uint8] = @[]
   var locaBlob: seq[uint8] = @[]
   var useShortLoca = true
   var cffBlob: seq[uint8] = @[]
-  if hasGlyf:
+  if hasGlyf or synthGlyf:
     var offs: seq[int] = @[0]
     for og in keepOld:
-      let (ok, s, ln) = font.glyphDataRange(uint32(og))
       var g: seq[uint8] = @[]
-      if ok and ln > 0:
-        g = remapComposite(bytes[s ..< s + ln], oldToNew)
+      if hasGlyf:
+        let (ok, s, ln) = font.glyphDataRange(uint32(og))
+        if ok and ln > 0:
+          g = remapComposite(bytes[s ..< s + ln], oldToNew)
+      # synthGlyf: every glyph stays empty (no outlines in source).
       putBytes(glyfBlob, g)
       pad4(glyfBlob)
       offs.add(glyfBlob.len)
@@ -982,7 +1209,7 @@ proc subsetImpl(data: seq[uint8], unicodes: openArray[uint32],
   tbls.add((TagMaxpU, maxpBlob))
   tbls.add((TagHmtxU, hmtxBlob))
   tbls.add((TagCmapU, cmapBlob))
-  if hasGlyf:
+  if hasGlyf or synthGlyf:
     tbls.add((TagLocaU, locaBlob))
     tbls.add((TagGlyfU, glyfBlob))
   else:

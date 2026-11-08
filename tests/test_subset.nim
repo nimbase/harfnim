@@ -222,6 +222,67 @@ proc buildTestFont(): seq[uint8] =
     result.add(data)
     result.pad4()
 
+proc buildTestFontNoOutlines(): seq[uint8] =
+  ## Same 3-glyph metrics/cmap as buildTestFont but with no `glyf`/`loca`
+  ## (like CBDT bitmap-only fonts): subsetter must synthesize empty
+  ## outlines instead of failing.
+  var head: seq[uint8] = @[]
+  head.putU32(0x00010000u32)
+  head.putU32(0u32)
+  head.putU32(0u32)
+  head.putU32(0x5F0F3CF5u32)
+  head.putU16(0u16)
+  head.putU16(1000u16)
+  for _ in 0 ..< 4: head.putU32(0u32)
+  head.putI16(0i16)
+  head.putI16(0i16)
+  head.putI16(110i16)
+  head.putI16(120i16)
+  head.putU16(0u16)
+  head.putU16(0u16)
+  head.putI16(0i16)
+  head.putI16(0i16)
+  head.putU16(0u16)
+  var hhea: seq[uint8] = @[]
+  hhea.putU32(0x00010000u32)
+  hhea.putI16(800i16)
+  hhea.putI16(-200i16)
+  hhea.putI16(0i16)
+  hhea.putU16(600u16)
+  for _ in 0 ..< 11: hhea.putI16(0i16)
+  hhea.putU16(3u16)
+  var maxp: seq[uint8] = @[]
+  maxp.putU32(0x00005000u32)
+  maxp.putU16(3u16)
+  var hmtx: seq[uint8] = @[]
+  hmtx.putU16(500u16)
+  hmtx.putI16(0i16)
+  hmtx.putU16(600u16)
+  hmtx.putI16(10i16)
+  hmtx.putU16(700u16)
+  hmtx.putI16(20i16)
+  let cmap = buildCmapAB()
+  var tables = @[
+    ("head", head), ("hhea", hhea), ("maxp", maxp), ("hmtx", hmtx),
+    ("cmap", cmap),
+  ]
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(uint16(tables.len))
+  result.putU16(32u16)
+  result.putU16(2u16)
+  result.putU16(16u16)
+  var off = 12 + tables.len * 16
+  for (name, data) in tables:
+    for c in name: result.add(uint8(c))
+    result.putU32(0u32)
+    result.putU32(uint32(off))
+    result.putU32(uint32(data.len))
+    off += (data.len + 3) and not 3
+  for (_, data) in tables:
+    result.add(data)
+    result.pad4()
+
 proc wholeChecksum(b: seq[uint8]): uint32 =
   var s = 0u64
   var i = 0
@@ -284,11 +345,21 @@ suite "subsetter":
     check m[2u32] == 2u32
 
   test "CFF2 input fails loudly":
-    var font = buildTestFont()
-    # fake a CFF2 table tag entry by appending? Simpler: craft minimal
-    # font with CFF2 table via direct directory edit is overkill;
-    # assert the error path on a glyf-less font instead.
     var bad: seq[uint8] = @[]
     # empty: parse fails -> SubsetError
     expect(SubsetError):
       discard subsetFont(bad, @[0x41u32])
+
+  test "outline-less font synthesizes empty glyf":
+    let font = buildTestFontNoOutlines()
+    let (sub, m) = subsetFont(font, @[0x41u32, 0x42u32])
+    check m.len == 3
+    let f = parseFont(sub, 0)
+    check f.numGlyphs == 3
+    check f.mapUnicode(0x41u32).get.value == 1u32
+    check f.mapUnicode(0x42u32).get.value == 2u32
+    check f.hAdvance(1u32) == 600i32
+    # Empty outlines: no outline data, but the font re-parses.
+    let (ok, _, ln) = f.glyphDataRange(1u32)
+    check ok and ln == 0
+    check wholeChecksum(sub) == 0xB1B0AFBAu32
