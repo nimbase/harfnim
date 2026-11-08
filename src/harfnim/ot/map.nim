@@ -11,6 +11,7 @@ import ./maskbits
 export apply
 
 proc findScript*(gsub: GsubData, scriptTag: Tag): Option[int] =
+  ## Finds the script record, falling back to DFLT.
   for i, s in gsub.scripts:
     if s.tag == scriptTag.toU32():
       return some(i)
@@ -21,6 +22,7 @@ proc findScript*(gsub: GsubData, scriptTag: Tag): Option[int] =
   none(int)
 
 proc findScriptGpos*(gpos: GposData, scriptTag: Tag): Option[int] =
+  ## Finds the GPOS script record, falling back to DFLT.
   for i, s in gpos.scripts:
     if s.tag == scriptTag.toU32():
       return some(i)
@@ -31,6 +33,7 @@ proc findScriptGpos*(gpos: GposData, scriptTag: Tag): Option[int] =
   none(int)
 
 proc resolveLangSys*(script: ScriptTable, langTag: Tag): Option[LangSys] =
+  ## Resolves the language system, falling back to default.
   for l in script.langSys:
     if l.tag == langTag.toU32():
       return some(l.lang)
@@ -45,6 +48,7 @@ proc gsubLangSys*(gsub: GsubData, scriptTag, langTag: Tag): Option[LangSys] =
   resolveLangSys(gsub.scripts[si.get].script, langTag)
 
 proc gposLangSys*(gpos: GposData, scriptTag, langTag: Tag): Option[LangSys] =
+  ## Resolves the GPOS LangSys once per shape.
   let si = findScriptGpos(gpos, scriptTag)
   if si.isNone:
     return none(LangSys)
@@ -68,6 +72,7 @@ proc gsubLookupsForLang*(gsub: GsubData, lang: LangSys,
 
 proc gposLookupsForLang*(gpos: GposData, lang: LangSys,
     tagU32: uint32): seq[uint16] =
+  ## Direct GPOS tag lookup without intermediate lists.
   result = @[]
   if lang.requiredFeature != 0xFFFFu16 and
       int(lang.requiredFeature) < gpos.features.len:
@@ -82,6 +87,7 @@ proc gposLookupsForLang*(gpos: GposData, lang: LangSys,
 
 proc gsubLookupsForTag*(gsub: GsubData, scriptTag, langTag: Tag,
     tagU32: uint32): seq[uint16] =
+  ## Resolves the LangSys and looks up one feature tag.
   let lang = gsubLangSys(gsub, scriptTag, langTag)
   if lang.isNone:
     return @[]
@@ -89,6 +95,7 @@ proc gsubLookupsForTag*(gsub: GsubData, scriptTag, langTag: Tag,
 
 proc gposLookupsForTag*(gpos: GposData, scriptTag, langTag: Tag,
     tagU32: uint32): seq[uint16] =
+  ## Resolves the GPOS LangSys and looks up one feature tag.
   let lang = gposLangSys(gpos, scriptTag, langTag)
   if lang.isNone:
     return @[]
@@ -96,6 +103,7 @@ proc gposLookupsForTag*(gpos: GposData, scriptTag, langTag: Tag,
 
 proc gsubFeaturesFor*(gsub: GsubData, scriptTag, langTag: Tag): seq[
     tuple[tag: uint32, lookups: seq[uint16]]] =
+  ## Lists features with lookups; kept for compat, off the hot path.
   let si = findScript(gsub, scriptTag)
   if si.isNone:
     return @[]
@@ -114,6 +122,7 @@ proc gsubFeaturesFor*(gsub: GsubData, scriptTag, langTag: Tag): seq[
 
 proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
     langTag: Tag, features: openArray[Feature]) =
+  ## Applies requested GSUB features with fresh masks.
   if features.len == 0:
     return
   let langOpt = gsubLangSys(gsub, scriptTag, langTag)
@@ -138,6 +147,7 @@ proc applyGsubFeatures*(buf: var Buffer, gsub: GsubData, scriptTag,
 
 proc gposFeaturesFor*(gpos: GposData, scriptTag, langTag: Tag): seq[
     tuple[tag: uint32, lookups: seq[uint16]]] =
+  ## Lists GPOS features with lookups; kept for compat, off the hot path.
   let si = findScriptGpos(gpos, scriptTag)
   if si.isNone:
     return @[]
@@ -158,6 +168,7 @@ proc applyGposFeatures*(buf: var Buffer, gpos: GposData, scriptTag,
     langTag: Tag, features: openArray[Feature], scale: Scale,
     store: VarStore = VarStore(),
     coords: seq[float32] = @[]) =
+  ## Applies requested GPOS features with fresh masks.
   if features.len == 0:
     return
   let langOpt = gposLangSys(gpos, scriptTag, langTag)

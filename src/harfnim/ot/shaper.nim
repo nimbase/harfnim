@@ -38,9 +38,11 @@ proc gsubScriptTagFor*(gsub: GsubData, scriptTag: Tag): Option[Tag] =
   none(Tag)
 
 proc isDfltOrLatn(t: Tag): bool =
+  # True for DFLT or latn script records.
   t == defaultScriptTag() or t == tagFromStr("latn")
 
 proc isIndy3(t: Tag): bool =
+  # True for xxx3 Indic script records routed to USE.
   (t.toU32() and 0xFFu32) == 0x33u32
 
 proc categorizeShaper*(script: Option[Script], isHorizontal: bool,

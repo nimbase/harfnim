@@ -14,19 +14,28 @@ export sfnt
 
 type
   KernPair* = tuple[left, right: uint16, value: int32]
+    ## One kerning pair with its adjustment.
 
   KernSubtable* = object
+    ## Format 0 kerning subtable.
     horizontal*: bool
+    ## True for horizontal text.
     crossStream*: bool
+    ## True for cross stream kerning.
     pairs*: seq[KernPair]
+    ## Sorted kerning pairs.
 
   KernData* = object
+    ## Parsed kern table.
     subtables*: seq[KernSubtable]
+    ## Format 0 subtables.
 
 const TagKern = 0x6B65726Eu32
+    # kern table tag.
 
 proc parseKernPairs(bytes: openArray[uint8], off, count,
     tableEnd: int): seq[KernPair] =
+  # Parses and sorts one pair array.
   result = @[]
   if off < 0 or count < 0 or off + count * 6 > tableEnd or
       off + count * 6 > bytes.len:
@@ -46,6 +55,7 @@ proc parseKernPairs(bytes: openArray[uint8], off, count,
     result[j] = cur
 
 proc kernValueAt*(sub: KernSubtable, left, right: uint32): int32 =
+  ## Binary searches the pair value; zero on miss.
   if left > 0xFFFFu32 or right > 0xFFFFu32 or sub.pairs.len == 0:
     return 0i32
   let l = uint16(left)
@@ -64,6 +74,7 @@ proc kernValueAt*(sub: KernSubtable, left, right: uint32): int32 =
   0i32
 
 proc parseKernTable*(bytes: openArray[uint8], off: int): KernData =
+  ## Parses MS and Apple kern layouts, skipping other formats.
   if off + 4 > bytes.len:
     raise newException(FontError, "short kern header")
   let v0 = readU16(bytes, off)
@@ -142,6 +153,7 @@ proc parseKernTable*(bytes: openArray[uint8], off: int): KernData =
       pos += length
 
 proc parseKern*(f: SfntFont): Option[KernData] =
+  ## Parses the kern table, none when absent or malformed.
   let (ok, off, len) = f.tableData(TagKern)
   if not ok or len < 4:
     return none(KernData)

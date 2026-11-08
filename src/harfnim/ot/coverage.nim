@@ -4,27 +4,41 @@ import ../sfnt
 
 type
   CoverageRange* = tuple[first, last, index: uint32]
+    ## One coverage range with its starting index.
 
   Coverage* = object
+    ## Glyph coverage set.
     glyphs*: seq[uint32]
+    ## Sorted glyph list for formats 1 and 3.
     ranges*: seq[CoverageRange]
+    ## Sorted ranges for formats 2 and 4.
     present*: bool
+    ## False for the empty sentinel.
 
   ClassRange* = tuple[first, last, classId: uint32]
+    ## One class definition range.
 
   ClassDef* = object
+    ## Glyph class assignment.
     start*: uint32
+    ## First glyph id for the values list.
     classes*: seq[uint32]
+    ## Per glyph classes for formats 1 and 3.
     ranges*: seq[ClassRange]
+    ## Class ranges for formats 2 and 4.
     isNone*: bool
+    ## True for the empty sentinel.
 
 proc noCoverage*(): Coverage =
+  ## Returns the empty coverage sentinel.
   Coverage(glyphs: @[], ranges: @[], present: false)
 
 proc noClassDef*(): ClassDef =
+  ## Returns the empty class definition sentinel.
   ClassDef(start: 0u32, classes: @[], ranges: @[], isNone: true)
 
 proc parseClassDef*(bytes: openArray[uint8], off: int): ClassDef =
+  ## Parses formats 1 to 4, yielding empty on malformed input.
   if off <= 0 or off + 2 > bytes.len:
     return noClassDef()
   let format = readU16(bytes, off)
@@ -80,6 +94,7 @@ proc parseClassDef*(bytes: openArray[uint8], off: int): ClassDef =
     noClassDef()
 
 proc classOf*(c: ClassDef, gid: uint32): uint32 =
+  ## Looks up the class, defaulting to zero.
   if c.isNone or gid > 0xFFFFFFu32:
     return 0u32
   if c.classes.len > 0 or c.ranges.len == 0:
@@ -103,6 +118,7 @@ proc classOf*(c: ClassDef, gid: uint32): uint32 =
   0u32
 
 proc parseCoverage*(bytes: openArray[uint8], off: int): Coverage =
+  ## Parses formats 1 to 4, yielding empty on malformed input.
   if off < 0 or off + 4 > bytes.len:
     return noCoverage()
   let format = readU16(bytes, off)
@@ -180,6 +196,7 @@ proc coverageIndexRaw*(c: Coverage, gid: uint32): int =
   -1
 
 proc coverageIndex*(c: Coverage, gid: uint32): Option[uint32] =
+  ## Coverage index, none on miss.
   let idx = c.coverageIndexRaw(gid)
   if idx < 0:
     none(uint32)
@@ -187,4 +204,5 @@ proc coverageIndex*(c: Coverage, gid: uint32): Option[uint32] =
     some(uint32(idx))
 
 proc covers*(c: Coverage, gid: uint32): bool =
+  ## True when the glyph is covered.
   c.coverageIndexRaw(gid) >= 0
