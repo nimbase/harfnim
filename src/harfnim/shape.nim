@@ -36,18 +36,24 @@ export tag
 
 type
   ShapePlan* = object
+    ## Reusable shaping plan.
     scriptTag*: Tag
+    ## OpenType script tag.
     langTag*: Tag
+    ## OpenType language tag.
     features*: seq[Feature]
+    ## Requested features.
 
 proc newShapePlan*(scriptTag, langTag: Tag,
     features: openArray[Feature]): ShapePlan =
+  ## Builds a shaping plan, copying the feature list.
   var feats = newSeq[Feature](features.len)
   for i in 0 ..< features.len:
     feats[i] = features[i]
   ShapePlan(scriptTag: scriptTag, langTag: langTag, features: feats)
 
 proc scriptTagForBuffer(b: Buffer): Tag =
+  # Derives the script tag, defaulting when the script is unknown.
   if b.script.isSome:
     # TODO: full ISO 15924 to OpenType script-tag mapping (harfrust
     # hb_ot_tag_from_script has special cases); lowercasing covers
@@ -87,6 +93,7 @@ proc formClusters(b: var Buffer) =
     i = j
 
 proc insertDottedCircle(b: var Buffer) =
+  # Inserts a dotted circle before a leading mark.
   if b.isEmpty():
     return
   if b.flags.contains(DoNotInsertDottedCircle):
@@ -108,6 +115,7 @@ proc insertDottedCircle(b: var Buffer) =
   b.info[0].initUnicodeProps(scratch)
 
 proc setBaseAdvances(b: var Buffer, sf: ShaperFont) =
+  # Sets base advances from scaled font metrics.
   if b.direction.isHorizontal():
     for i in 0 ..< b.len:
       if i < b.info.len and i < b.pos.len:
@@ -132,16 +140,27 @@ export maskbits
 
 type
   ArabicMasks* = object
+    ## Precomputed Arabic feature masks.
     actions*: array[8, uint32]
+    ## Joining action masks.
     stchMask*, stchVal*: uint32
+    ## stch mask and value.
     ccmpMask*, ccmpVal*: uint32
+    ## ccmp mask and value.
     loclMask*, loclVal*: uint32
+    ## locl mask and value.
     rligMask*, rligVal*: uint32
+    ## rlig mask and value.
     caltMask*, caltVal*: uint32
+    ## calt mask and value.
     ligaMask*, ligaVal*: uint32
+    ## liga mask and value.
     cligMask*, cligVal*: uint32
+    ## clig mask and value.
     msetMask*, msetVal*: uint32
+    ## mset mask and value.
     nextBit*: uint32
+    ## Next free mask bit.
 
 proc prepareArabicMasks*(buf: var Buffer): ArabicMasks =
   ## Allocates arabic masks and runs joining on codepoints. Call before
@@ -400,6 +419,7 @@ proc applyDefaultGpos*(buf: var Buffer, gpos: GposData, scriptTag,
     buf.applyPosLookups(gpos, lks, m, scale, store, coords)
 
 proc zeroMarkWidths*(buf: var Buffer, adjust: bool) =
+  ## Zeroes mark advances, shifting offsets when adjusting.
   let horiz = buf.direction.isHorizontal()
   for i in 0 ..< min(buf.len, buf.info.len):
     if i >= buf.pos.len:
@@ -414,6 +434,7 @@ proc zeroMarkWidths*(buf: var Buffer, adjust: bool) =
       buf.pos[i].yAdvance = 0i32
 
 proc recategorizeMarks*(buf: var Buffer) =
+  ## Buckets stray combining classes into above or below.
   for i in 0 ..< min(buf.len, buf.info.len):
     if buf.info[i].generalCategory() == GcNonSpacingMark:
       var c = buf.info[i].modifiedCombiningClass()
@@ -528,10 +549,12 @@ proc fallbackPositionMarks*(buf: var Buffer, sf: ShaperFont) =
 
 proc shapePlan*(font: ShaperFont, buf: var Buffer,
     features: openArray[Feature]): ShapePlan =
+  ## Guesses segment properties and builds a plan.
   buf.guessSegmentProperties()
   newShapePlan(scriptTagForBuffer(buf), langTagForBuffer(buf), features)
 
 proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
+  ## Shapes with a prebuilt plan.
   buf.guessSegmentProperties()
   let sf = font
   # Layout tables are parsed before normalization: shaper selection
@@ -696,5 +719,6 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
 
 proc shape*(font: ShaperFont, buf: var Buffer,
     features: openArray[Feature] = []) =
+  ## Plans and shapes in one call.
   let plan = shapePlan(font, buf, features)
   shapeWithPlan(font, buf, plan)
