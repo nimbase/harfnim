@@ -495,7 +495,7 @@ proc parseCff*(bytes: seq[uint8], cffOff, cffLen: int,
 # Per-glyph resolution
 # ---------------------------------------------------------------------------
 
-proc fdFor(f: CffFont, gid: int): tuple[ok: bool, fd: int] =
+proc fdFor*(f: CffFont, gid: int): tuple[ok: bool, fd: int] =
   let bytes = f.bytes
   if f.fdSelectOff < 0 or f.fdSelectOff + 1 > f.limit:
     return (false, 0)
