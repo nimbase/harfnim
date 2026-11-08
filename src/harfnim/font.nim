@@ -22,11 +22,17 @@ type
     ## per parsed font and parsing ignores the variation location
     ## (applied later from `varCoords`), so no invalidation is needed.
     gsubDone*: bool
+    ## True once GSUB parsing was attempted.
     gsub*: Option[GsubData]
+    ## Parsed GSUB table, if present.
     gposDone*: bool
+    ## True once GPOS parsing was attempted.
     gpos*: Option[GposData]
+    ## Parsed GPOS table, if present.
     kernDone*: bool
+    ## True once kern parsing was attempted.
     kern*: Option[KernData]
+    ## Parsed kern table, if present.
 
   ShaperFont* = ref object
     ## Shaper handle over a parsed font (HarfBuzz `hb_font_t` equivalent).
@@ -35,15 +41,22 @@ type
     ## `setVariations` mutate the shared object, so callers needing
     ## isolation must create separate shapers via `newShaperFont`.
     font*: SfntFont
+    ## Parsed font.
     unitsPerEm*: uint16
+    ## Design units per em.
     scale*: Scale
+    ## Active scale.
     outlineCache*: OutlineCache
+    ## Shared outline cache.
     layout*: LayoutTables
+    ## Shared layout table cache.
     varCoords*: seq[float32]
+    ## Normalized variation coordinates.
     # TODO: FontFuncs overrides (custom nominal/metrics callbacks)
     # TODO: cmap cache
 
 proc newShaperFont*(font: SfntFont): ShaperFont =
+  ## Creates a shaper handle over a parsed font.
   ShaperFont(
     font: font,
     unitsPerEm: font.unitsPerEm,
@@ -83,9 +96,11 @@ proc cachedKern*(f: ShaperFont): Option[KernData] =
   f.layout.kern
 
 proc setScale*(f: var ShaperFont, scale: int32) =
+  ## Sets uniform scale from font units.
   f.scale = newScale(scale, scale, int32(f.unitsPerEm))
 
 proc setScaleSeparate*(f: var ShaperFont, xScale, yScale: int32) =
+  ## Sets separate horizontal and vertical scales.
   f.scale = newScale(xScale, yScale, int32(f.unitsPerEm))
 
 proc setVariations*(f: var ShaperFont,
@@ -99,13 +114,16 @@ proc setVariations*(f: var ShaperFont,
   f.outlineCache = newOutlineCache(f.outlineCache.maxItems)
 
 proc normalizedCoords*(f: ShaperFont): seq[float32] =
+  ## Returns the normalized variation coordinates.
   f.varCoords
 
 proc nominalGlyph*(f: ShaperFont, cp: uint32): Option[GlyphId] =
+  ## Maps a codepoint to its nominal glyph.
   f.font.mapUnicode(cp)
 
 proc nominalGlyphs*(f: ShaperFont, infos: var seq[GlyphInfo], first,
     last: int): int =
+  ## Maps a range of codepoints, returning the mapped count.
   result = 0
   for i in first ..< last:
     if i < 0 or i >= infos.len:
@@ -117,14 +135,17 @@ proc nominalGlyphs*(f: ShaperFont, infos: var seq[GlyphInfo], first,
     inc result
 
 proc variationGlyph*(f: ShaperFont, base, selector: uint32): Option[GlyphId] =
+  ## Maps a base plus variation selector pair.
   f.font.mapUnicodeVariant(base, selector)
 
 proc hAdvance*(f: ShaperFont, gid: GlyphId): int32 =
+  ## Scaled horizontal advance with variation deltas.
   let base = f.font.hAdvance(gid.value) +
     f.font.hAdvanceDelta(gid.value, f.varCoords)
   f.scale.clampXAdvance(f.scale.scaleX(base))
 
 proc vAdvance*(f: ShaperFont, gid: GlyphId): int32 =
+  ## Scaled vertical advance with variation deltas.
   let base = f.font.vAdvance(gid.value) +
     f.font.vAdvanceDelta(gid.value, f.varCoords)
   let v = f.scale.clampYAdvance(f.scale.scaleY(base))
@@ -168,6 +189,7 @@ proc glyphOutline*(f: ShaperFont, gid: GlyphId): Option[GlyphOutline] =
 
 proc glyphBoundsComputedCached*(f: ShaperFont,
     gid: GlyphId): Option[tuple[xMin, yMin, xMax, yMax: int32]] =
+  ## Outline bounds from the cache, decoding on miss.
   let o = f.glyphOutline(gid)
   if o.isNone:
     return none(tuple[xMin, yMin, xMax, yMax: int32])
@@ -181,6 +203,7 @@ proc isVaried*(f: ShaperFont): bool =
   false
 
 proc glyphExtents*(f: ShaperFont, gid: GlyphId): Option[GlyphExtents] =
+  ## Scaled extents, preferring the header box over decoded bounds.
   if not f.isVaried() or not f.font.hasGvar():
     let b = f.font.glyphBoundsUnscaled(gid.value)
     if b.isSome:
@@ -198,9 +221,11 @@ proc glyphExtents*(f: ShaperFont, gid: GlyphId): Option[GlyphExtents] =
     width: xMax - xMin, height: yMin - yMax)))
 
 proc hasGlyph*(f: ShaperFont, cp: uint32): bool =
+  ## True when the font maps the codepoint.
   f.nominalGlyph(cp).isSome
 
 proc normalizeContextFor*(f: ShaperFont): NormalizeContext =
+  ## Builds a normalize context bound to this font.
   let ff = f
   newNormalizeContext(
     nominalGlyph = proc(cp: uint32): Option[GlyphId] = ff.nominalGlyph(cp),

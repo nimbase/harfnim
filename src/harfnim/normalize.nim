@@ -4,31 +4,52 @@ import ./buffer
 import ./unicode
 
 const MaxCombiningMarks* = 32
+    ## Maximum combining marks per starter.
 
 type
   NormalizationMode* = enum
+    ## Unicode normalization preference.
     nmNone
+    ## No normalization.
     nmDecomposed
+    ## Full decomposition.
     nmComposedDiacritics
+    ## Composition with short circuit.
     nmComposedDiacriticsNoShortCircuit
+    ## Composition without short circuit.
     nmAuto
+    ## Shaper default.
 
   DecomposeFn* = proc(ab: uint32): Option[tuple[a, b: uint32]] {.closure.}
+    ## Decomposition callback.
   ComposeFn* = proc(a, b: uint32): Option[uint32] {.closure.}
+    ## Composition callback.
   ReorderMarksFn* = proc(buf: var Buffer, first, last: int) {.closure.}
+    ## Mark reorder callback.
   NominalGlyphFn* = proc(cp: uint32): Option[GlyphId] {.closure.}
+    ## Nominal glyph callback.
   NominalGlyphsFn* = proc(infos: var seq[GlyphInfo], first, last: int): int {.closure.}
+    ## Bulk nominal glyph callback.
   VariationGlyphFn* = proc(base, selector: uint32): Option[GlyphId] {.closure.}
+    ## Variation glyph callback.
 
   NormalizeContext* = object
+    ## Font callbacks for normalization.
     nominalGlyph*: NominalGlyphFn
+    ## Nominal glyph callback.
     nominalGlyphs*: NominalGlyphsFn
+    ## Bulk nominal glyph callback.
     variationGlyph*: VariationGlyphFn
+    ## Variation glyph callback.
     decomposeFn*: DecomposeFn
+    ## Decomposition callback.
     composeFn*: ComposeFn
+    ## Composition callback.
     reorderMarks*: Option[ReorderMarksFn]
+    ## Optional mark reorder callback.
 
 proc defaultDecompose(ab: uint32): Option[tuple[a, b: uint32]] =
+  # Default decomposition via the Unicode tables.
   let d = decomposeImpl(ab)
   if d.isNone:
     none(tuple[a, b: uint32])
@@ -36,6 +57,7 @@ proc defaultDecompose(ab: uint32): Option[tuple[a, b: uint32]] =
     some(d.get)
 
 proc defaultCompose(a, b: uint32): Option[uint32] =
+  # Default composition via the Unicode tables.
   composeImpl(a, b)
 
 proc newNormalizeContext*(
@@ -46,6 +68,7 @@ proc newNormalizeContext*(
     compose: Option[ComposeFn] = none(ComposeFn),
     reorderMarks: Option[ReorderMarksFn] = none(ReorderMarksFn),
 ): NormalizeContext =
+  ## Builds a normalize context, filling default callbacks.
   NormalizeContext(
     nominalGlyph: nominalGlyph,
     nominalGlyphs: nominalGlyphs,
@@ -56,6 +79,7 @@ proc newNormalizeContext*(
   )
 
 proc outputChar(buf: var Buffer, unichar, glyph: uint32) =
+  # Emits one normalized character plus its glyph index.
   let cur = buf.cur(0)
   if cur == nil:
     buf.indexFailed()
@@ -71,6 +95,7 @@ proc outputChar(buf: var Buffer, unichar, glyph: uint32) =
   buf.scratchFlags = flags
 
 proc nextChar(buf: var Buffer, glyph: uint32) =
+  # Advances past one character with its glyph index.
   let cur = buf.cur(0)
   if cur == nil:
     buf.indexFailed()
@@ -79,9 +104,11 @@ proc nextChar(buf: var Buffer, glyph: uint32) =
   buf.nextGlyph()
 
 proc skipChar(buf: var Buffer) =
+  # Skips one character.
   buf.skipGlyph()
 
 proc setCurrentGlyph(ctx: NormalizeContext, buf: var Buffer) =
+  # Attaches the nominal glyph index to the current character.
   let cur = buf.cur(0)
   if cur == nil:
     buf.indexFailed()
@@ -92,6 +119,7 @@ proc setCurrentGlyph(ctx: NormalizeContext, buf: var Buffer) =
 
 proc decomposeRec(ctx: NormalizeContext, buf: var Buffer, shortest: bool,
     ab: uint32): uint32 =
+  # Recursively decomposes, returning the emitted count.
   let d = ctx.decomposeFn(ab)
   if d.isNone:
     return 0
@@ -126,6 +154,7 @@ proc decomposeRec(ctx: NormalizeContext, buf: var Buffer, shortest: bool,
 
 proc decomposeCurrentCharacter(ctx: NormalizeContext, buf: var Buffer,
     shortest: bool) =
+  # Decomposes the current character with space fallbacks.
   let cur = buf.cur(0)
   if cur == nil:
     buf.indexFailed()
@@ -166,6 +195,7 @@ proc decomposeCurrentCharacter(ctx: NormalizeContext, buf: var Buffer,
 
 proc handleVariationSelectorCluster(ctx: NormalizeContext, buf: var Buffer,
     stop: int) =
+  # Resolves variation selector clusters, falling back when unmapped.
   while buf.idx < stop - 1 and buf.successful:
     let n1 = buf.cur(1)
     if n1 == nil or not isVariationSelector(n1[].asCodepoint()):
@@ -213,6 +243,7 @@ proc handleVariationSelectorCluster(ctx: NormalizeContext, buf: var Buffer,
 
 proc decomposeMultiCharCluster(ctx: NormalizeContext, buf: var Buffer,
     stop: int, shortCircuit: bool) =
+  # Decomposes a starter plus mark cluster.
   var i = buf.idx
   while i < stop and buf.successful:
     if i < buf.info.len and
@@ -224,10 +255,12 @@ proc decomposeMultiCharCluster(ctx: NormalizeContext, buf: var Buffer,
     decomposeCurrentCharacter(ctx, buf, shortCircuit)
 
 proc compareCombiningClass(a, b: GlyphInfo): bool =
+  # Orders marks by descending combining class for the stable sort.
   a.modifiedCombiningClass() > b.modifiedCombiningClass()
 
 proc normalize*(buf: var Buffer, mode: NormalizationMode, hasGposMark: bool,
     ctx: NormalizeContext) =
+  ## Runs the shaping normalizer: decompose, reorder, compose.
   if buf.isEmpty():
     return
   var resolved = mode
