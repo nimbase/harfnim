@@ -9,6 +9,7 @@ import ./sfnt
 
 proc normalizeCoords*(axes: seq[FvarAxis], avar: seq[seq[AvarSegment]],
     vars: openArray[tuple[tag: uint32, value: float32]]): seq[float32] =
+  ## Normalizes user values to [-1, 1], ignoring unknown tags.
   result = newSeq[float32](axes.len)
   for i, axis in axes:
     var v = 0.0f32
