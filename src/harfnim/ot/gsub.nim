@@ -28,105 +28,187 @@ const
 
 type
   LangSys* = object
+    ## Language system with its feature list.
     requiredFeature*: uint16
+    ## Required feature index or 0xFFFF.
     featureIndices*: seq[uint16]
+    ## Feature indices for this language.
 
   ScriptTable* = object
+    ## Script record with language systems.
     defaultLang*: Option[LangSys]
+    ## Default language system.
     langSys*: seq[tuple[tag: uint32, lang: LangSys]]
+    ## Named language systems.
 
   SingleSubstKind* = enum
+    ## Single substitution storage.
     ssDelta
+    ## Delta offset form.
     ssArray
+    ## Explicit substitute list form.
 
   SingleSubst* = object
+    ## Single glyph substitution.
+    ## Discriminated by kind.
     coverage*: Coverage
+    ## Covered first glyphs.
     wide*: bool
+    ## True for 24 bit ids.
     case kind*: SingleSubstKind
     of ssDelta:
       delta*: int32
+      ## Delta added to the glyph id.
     of ssArray:
       substitutes*: seq[uint32]
+      ## Substitute per coverage index.
 
   MultipleSubst* = object
+    ## One to many substitution.
     coverage*: Coverage
+    ## Covered first glyphs.
     sequences*: seq[seq[uint32]]
+    ## Replacement sequences per coverage index.
 
   AlternateSubst* = object
+    ## Alternate substitution.
     coverage*: Coverage
+    ## Covered first glyphs.
     sets*: seq[seq[uint32]]
+    ## Alternate sets per coverage index.
 
   Ligature* = object
+    ## One ligature entry.
     ligGlyph*: uint32
+    ## Ligature glyph id.
     components*: seq[uint32]
+    ## Component glyph ids after the first.
 
   LigatureSubst* = object
+    ## Ligature substitution set.
     coverage*: Coverage
+    ## Covered first components.
     sets*: seq[seq[Ligature]]
+    ## Ligature sets per coverage index.
 
   GsubLookupKind* = enum
+    ## GSUB subtable kind.
     lkSingle
+    ## Single substitution.
     lkMultiple
+    ## Multiple substitution.
     lkAlternate
+    ## Alternate substitution.
     lkLigature
+    ## Ligature substitution.
     lkContext
+    ## Contextual substitution.
     lkChain
+    ## Chained contextual substitution.
     lkReverse
+    ## Reverse chaining substitution.
     lkOther
+    ## Unsupported lookup type.
 
   LookupEntry* = tuple[kind: GsubLookupKind, index: int]
+    ## Subtable reference in application order.
 
   LookupRecord* = tuple[seqIndex: uint16, lookupIndex: uint16]
+    ## Nested lookup applied at a match position.
 
   ContextRule* = object
+    ## Sequence context rule.
     input*: seq[uint32]
+    ## Input glyphs after the first.
     records*: seq[LookupRecord]
+    ## Nested lookups.
 
   ChainRule* = object
+    ## Chained context rule.
     backtrack*: seq[uint32]
+    ## Backtrack glyphs, nearest first.
     input*: seq[uint32]
+    ## Input glyphs after the first.
     lookahead*: seq[uint32]
+    ## Lookahead glyphs.
     records*: seq[LookupRecord]
+    ## Nested lookups.
 
   ContextSubst* = object
+    ## Sequence context substitution.
     format*: uint16
+    ## Table format 1 to 6.
     coverage*: Coverage
+    ## First glyph coverage.
     classDef*: ClassDef
+    ## Input class definition for format 2 and 5.
     ruleSets*: seq[seq[ContextRule]]
+    ## Rule sets per coverage index or class.
     coverages*: seq[Coverage]
+    ## Per position coverages for format 3 and 6.
     records*: seq[LookupRecord]
+    ## Nested lookups for format 3 and 6.
 
   ChainContextSubst* = object
+    ## Chained context substitution.
     format*: uint16
+    ## Table format 1 to 6.
     coverage*: Coverage
+    ## First glyph coverage.
     backtrackClassDef*: ClassDef
+    ## Backtrack class definition.
     inputClassDef*: ClassDef
+    ## Input class definition.
     lookaheadClassDef*: ClassDef
+    ## Lookahead class definition.
     ruleSets*: seq[seq[ChainRule]]
+    ## Rule sets per coverage index or class.
     backtrackCoverages*: seq[Coverage]
+    ## Per position backtrack coverages.
     inputCoverages*: seq[Coverage]
+    ## Per position input coverages.
     lookaheadCoverages*: seq[Coverage]
+    ## Per position lookahead coverages.
     records*: seq[LookupRecord]
+    ## Nested lookups for format 3.
 
   ReverseChainSubst* = object
+    ## Reverse chaining single substitution.
     coverage*: Coverage
+    ## Current glyph coverage.
     backtrackCoverages*: seq[Coverage]
+    ## Per position backtrack coverages.
     lookaheadCoverages*: seq[Coverage]
+    ## Per position lookahead coverages.
     substitutes*: seq[uint32]
+    ## Substitute per coverage index.
 
   Lookup* = object
+    ## One lookup with flattened extension subtables.
     lookupType*: uint16
+    ## OpenType lookup type.
     lookupFlag*: uint16
+    ## Lookup flags.
     markFilteringSet*: uint16
+    ## Mark filtering set index.
     isReverse*: bool
+    ## True for reverse chaining lookups.
     singleSubsts*: seq[SingleSubst]
+    ## Single substitution subtables.
     multipleSubsts*: seq[MultipleSubst]
+    ## Multiple substitution subtables.
     alternateSubsts*: seq[AlternateSubst]
+    ## Alternate substitution subtables.
     ligatureSubsts*: seq[LigatureSubst]
+    ## Ligature substitution subtables.
     contextSubsts*: seq[ContextSubst]
+    ## Context substitution subtables.
     chainSubsts*: seq[ChainContextSubst]
+    ## Chained context subtables.
     reverseSubsts*: seq[ReverseChainSubst]
+    ## Reverse chaining subtables.
     order*: seq[LookupEntry]
+    ## Subtables in application order.
 
   GsubData* = ref object
     ## Parsed GSUB table. A ref so shaping passes a pointer instead of
@@ -134,21 +216,29 @@ type
     ## copies). All shapes through one ShaperFont share the handle, and
     ## deferred lookup bodies fill the cache on first use.
     scripts*: seq[tuple[tag: uint32, script: ScriptTable]]
+    ## Script records.
     features*: seq[tuple[tag: uint32, lookups: seq[uint16]]]
+    ## Features with lookup indices.
     lookups*: seq[Lookup]
+    ## Lookup cache, filled on demand.
     ## On-demand lookup cache. `parseGsubTable` (raw bytes) parses
     ## eagerly; `parseGsub` (font) parses scripts and features eagerly
     ## but defers lookup bodies until first use. Direct `.lookups[]`
     ## indexing bypasses the cache: use `getGsubLookup` so placeholders
     ## get parsed before use.
     font*: SfntFont
+    ## Font keeping table bytes alive.
     lookupBase*: int
+    ## Lookup list base offset.
     offsets*: seq[int]
+    ## Per lookup table offsets.
     parsed*: seq[bool]
+    ## Per lookup parse state.
 
 const TagGsub = 0x47535542u32
 
 proc parseLangSys*(bytes: openArray[uint8], off: int): LangSys =
+  ## Parses one language system record.
   if off + 6 > bytes.len:
     raise newException(FontError, "short LangSys table")
   let featureCount = int(readU16(bytes, off + 4))
@@ -160,6 +250,7 @@ proc parseLangSys*(bytes: openArray[uint8], off: int): LangSys =
   LangSys(requiredFeature: readU16(bytes, off + 2), featureIndices: indices)
 
 proc parseScriptTable*(bytes: openArray[uint8], off: int): ScriptTable =
+  ## Parses one script table.
   if off + 4 > bytes.len:
     raise newException(FontError, "short Script table")
   let defaultOff = int(readU16(bytes, off))
@@ -179,6 +270,7 @@ proc parseScriptTable*(bytes: openArray[uint8], off: int): ScriptTable =
 
 proc parseScriptList*(bytes: openArray[uint8],
     off: int): seq[tuple[tag: uint32, script: ScriptTable]] =
+  ## Parses the script list.
   if off + 2 > bytes.len:
     raise newException(FontError, "short ScriptList")
   let scriptCount = int(readU16(bytes, off))
@@ -192,6 +284,7 @@ proc parseScriptList*(bytes: openArray[uint8],
 
 proc parseFeatureList*(bytes: openArray[uint8],
     off: int): seq[tuple[tag: uint32, lookups: seq[uint16]]] =
+  ## Parses the feature list.
   if off + 2 > bytes.len:
     raise newException(FontError, "short FeatureList")
   let featureCount = int(readU16(bytes, off))
@@ -212,6 +305,7 @@ proc parseFeatureList*(bytes: openArray[uint8],
     result.add((readU32(bytes, base), lookups))
 
 proc parseSingleSubst*(bytes: openArray[uint8], off: int): SingleSubst =
+  ## Parses formats 1 and 2 plus wide 3 and 4.
   if off + 4 > bytes.len:
     raise newException(FontError, "short SingleSubst table")
   let format = readU16(bytes, off)
@@ -263,6 +357,7 @@ proc parseSingleSubst*(bytes: openArray[uint8], off: int): SingleSubst =
     raise newException(FontError, "unsupported SingleSubst format")
 
 proc parseMultipleSubst(bytes: openArray[uint8], off: int): MultipleSubst =
+  # Parses a multiple substitution subtable.
   if off + 4 > bytes.len:
     raise newException(FontError, "short MultipleSubst table")
   let format = readU16(bytes, off)
@@ -312,6 +407,7 @@ proc parseMultipleSubst(bytes: openArray[uint8], off: int): MultipleSubst =
     raise newException(FontError, "unsupported MultipleSubst format")
 
 proc parseLigatureSubst(bytes: openArray[uint8], off: int): LigatureSubst =
+  # Parses a ligature substitution subtable.
   if off + 4 > bytes.len:
     raise newException(FontError, "short LigatureSubst table")
   let format = readU16(bytes, off)
@@ -381,6 +477,7 @@ proc parseLigatureSubst(bytes: openArray[uint8], off: int): LigatureSubst =
     raise newException(FontError, "unsupported LigatureSubst format")
 
 proc parseAlternateSubst(bytes: openArray[uint8], off: int): AlternateSubst =
+  # Parses an alternate substitution subtable.
   if off + 4 > bytes.len:
     raise newException(FontError, "short AlternateSubst table")
   let format = readU16(bytes, off)
@@ -431,6 +528,7 @@ proc parseAlternateSubst(bytes: openArray[uint8], off: int): AlternateSubst =
 
 proc parseLookupRecords(bytes: openArray[uint8], off: int,
     count: int): seq[LookupRecord] =
+  # Parses nested lookup records.
   if off < 0 or off + count * 4 > bytes.len:
     raise newException(FontError, "short SubstLookupRecord table")
   result = newSeq[LookupRecord](count)
@@ -439,6 +537,7 @@ proc parseLookupRecords(bytes: openArray[uint8], off: int,
 
 proc parseSeqValues(bytes: openArray[uint8], off: int,
     count: int): seq[uint32] =
+  # Parses a glyph id sequence.
   if off < 0 or off + count * 2 > bytes.len:
     raise newException(FontError, "short sequence rule table")
   result = newSeq[uint32](count)
@@ -447,6 +546,7 @@ proc parseSeqValues(bytes: openArray[uint8], off: int,
 
 proc parseSeqValues24(bytes: openArray[uint8], off: int,
     count: int): seq[uint32] =
+  # Parses a 24 bit glyph id sequence.
   if off < 0 or off + count * 3 > bytes.len:
     raise newException(FontError, "short sequence rule table")
   result = newSeq[uint32](count)
@@ -454,6 +554,7 @@ proc parseSeqValues24(bytes: openArray[uint8], off: int,
     result[i] = readU24(bytes, off + i * 3)
 
 proc parseContextRule(bytes: openArray[uint8], off: int): ContextRule =
+  # Parses one sequence rule.
   if off + 4 > bytes.len:
     raise newException(FontError, "short SequenceRule table")
   let glyphCount = int(readU16(bytes, off))
@@ -466,6 +567,7 @@ proc parseContextRule(bytes: openArray[uint8], off: int): ContextRule =
     records: parseLookupRecords(bytes, inputEnd, substCount))
 
 proc parseContextRuleWide(bytes: openArray[uint8], off: int): ContextRule =
+  # Parses one wide sequence rule.
   if off + 4 > bytes.len:
     raise newException(FontError, "short SequenceRule table")
   let glyphCount = int(readU16(bytes, off))
@@ -478,6 +580,7 @@ proc parseContextRuleWide(bytes: openArray[uint8], off: int): ContextRule =
     records: parseLookupRecords(bytes, inputEnd, substCount))
 
 proc parseChainRule(bytes: openArray[uint8], off: int): ChainRule =
+  # Parses one chained rule.
   if off + 2 > bytes.len:
     raise newException(FontError, "short ChainedSequenceRule table")
   let backCount = int(readU16(bytes, off))
@@ -502,6 +605,7 @@ proc parseChainRule(bytes: openArray[uint8], off: int): ChainRule =
     records: parseLookupRecords(bytes, lookEnd + 2, substCount))
 
 proc parseChainRuleWide(bytes: openArray[uint8], off: int): ChainRule =
+  # Parses one wide chained rule.
   if off + 2 > bytes.len:
     raise newException(FontError, "short ChainedSequenceRule table")
   let backCount = int(readU16(bytes, off))
@@ -527,6 +631,7 @@ proc parseChainRuleWide(bytes: openArray[uint8], off: int): ChainRule =
 
 proc parseContextRuleSet(bytes: openArray[uint8],
     setOff: int): seq[ContextRule] =
+  # Parses one sequence rule set.
   if setOff + 2 > bytes.len:
     raise newException(FontError, "short SequenceRuleSet table")
   let ruleCount = int(readU16(bytes, setOff))
@@ -541,6 +646,7 @@ proc parseContextRuleSet(bytes: openArray[uint8],
 
 proc parseContextRuleSetClassWide(bytes: openArray[uint8],
     setOff: int): seq[ContextRule] =
+  # Parses one wide class rule set.
   ## 24-bit rule offsets with 16-bit class values (Sequence/Chained
   ## Format5 inner for class rules).
   if setOff + 2 > bytes.len:
@@ -557,6 +663,7 @@ proc parseContextRuleSetClassWide(bytes: openArray[uint8],
 
 proc parseContextRuleSetNarrowWide(bytes: openArray[uint8],
     setOff: int): seq[ContextRule] =
+  # Parses one narrow wide rule set.
   ## Outer 24-bit offsets but inner 16-bit rule offsets with 24-bit
   ## values (Sequence Format4).
   if setOff + 2 > bytes.len:
@@ -572,6 +679,7 @@ proc parseContextRuleSetNarrowWide(bytes: openArray[uint8],
     result.add(parseContextRuleWide(bytes, setOff + roff))
 
 proc parseChainRuleSet(bytes: openArray[uint8], setOff: int): seq[ChainRule] =
+  # Parses one chained rule set.
   if setOff + 2 > bytes.len:
     raise newException(FontError, "short ChainedSequenceRuleSet table")
   let ruleCount = int(readU16(bytes, setOff))
@@ -586,6 +694,7 @@ proc parseChainRuleSet(bytes: openArray[uint8], setOff: int): seq[ChainRule] =
 
 proc parseChainRuleSetWide(bytes: openArray[uint8],
     setOff: int): seq[ChainRule] =
+  # Parses one wide chained rule set.
   ## 24-bit rule offsets with 24-bit values (Chained Format4/5).
   if setOff + 2 > bytes.len:
     raise newException(FontError, "short ChainedSequenceRuleSet table")
@@ -601,6 +710,7 @@ proc parseChainRuleSetWide(bytes: openArray[uint8],
 
 proc parseChainRuleSetClassWide(bytes: openArray[uint8],
     setOff: int): seq[ChainRule] =
+  # Parses one wide class chained rule set.
   ## 24-bit rule offsets with 16-bit class values (Chained Format5
   ## inner for class rules).
   if setOff + 2 > bytes.len:
@@ -617,6 +727,7 @@ proc parseChainRuleSetClassWide(bytes: openArray[uint8],
 
 proc parseCoverageList(bytes: openArray[uint8], base: int, off: int,
     count: int): seq[Coverage] =
+  # Parses a coverage list.
   if off < 0 or off + count * 2 > bytes.len:
     raise newException(FontError, "short coverage list")
   result = newSeq[Coverage](count)
@@ -629,6 +740,7 @@ proc parseCoverageList(bytes: openArray[uint8], base: int, off: int,
 
 proc parseCoverageList24(bytes: openArray[uint8], base: int, off: int,
     count: int): seq[Coverage] =
+  # Parses a 24 bit coverage list.
   if off < 0 or off + count * 3 > bytes.len:
     raise newException(FontError, "short coverage list")
   result = newSeq[Coverage](count)
@@ -640,6 +752,7 @@ proc parseCoverageList24(bytes: openArray[uint8], base: int, off: int,
       result[i] = parseCoverage(bytes, base + coff)
 
 proc parseContextSubst*(bytes: openArray[uint8], off: int): ContextSubst =
+  ## Parses sequence context formats 1 to 6.
   if off + 6 > bytes.len:
     raise newException(FontError, "short SequenceContext table")
   let format = readU16(bytes, off)
@@ -751,6 +864,7 @@ proc parseContextSubst*(bytes: openArray[uint8], off: int): ContextSubst =
 
 proc parseChainContextSubst*(bytes: openArray[uint8],
     off: int): ChainContextSubst =
+  ## Parses chained context formats 1 to 6.
   if off + 6 > bytes.len:
     raise newException(FontError, "short ChainedSequenceContext table")
   let format = readU16(bytes, off)
@@ -906,6 +1020,7 @@ proc parseChainContextSubst*(bytes: openArray[uint8],
 
 proc parseReverseChainSubst(bytes: openArray[uint8],
     off: int): ReverseChainSubst =
+  # Parses a reverse chaining substitution.
   if off + 6 > bytes.len:
     raise newException(FontError, "short ReverseChainSingleSubst table")
   let format = readU16(bytes, off)
@@ -973,6 +1088,7 @@ proc parseReverseChainSubst(bytes: openArray[uint8],
     raise newException(FontError, "unsupported ReverseChainSingleSubst format")
 
 proc parseLookup(bytes: openArray[uint8], tableOff, off: int): Lookup =
+  # Parses one lookup with extension flattening.
   let base = tableOff + off
   if base + 6 > bytes.len:
     raise newException(FontError, "short Lookup table")
@@ -1123,6 +1239,7 @@ proc getGsubLookup*(gsub: GsubData, idx: int): Lookup =
   lk
 
 proc parseGsubTable*(bytes: openArray[uint8], off: int): GsubData =
+  ## Parses the full GSUB table eagerly.
   if off + 10 > bytes.len:
     raise newException(FontError, "short GSUB header")
   let scriptOff = int(readU16(bytes, off + 4))
@@ -1177,6 +1294,7 @@ proc parseGsub*(f: SfntFont): Option[GsubData] =
 
 proc singleSubstitute*(sub: SingleSubst, gid: uint32,
     index: uint32): Option[uint32] =
+  ## Applies one single substitution, none on a bad index.
   case sub.kind
   of ssDelta:
     let mask = if sub.wide: 0xFFFFFFi32 else: 0xFFFFi32
