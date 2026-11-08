@@ -42,114 +42,197 @@ const
 
 type
   ValueRecord* = object
+    ## GPOS value record with variation indexes.
     format*: uint16
+    ## Value format bits.
     xPlacement*: int32
+    ## Horizontal placement.
     yPlacement*: int32
+    ## Vertical placement.
     xAdvance*: int32
+    ## Horizontal advance.
     yAdvance*: int32
+    ## Vertical advance.
     ## Per-value VariationIndex (outer << 16 | inner), in
     ## xPlacement/yPlacement/xAdvance/yAdvance order;
     ## NoVariationIndex when the value does not vary.
     varIndex*: array[4, uint32]
+    ## Per-value variation indexes.
 
   Anchor* = object
+    ## Attachment anchor point.
     format*: uint16
+    ## Anchor format.
     x*: int32
+    ## Horizontal position.
     y*: int32
+    ## Vertical position.
 
   SinglePos* = object
+    ## Single glyph positioning.
     coverage*: Coverage
+    ## Covered glyphs.
     format*: uint16
+    ## Value format.
     values*: seq[ValueRecord]
+    ## Adjustments per coverage index.
 
   PairValue* = tuple[first, second: ValueRecord]
+    ## Pair adjustments for first and second glyph.
 
   PairSet* = object
+    ## Pair positioning set for one first glyph.
     seconds*: seq[uint32]
+    ## Second glyph ids.
     values*: seq[PairValue]
+    ## Adjustments per second glyph.
 
   PairPos* = object
+    ## Pairwise kerning.
     coverage*: Coverage
+    ## Covered first glyphs.
     format*: uint16
+    ## Table format.
     format1*: uint16
+    ## First glyph value format.
     format2*: uint16
+    ## Second glyph value format.
     pairSets*: seq[PairSet]
+    ## Pair sets for format 1.
     classDef1*: ClassDef
+    ## First glyph classes for format 2.
     classDef2*: ClassDef
+    ## Second glyph classes for format 2.
     class1Count*: uint16
+    ## First class count.
     class2Count*: uint16
+    ## Second class count.
     matrix*: seq[PairValue]
+    ## Class pair matrix for format 2.
 
   GposLookupKind* = enum
+    ## GPOS subtable kind.
     pkSingle
+    ## Single positioning.
     pkPair
+    ## Pair positioning.
     pkCursive
+    ## Cursive attachment.
     pkMarkBase
+    ## Mark to base attachment.
     pkMarkLig
+    ## Mark to ligature attachment.
     pkMarkMark
+    ## Mark to mark attachment.
     pkContext
+    ## Contextual positioning.
     pkChain
+    ## Chained contextual positioning.
     pkOther
+    ## Unsupported positioning type.
 
   PosLookupEntry* = tuple[kind: GposLookupKind, index: int]
+    ## Subtable reference in application order.
 
   MarkSub* = object
     ## Mark-to-base / mark-to-mark shared layout: mark coverage drives the
     ## index, base coverage selects the attachment target.
     markCoverage*: Coverage
+    ## Covered marks.
     baseCoverage*: Coverage
+    ## Candidate bases.
     classCount*: uint16
+    ## Mark class count.
     markClasses*: seq[uint16]
+    ## Class per mark.
     markAnchors*: seq[Anchor]
+    ## Anchor per mark.
     baseCount*: int
+    ## Base count.
     baseAnchors*: seq[Anchor]
+    ## Anchors per base and class.
 
   LigSub* = object
+    ## Mark to ligature attachment.
     markCoverage*: Coverage
+    ## Covered marks.
     ligCoverage*: Coverage
+    ## Covered ligatures.
     classCount*: uint16
+    ## Mark class count.
     markClasses*: seq[uint16]
+    ## Class per mark.
     markAnchors*: seq[Anchor]
+    ## Anchor per mark.
     ligCount*: int
+    ## Ligature count.
     # Per-ligature component anchor rows, flattened with offsets.
     compOffsets*: seq[int]
+    ## Component anchor row offsets.
     compCounts*: seq[int]
+    ## Component counts per ligature.
     compAnchors*: seq[Anchor]
+    ## Component anchors.
 
   CursiveSub* = object
+    ## Cursive attachment.
     coverage*: Coverage
+    ## Covered glyphs.
     entryAnchors*: seq[Anchor]
+    ## Entry anchors.
     exitAnchors*: seq[Anchor]
+    ## Exit anchors.
 
   PosLookup* = object
+    ## One positioning lookup with flattened extensions.
     lookupType*: uint16
+    ## OpenType lookup type.
     lookupFlag*: uint16
+    ## Lookup flags.
     markFilteringSet*: uint16
+    ## Mark filtering set index.
     singlePos*: seq[SinglePos]
+    ## Single positioning subtables.
     pairPos*: seq[PairPos]
+    ## Pair positioning subtables.
     cursivePos*: seq[CursiveSub]
+    ## Cursive subtables.
     markBasePos*: seq[MarkSub]
+    ## Mark to base subtables.
     markLigPos*: seq[LigSub]
+    ## Mark to ligature subtables.
     markMarkPos*: seq[MarkSub]
+    ## Mark to mark subtables.
     contextPos*: seq[ContextSubst]
+    ## Context positioning subtables.
     chainPos*: seq[ChainContextSubst]
+    ## Chained context subtables.
     order*: seq[PosLookupEntry]
+    ## Subtables in application order.
 
   GposData* = ref object
     ## Parsed GPOS table. A ref so shaping passes a pointer instead of
     ## deep-copying parsed lookups per call (see GsubData). Deferred
     ## lookup bodies fill the cache on first use via `getGposLookup`.
     scripts*: seq[tuple[tag: uint32, script: ScriptTable]]
+    ## Script records.
     features*: seq[tuple[tag: uint32, lookups: seq[uint16]]]
+    ## Features with lookup indices.
     lookups*: seq[PosLookup]
+    ## Lookup cache, filled on demand.
     font*: SfntFont
+    ## Font keeping table bytes alive.
     lookupBase*: int
+    ## Lookup list base offset.
     offsets*: seq[int]
+    ## Per lookup table offsets.
     parsed*: seq[bool]
+    ## Per lookup parse state.
 
 const TagGpos = 0x47504F53u32
 
 proc valueRecordLen*(format: uint16): int =
+  ## Counts value bytes for a value format.
   var n = 0
   var f = format
   while f != 0u16:
@@ -213,6 +296,7 @@ proc parseValueRecord*(bytes: openArray[uint8], off: int,
     result.varIndex[k] = (outer shl 16) or inner
 
 proc parseAnchor*(bytes: openArray[uint8], off: int): Anchor =
+  ## Parses one anchor, format 0 when absent.
   if off <= 0 or off + 6 > bytes.len:
     return Anchor(format: 0u16)
   let format = readU16(bytes, off)
@@ -233,6 +317,7 @@ proc parseAnchor*(bytes: openArray[uint8], off: int): Anchor =
     Anchor(format: 0u16)
 
 proc parseSinglePos*(bytes: openArray[uint8], off: int): SinglePos =
+  ## Parses single positioning formats 1 and 2 plus wide 3 and 4.
   if off + 6 > bytes.len:
     raise newException(FontError, "short SinglePos table")
   let format = readU16(bytes, off)
@@ -293,6 +378,7 @@ proc parseSinglePos*(bytes: openArray[uint8], off: int): SinglePos =
 
 proc parsePairSet(bytes: openArray[uint8], off: int, format1,
     format2: uint16): PairSet =
+  # Parses one pair set.
   if off + 2 > bytes.len:
     raise newException(FontError, "short PairSet table")
   let count = int(readU16(bytes, off))
@@ -312,6 +398,7 @@ proc parsePairSet(bytes: openArray[uint8], off: int, format1,
 
 proc parsePairSet24(bytes: openArray[uint8], off: int, format1,
     format2: uint16): PairSet =
+  # Parses one 24 bit pair set.
   if off + 3 > bytes.len:
     raise newException(FontError, "short PairSet table")
   let count = int(readU24(bytes, off))
@@ -330,6 +417,7 @@ proc parsePairSet24(bytes: openArray[uint8], off: int, format1,
   PairSet(seconds: seconds, values: values)
 
 proc parsePairPos*(bytes: openArray[uint8], off: int): PairPos =
+  ## Parses pair positioning formats 1 and 2 plus wide 3 and 4.
   if off + 10 > bytes.len:
     raise newException(FontError, "short PairPos table")
   let format = readU16(bytes, off)
@@ -447,6 +535,7 @@ proc parsePairPos*(bytes: openArray[uint8], off: int): PairPos =
 proc parseMarkArray(bytes: openArray[uint8], off: int,
     markClasses, markAnchorOffs: var seq[uint16],
     outCount: var int) =
+  # Parses mark class and anchor offset arrays.
   if off + 2 > bytes.len:
     raise newException(FontError, "short MarkArray table")
   let count = int(readU16(bytes, off))
@@ -462,6 +551,7 @@ proc parseMarkArray(bytes: openArray[uint8], off: int,
 proc parseMarkArray24(bytes: openArray[uint8], off: int,
     markClasses: var seq[uint16], markAnchorOffs: var seq[int],
     outCount: var int) =
+  # Parses 24 bit mark class and anchor offset arrays.
   if off + 3 > bytes.len:
     raise newException(FontError, "short MarkArray table")
   let count = int(readU24(bytes, off))
@@ -475,6 +565,7 @@ proc parseMarkArray24(bytes: openArray[uint8], off: int,
   outCount = count
 
 proc parseMarkBase*(bytes: openArray[uint8], off: int): MarkSub =
+  ## Parses mark to base positioning.
   if off + 2 > bytes.len:
     raise newException(FontError, "short MarkBasePos table")
   let format = readU16(bytes, off)
@@ -566,6 +657,7 @@ proc parseMarkBase*(bytes: openArray[uint8], off: int): MarkSub =
     raise newException(FontError, "unsupported MarkBasePos format")
 
 proc parseMarkMark*(bytes: openArray[uint8], off: int): MarkSub =
+  ## Parses mark to mark positioning.
   if off + 2 > bytes.len:
     raise newException(FontError, "short MarkMarkPos table")
   let format = readU16(bytes, off)
@@ -660,6 +752,7 @@ proc parseMarkMark*(bytes: openArray[uint8], off: int): MarkSub =
 
 
 proc parseMarkLig*(bytes: openArray[uint8], off: int): LigSub =
+  ## Parses mark to ligature positioning.
   if off + 2 > bytes.len:
     raise newException(FontError, "short MarkLigPos table")
   let format = readU16(bytes, off)
@@ -783,6 +876,7 @@ proc parseMarkLig*(bytes: openArray[uint8], off: int): LigSub =
     raise newException(FontError, "unsupported MarkLigPos format")
 
 proc parseCursive*(bytes: openArray[uint8], off: int): CursiveSub =
+  ## Parses cursive attachment.
   if off + 6 > bytes.len:
     raise newException(FontError, "short CursivePos table")
   let format = readU16(bytes, off)
@@ -826,6 +920,7 @@ proc parseCursive*(bytes: openArray[uint8], off: int): CursiveSub =
     raise newException(FontError, "unsupported CursivePos format")
 
 proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
+  # Parses one positioning lookup with extension flattening.
   let base = tableOff + off
   if base + 6 > bytes.len:
     raise newException(FontError, "short Lookup table")
@@ -964,12 +1059,14 @@ proc parsePosLookup(bytes: openArray[uint8], tableOff, off: int): PosLookup =
     order: order)
 
 proc emptyPosLookup*(): PosLookup =
+  ## Placeholder for unreadable lookup slots.
   PosLookup(lookupType: 0u16, lookupFlag: 0u16, markFilteringSet: 0u16,
     singlePos: @[], pairPos: @[], cursivePos: @[], markBasePos: @[],
     markLigPos: @[], markMarkPos: @[], contextPos: @[], chainPos: @[],
     order: @[])
 
 proc gposLookupCount*(gpos: GposData): int =
+  ## Bounds for lookup indices.
   if gpos == nil:
     return 0
   gpos.lookups.len
@@ -989,6 +1086,7 @@ proc getGposLookup*(gpos: GposData, idx: int): PosLookup =
   lk
 
 proc parseGposTable*(bytes: openArray[uint8], off: int): GposData =
+  ## Parses the full GPOS table eagerly.
   if off + 10 > bytes.len:
     raise newException(FontError, "short GPOS header")
   let scriptOff = int(readU16(bytes, off + 4))
