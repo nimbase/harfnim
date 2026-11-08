@@ -24,27 +24,45 @@ export gsub
 
 type
   ArabicJoining* = enum
+    ## Arabic joining type.
     ajU = 0u8
+    ## Non joining.
     ajL = 1u8
+    ## Left joining.
     ajR = 2u8
+    ## Right joining.
     ajD = 3u8
+    ## Dual joining.
     ajAlaph = 4u8
+    ## Alaph joining.
     ajDalath = 5u8
+    ## Dalath Rish joining.
     ajT = 6u8
+    ## Transparent joining.
     ajX = 7u8
+    ## Unknown joining.
 
 const
   ArabicIsol* = 0u8
+    ## Isolated form.
   ArabicFina* = 1u8
+    ## Final form.
   ArabicFin2* = 2u8
+    ## Final form variant 2.
   ArabicFin3* = 3u8
+    ## Final form variant 3.
   ArabicMedi* = 4u8
+    ## Medial form.
   ArabicMed2* = 5u8
+    ## Medial form variant 2.
   ArabicInit* = 6u8
+    ## Initial form.
   ArabicNone* = 7u8
+    ## No joining form.
 
   ArabicFeatureTags*: array[7, string] = ["isol", "fina", "fin2", "fin3",
     "medi", "med2", "init"]
+    ## Feature tag per joining action.
 
 proc joiningTypeFor*(cp: uint32, gc: GeneralCategory): ArabicJoining =
   ## Looks up the joining type, defaulting non spacing marks.

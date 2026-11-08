@@ -17,9 +17,13 @@ import ./gsub
 
 type
   Consonant* = enum
+    ## Thai consonant class.
     Nc, Ac, Rc, Dc, NotConsonant
+    ## Normal, Ac, Rc, Dc, or other.
   Mark* = enum
+    ## Thai mark class.
     Av, Bv, T, NotMark
+    ## Above vowel, below vowel, tone, or other.
   AboveState = enum
     T0, T1, T2, T3
   BelowState = enum
