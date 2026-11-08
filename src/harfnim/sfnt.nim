@@ -11,26 +11,44 @@ type
   FontError* = object of CatchableError
 
   TableEntry* = object
+    ## Font table directory entry.
     tag*: uint32
+    ## Table tag.
     offset*: int
+    ## Byte offset of the table.
     length*: int
+    ## Byte length of the table.
 
   NameEntry* = object
+    ## Name table record.
     platformID*: uint16
+    ## Platform id.
     encodingID*: uint16
+    ## Encoding id.
     languageID*: uint16
+    ## Language id.
     nameID*: uint16
+    ## Name id.
     bytes*: seq[uint8]
+    ## Raw name bytes.
 
   FvarAxis* = object
+    ## Variable font axis.
     tag*: uint32
+    ## Axis tag.
     min*: float32
+    ## Minimum user value.
     default*: float32
+    ## Default user value.
     max*: float32
+    ## Maximum user value.
     hidden*: bool
+    ## True when the axis is hidden.
     nameID*: uint16
+    ## Name table id.
 
   AvarSegment* = tuple[fromV, toV: float32]
+    ## Avar remapping segment.
 
   SfntFont* = ref object
     ## Parsed font handle. A ref so copies share the (large) table bytes
@@ -38,25 +56,45 @@ type
     ## copy); the parsed data is immutable, so sharing is safe. The
     ## lazily filled `locaCache` rides along through copies.
     bytes*: seq[uint8]
+    ## Raw font bytes shared by copies.
     tables*: seq[TableEntry]
+    ## Table directory entries.
     unitsPerEm*: uint16
+    ## Design units per em.
     numGlyphs*: uint16
+    ## Glyph count.
     numHMetrics*: uint16
+    ## Horizontal metric count.
     locaFormat*: int16
+    ## Short or long loca offsets.
     hasVMetrics*: bool
+    ## True when vertical metrics exist.
     numVMetrics*: uint16
+    ## Vertical metric count.
     isSymbol*: bool
+    ## True for symbol encoded fonts.
     cmapOffset*: int
+    ## Selected cmap subtable offset.
     cmap14Offset*: int
+    ## Format 14 subtable offset or -1.
     names*: seq[NameEntry]
+    ## Name records.
     fvarAxes*: seq[FvarAxis]
+    ## Variation axes.
     avarMaps*: seq[seq[AvarSegment]]
+    ## Per-axis avar maps.
     hvarStore*: VarStore
+    ## Horizontal advance variation store.
     hvarAdvMap*: DeltaSetIndexMap
+    ## Horizontal advance index map.
     vvarStore*: VarStore
+    ## Vertical advance variation store.
     vvarAdvMap*: DeltaSetIndexMap
+    ## Vertical advance index map.
     gdefVarStore*: VarStore
+    ## GDEF item variation store.
     locaCache*: LocaCache
+    ## Lazily parsed loca offsets.
 
   LocaCache* = ref object
     ## Lazily parsed `loca` offsets. Created once per parsed font and
@@ -64,11 +102,16 @@ type
     ## outline cache); the table bytes are immutable so no invalidation
     ## is needed.
     done*: bool
+    ## True once parsing was attempted.
     ok*: bool
+    ## True when parsing succeeded.
     starts*: seq[int]
+    ## Glyph start offsets.
     ends*: seq[int]
+    ## Glyph end offsets.
 
 proc tagOf(a, b, c, d: char): uint32 =
+  # Builds a tag from four characters.
   (uint32(uint8(a)) shl 24) or (uint32(uint8(b)) shl 16) or
     (uint32(uint8(c)) shl 8) or uint32(uint8(d))
 
@@ -93,31 +136,38 @@ const
   TagGdef = 0x47444546u32
 
 proc checkBounds(bytes: openArray[uint8], off, size: int) =
+  # Raises FontError when the range leaves the buffer.
   if off < 0 or size < 0 or off + size > bytes.len:
     raise newException(FontError, "font data out of bounds")
 
 proc u8at(bytes: openArray[uint8], off: int): uint8 =
+  # Reads one byte with bounds checking.
   checkBounds(bytes, off, 1)
   bytes[off]
 
 proc readU16*(bytes: openArray[uint8], off: int): uint16 =
+  ## Reads a big endian uint16 with bounds checking.
   checkBounds(bytes, off, 2)
   (uint16(bytes[off]) shl 8) or uint16(bytes[off + 1])
 
 proc readI16*(bytes: openArray[uint8], off: int): int16 =
+  ## Reads a big endian int16 with bounds checking.
   cast[int16](readU16(bytes, off))
 
 proc readU32*(bytes: openArray[uint8], off: int): uint32 =
+  ## Reads a big endian uint32 with bounds checking.
   checkBounds(bytes, off, 4)
   (uint32(bytes[off]) shl 24) or (uint32(bytes[off + 1]) shl 16) or
     (uint32(bytes[off + 2]) shl 8) or uint32(bytes[off + 3])
 
 proc readU24*(bytes: openArray[uint8], off: int): uint32 =
+  ## Reads a big endian uint24 with bounds checking.
   checkBounds(bytes, off, 3)
   (uint32(bytes[off]) shl 16) or (uint32(bytes[off + 1]) shl 8) or
     uint32(bytes[off + 2])
 
 proc readI24*(bytes: openArray[uint8], off: int): int32 =
+  ## Reads a big endian int24 with sign extension.
   let u = readU24(bytes, off)
   if (u and 0x800000u32) != 0u32:
     int32(u or 0xFF000000u32)
@@ -125,35 +175,44 @@ proc readI24*(bytes: openArray[uint8], off: int): int32 =
     int32(u)
 
 proc readOffset24*(bytes: openArray[uint8], off: int): int =
+  ## Reads a 24 bit offset as an int.
   int(readU24(bytes, off))
 
 proc readOffset32*(bytes: openArray[uint8], off: int): int =
+  ## Reads a 32 bit offset as an int.
   int(readU32(bytes, off))
 
 proc u16be(bytes: seq[uint8], off: int): uint16 {.used.} =
+  # Legacy big endian uint16 reader.
   readU16(bytes, off)
 
 proc i16be(bytes: seq[uint8], off: int): int16 {.used.} =
+  # Legacy big endian int16 reader.
   readI16(bytes, off)
 
 proc u24be(bytes: seq[uint8], off: int): uint32 {.used.} =
+  # Legacy big endian uint24 reader.
   checkBounds(bytes, off, 3)
   (uint32(bytes[off]) shl 16) or (uint32(bytes[off + 1]) shl 8) or
     uint32(bytes[off + 2])
 
 proc u32be(bytes: seq[uint8], off: int): uint32 {.used.} =
+  # Legacy big endian uint32 reader.
   readU32(bytes, off)
 
 proc findTable(f: SfntFont, tag: uint32): int =
+  # Finds a table index, -1 when absent.
   for i, t in f.tables:
     if t.tag == tag:
       return i
   -1
 
 proc hasTable*(f: SfntFont, tag: uint32): bool =
+  ## True when the font holds the table.
   f.findTable(tag) >= 0
 
 proc tableData*(f: SfntFont, tag: uint32): tuple[ok: bool, offset, len: int] =
+  ## Returns table offset and length, reporting absence.
   let i = f.findTable(tag)
   if i < 0:
     (false, 0, 0)
@@ -162,6 +221,7 @@ proc tableData*(f: SfntFont, tag: uint32): tuple[ok: bool, offset, len: int] =
 
 proc parseCmapSelection(bytes: seq[uint8], cmapOff: int): tuple[
     subtable: int, isSymbol: bool] =
+  # Picks the best cmap subtable by platform preference.
   let numTables = int(u16be(bytes, cmapOff + 2))
   type Rec = tuple[plat, enc: uint16, off: int]
   var recs: seq[Rec] = @[]
@@ -198,6 +258,7 @@ proc findCmap14Offset(bytes: seq[uint8], cmapOff: int): int =
   -1
 
 proc readU24At(bytes: seq[uint8], off: int): uint32 =
+  # Reads an unchecked big endian uint24.
   (uint32(bytes[off]) shl 16) or (uint32(bytes[off + 1]) shl 8) or
     uint32(bytes[off + 2])
 
@@ -279,9 +340,8 @@ proc cmap14VariantUncached(bytes: seq[uint8], sub: int, base,
 
 proc parseNameRecords(bytes: seq[uint8], tableOff, tableLen: int): seq[
     NameEntry] =
-  ## Parses the `name` table directory. Format 0 and 1 share the same
-  ## record layout; language-tag data after the records is ignored.
-  ## Malformed tables yield an empty list (contained).
+  ## Parses the `name` table directory; formats share one record layout
+  ## and malformed tables yield an empty list (contained).
   result = @[]
   if tableOff < 0 or tableLen < 6 or tableOff + tableLen > bytes.len:
     return
@@ -314,8 +374,7 @@ proc parseNameRecords(bytes: seq[uint8], tableOff, tableLen: int): seq[
       nameID: readU16(bytes, base + 6), bytes: raw))
 
 proc decodeNameUtf16Be(raw: seq[uint8]): string =
-  ## Decodes UTF-16BE (Windows/Unicode platform strings) as UTF-8,
-  ## using replacement characters for malformed units.
+  # Decodes UTF-16BE as UTF-8 with replacement characters.
   result = ""
   var i = 0
   while i + 1 < raw.len:
@@ -345,9 +404,7 @@ proc decodeNameUtf16Be(raw: seq[uint8]): string =
       result.add("\xEF\xBF\xBD")
 
 proc decodeNameBytes*(e: NameEntry): string =
-  ## Decodes a name record to UTF-8. Unicode/Windows platforms are
-  ## UTF-16BE; other platforms fall back to a Latin-1 pass-through
-  ## (TODO: Mac Roman table).
+  ## Decodes a name record to UTF-8; other platforms use Latin-1.
   if e.platformID == 0u16 or e.platformID == 3u16:
     result = decodeNameUtf16Be(e.bytes)
   else:
@@ -361,16 +418,16 @@ proc decodeNameBytes*(e: NameEntry): string =
         result.add(char(0x80u32 or (cp and 0x3Fu32)))
 
 proc fixedToFloat*(v: int32): float32 =
+  ## Converts 16.16 fixed point to float.
   float32(v) / 65536.0f32
 
 proc f2dot14ToFloat*(v: int16): float32 =
+  ## Converts 2.14 fixed point to float.
   float32(v) / 16384.0f32
 
 proc parseFvarAxes*(bytes: seq[uint8], tableOff, tableLen: int): seq[
     FvarAxis] =
-  ## Parses the `fvar` axis array. Instances are skipped. Malformed
-  ## tables yield an empty list (contained); the font then behaves as
-  ## static.
+  ## Parses `fvar` axes, skipping instances; malformed yields empty.
   result = @[]
   if tableOff < 0 or tableLen < 16 or tableOff + tableLen > bytes.len:
     return
@@ -399,9 +456,7 @@ proc parseFvarAxes*(bytes: seq[uint8], tableOff, tableLen: int): seq[
 
 proc parseAvarMaps*(bytes: seq[uint8], tableOff, tableLen,
     axisCount: int): seq[seq[AvarSegment]] =
-  ## Parses the `avar` segment maps, one per axis in fvar order. Axes
-  ## without a map get an empty list (identity). Malformed tables
-  ## yield all-empty maps (contained).
+  ## Parses `avar` maps per axis; missing maps are identity.
   result = newSeq[seq[AvarSegment]](max(axisCount, 0))
   if tableOff < 0 or tableLen < 8 or tableOff + tableLen > bytes.len:
     return
@@ -465,6 +520,7 @@ proc applyAvarMap*(segments: seq[AvarSegment], v: float32): float32 =
   segments[^1].toV
 
 proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
+  # Parses one face from raw bytes, handling TTC collections.
   if bytes.len < 12:
     raise newException(FontError, "font too small for offset table")
   let magic = u32be(bytes, 0)
@@ -570,18 +626,21 @@ proc parseFontData(bytes: seq[uint8], faceIndex: int): SfntFont =
         gdef.offset + varStoreOff, gdef.len - varStoreOff)
 
 proc parseFont*(data: openArray[uint8], faceIndex: int = 0): SfntFont =
+  ## Parses a font from bytes, selecting a collection face by index.
   var bytes = newSeq[uint8](data.len)
   for i, b in data:
     bytes[i] = b
   parseFontData(bytes, faceIndex)
 
 proc parseFontString*(data: string, faceIndex: int = 0): SfntFont =
+  ## Parses a font from a string, selecting a collection face by index.
   var bytes = newSeq[uint8](data.len)
   for i, c in data:
     bytes[i] = uint8(c)
   parseFontData(bytes, faceIndex)
 
 proc cmapFormat4Map(bytes: seq[uint8], off: int, cp: uint32): Option[uint32] =
+  # Maps through a format 4 segment subtable.
   if cp > 0xFFFFu32:
     return none(uint32)
   let c = uint16(cp)
@@ -618,6 +677,7 @@ proc cmapFormat4Map(bytes: seq[uint8], off: int, cp: uint32): Option[uint32] =
     some(gid)
 
 proc cmapFormat12Map(bytes: seq[uint8], off: int, cp: uint32): Option[uint32] =
+  # Maps through a format 12 or 13 group subtable.
   let numGroups = int(u32be(bytes, off + 12))
   if bytes.len < off + 16 + numGroups * 12:
     raise newException(FontError, "short cmap format 12/13")
@@ -643,6 +703,7 @@ proc cmapFormat12Map(bytes: seq[uint8], off: int, cp: uint32): Option[uint32] =
   none(uint32)
 
 proc cmapMapUncached(f: SfntFont, cp: uint32): Option[uint32] =
+  # Maps through the selected subtable without caching.
   if f.cmapOffset < 0:
     return none(uint32)
   let bytes = f.bytes
@@ -680,6 +741,7 @@ proc cmapMapUncached(f: SfntFont, cp: uint32): Option[uint32] =
     none(uint32)
 
 proc mapUnicode*(f: SfntFont, cp: uint32): Option[GlyphId] =
+  ## Maps a codepoint, with symbol font fallback.
   let direct = cmapMapUncached(f, cp)
   if direct.isSome:
     return some(newGlyphId(direct.get))
@@ -727,6 +789,7 @@ proc fontName*(f: SfntFont, nameID: uint16, platformID = 3u16,
   none(string)
 
 proc hAdvanceRaw(f: SfntFont, gid: uint32): tuple[adv: uint16, lsb: int16] =
+  # Reads raw horizontal metrics with metric count fallback.
   let hmtx = f.tableData(TagHmtx)
   if not hmtx.ok:
     raise newException(FontError, "missing hmtx table")
@@ -748,9 +811,11 @@ proc hAdvanceRaw(f: SfntFont, gid: uint32): tuple[adv: uint16, lsb: int16] =
     (adv, lsb)
 
 proc hAdvance*(f: SfntFont, gid: uint32): int32 =
+  ## Returns the horizontal advance in font units.
   int32(hAdvanceRaw(f, gid).adv)
 
 proc hSideBearing*(f: SfntFont, gid: uint32): int32 =
+  ## Returns the horizontal side bearing in font units.
   int32(hAdvanceRaw(f, gid).lsb)
 
 proc hAdvanceDelta*(f: SfntFont, gid: uint32,
@@ -769,6 +834,7 @@ proc vAdvanceDelta*(f: SfntFont, gid: uint32,
   deltaFor(f.vvarStore, mapVarIndex(f.vvarAdvMap, int(gid)), coords)
 
 proc vAdvance*(f: SfntFont, gid: uint32): int32 =
+  ## Returns the vertical advance, defaulting to units per em.
   if f.hasVMetrics:
     let vmtx = f.tableData(TagVmtx)
     if vmtx.ok:
@@ -781,6 +847,7 @@ proc vAdvance*(f: SfntFont, gid: uint32): int32 =
   int32(f.unitsPerEm)
 
 proc glyphOffsets(f: SfntFont): tuple[ok: bool, starts, ends: seq[int]] =
+  # Reads raw loca offsets for all glyphs.
   let loca = f.tableData(TagLoca)
   let glyf = f.tableData(TagGlyf)
   if not loca.ok or not glyf.ok:
@@ -848,6 +915,7 @@ proc glyphBoundsUnscaled*(f: SfntFont,
     int32(readI16(f.bytes, s + 6)), int32(readI16(f.bytes, s + 8))))
 
 proc numFaces*(data: openArray[uint8]): int =
+  ## Counts faces in a font or collection.
   if data.len < 12:
     raise newException(FontError, "font too small")
   var magic = (uint32(data[0]) shl 24) or (uint32(data[1]) shl 16) or
@@ -865,9 +933,11 @@ proc numFaces*(data: openArray[uint8]): int =
 # ---------------------------------------------------------------------------
 
 proc hasGvar*(f: SfntFont): bool =
+  ## True when the font holds a gvar table.
   f.tableData(TagGvar).ok
 
 proc gvarContextFor(f: SfntFont, coords: seq[float32]): GvarContext =
+  # Builds the gvar tuning context for normalized coordinates.
   if coords.len == 0:
     return noGvarContext()
   let t = f.tableData(TagGvar)
@@ -895,6 +965,7 @@ proc glyphDataRange*(f: SfntFont, gid: uint32): tuple[ok: bool, off,
 proc drawGlyf(f: SfntFont, gid: uint32,
     cb: proc(op: DrawOp) {.closure.},
     coords: seq[float32] = @[]): bool =
+  # Emits a TrueType outline with variation tuning.
   let (ok, starts, ends) = f.cachedGlyphOffsets()
   if not ok or int(gid) >= starts.len:
     return false
@@ -913,6 +984,7 @@ proc drawGlyf(f: SfntFont, gid: uint32,
 proc drawCff(f: SfntFont, gid: uint32,
     cb: proc(op: DrawOp) {.closure.},
     coords: seq[float32] = @[]): bool =
+  # Emits a CFF or CFF2 outline, preferring CFF2 when present.
   let t2 = f.tableData(TagCff2)
   if t2.ok:
     let c = parseCff2(f.bytes, t2.offset, t2.len, int32(f.unitsPerEm))
