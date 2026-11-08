@@ -16,6 +16,7 @@ export coverage
 export gsub
 
 proc contextCheckProp*(g: GlyphInfo, props: uint32): bool =
+  ## True when the glyph passes lookup flags and mark filtering.
   let flags = uint16(props and 0xFFFFu32)
   if (g.glyphProps() and flags and LookupIgnoreFlags) != 0u16:
     return false
@@ -32,25 +33,34 @@ proc contextCheckProp*(g: GlyphInfo, props: uint32): bool =
   true
 
 proc isSkippable*(g: GlyphInfo, props: uint32): bool =
+  ## True when the matcher may skip the glyph.
   not contextCheckProp(g, props)
 
 proc inputMatchesValue*(gid, expected: uint32): bool =
+  ## True on exact glyph id match.
   gid == expected
 
 proc classMatchesValue*(classDef: ClassDef, gid, expected: uint32): bool =
+  ## True when the glyph class matches.
   classDef.classOf(gid) == expected
 
 proc coverageMatchesValue*(cov: Coverage, gid: uint32): bool =
+  ## True when the coverage contains the glyph.
   cov.covers(gid)
 
 type
   ValueKind* = enum
+    ## Match value kind.
     vkGlyph
+    ## Match by glyph id.
     vkClass
+    ## Match by class.
     vkCoverage
+    ## Match by coverage.
 
 proc valueMatches*(kind: ValueKind, classDef: ClassDef, cov: Coverage,
     gid, expected: uint32): bool =
+  ## Dispatches glyph, class, or coverage matching.
   case kind
   of vkGlyph:
     gid == expected

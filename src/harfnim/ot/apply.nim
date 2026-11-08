@@ -18,6 +18,7 @@ export gpos
 export kern
 
 proc checkGlyphProperty*(info: GlyphInfo, props: uint32): bool =
+  ## True when the glyph passes lookup flags and mark filtering.
   let flags = uint16(props and 0xFFFFu32)
   if (info.glyphProps() and flags and LookupIgnoreFlags) != 0u16:
     return false
@@ -33,12 +34,14 @@ proc checkGlyphProperty*(info: GlyphInfo, props: uint32): bool =
   true
 
 proc lookupProps*(lookup: Lookup): uint32 =
+  ## Combines lookup flags with the mark filtering set.
   var props = uint32(lookup.lookupFlag)
   if (lookup.lookupFlag and LookupUseMarkFilteringSet) != 0u16:
     props = props or (uint32(lookup.markFilteringSet) shl 16)
   props
 
 proc replaceWithSubstituted*(buf: var Buffer, gid: uint32) =
+  ## Replaces the current glyph and tags it substituted.
   buf.replaceGlyph(gid)
   let slot = buf.outAt(buf.outLen - 1)
   if slot == nil:
@@ -66,6 +69,7 @@ proc anchorSyllableAt(buf: Buffer, perSyllable: bool): uint8 =
     0u8
 
 proc lookupCovers(lookup: Lookup, gid: uint32): bool =
+  # True when any subtable covers the glyph.
   for e in lookup.order:
     case e.kind
     of lkSingle:
@@ -144,6 +148,7 @@ proc applyPosChainSubst(buf: var Buffer, gpos: GposData,
   nestingLeft: int, store: VarStore, coords: seq[float32]): bool
 
 proc outputGlyphForComponent(buf: var Buffer, gid: uint32, classGuess: uint16) =
+  # Emits one glyph of a multiple substitution.
   let cur = buf.cur(0)
   if cur == nil:
     buf.indexFailed()
@@ -154,6 +159,7 @@ proc outputGlyphForComponent(buf: var Buffer, gid: uint32, classGuess: uint16) =
   buf.outputGlyph(gid)
 
 proc applyMultiple(buf: var Buffer, sub: MultipleSubst, index: int): bool =
+  # Applies one multiple substitution.
   if index < 0 or index >= sub.sequences.len:
     return false
   let s = sub.sequences[index]
@@ -794,6 +800,7 @@ proc applySubstLookups*(buf: var Buffer, gsub: GsubData,
 # --------------------------------------------------------------------------
 
 proc saturatingAddI32(a, b: int32): int32 =
+  # Saturating addition.
   let s = int64(a) + int64(b)
   if s > int64(high(int32)):
     high(int32)
@@ -803,15 +810,18 @@ proc saturatingAddI32(a, b: int32): int32 =
     int32(s)
 
 proc saturatingSubI32(a, b: int32): int32 =
+  # Saturating subtraction.
   saturatingAddI32(a, -b)
 
 proc lookupProps*(lookup: PosLookup): uint32 =
+  ## Combines GPOS lookup flags with the mark filtering set.
   var props = uint32(lookup.lookupFlag)
   if (lookup.lookupFlag and LookupUseMarkFilteringSet) != 0u16:
     props = props or (uint32(lookup.markFilteringSet) shl 16)
   props
 
 proc posLookupCovers(lookup: PosLookup, gid: uint32): bool =
+  # True when any positioning subtable covers the glyph.
   for e in lookup.order:
     case e.kind
     of pkSingle:
@@ -902,6 +912,7 @@ proc applyValueRecord(buf: var Buffer, posIdx: int, value: ValueRecord,
     result = true
 
 proc findSecondGlyph(buf: Buffer, props, mask: uint32): Option[int] =
+  # Finds the pair second glyph, enforcing its feature mask.
   var j = buf.idx + 1
   while j < buf.len and j < buf.info.len:
     let g = buf.info[j]
@@ -983,11 +994,13 @@ const
   AttachCursive* = 2u8
 
 proc positionStart*(buf: var Buffer) =
+  ## Clears attachment chains and types.
   for i in 0 ..< min(buf.len, buf.pos.len):
     buf.pos[i].setAttachChain(0)
     buf.pos[i].setAttachType(0u8)
 
 proc crossOffset*(buf: Buffer, idx: int): int32 =
+  ## Cross stream offset following the attachment chain.
   if idx < 0 or idx >= buf.pos.len:
     return 0i32
   let horiz = buf.direction.isHorizontal()
@@ -1321,6 +1334,7 @@ proc applyCursive*(buf: var Buffer, sub: CursiveSub, props: uint32,
   true
 
 proc propagateOne(buf: var Buffer, total: int, fwd: bool, i: int) =
+  # Propagates one attachment offset to its mark.
   if i < 0 or i >= total:
     return
   let chain = int(buf.pos[i].attachChain())
@@ -1372,6 +1386,7 @@ proc propagateOne(buf: var Buffer, total: int, fwd: bool, i: int) =
         buf.pos[i].xOffset = buf.pos[i].xOffset + px
 
 proc propagateAttachmentOffsets*(buf: var Buffer) =
+  ## Propagates attachment offsets forward and backward.
   let total = min(buf.len, buf.pos.len)
   if (buf.scratchFlags and ScratchFlagHasGposAttachment) == 0u32:
     return
@@ -1793,6 +1808,7 @@ proc applyKernTable*(buf: var Buffer, kern: KernData, mask: uint32,
     buf.reverse()
 
 proc mapGlyphsFast*(buf: var Buffer) =
+  ## Maps codepoints to glyphs using stored normalizer indexes.
   for i in 0 ..< buf.len:
     if i >= buf.info.len:
       break
