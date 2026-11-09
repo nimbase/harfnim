@@ -17,6 +17,7 @@ import harfnim/subset
 import harfnim/font
 import harfnim/ot/map
 import harfnim/shape
+import harfnim/bidi
 
 export tag
 export script
@@ -37,3 +38,4 @@ export subset
 export font
 export map
 export shape
+export bidi
