@@ -13,6 +13,10 @@
   `isMarkCodepoint`, Hangul composition helpers.
 * Data comes from `src/harfnim/ucd_table.nim` (UCD 18.0) and
   `src/harfnim/emoji_table.nim`.
+* `BidiClass` plus `bidiClassFor` (UAX #9, all classes except L which
+  is the default); ranges and N0 bracket pairs live in
+  `src/harfnim/bidi_table.nim` (Unicode 18.0.0, attributed at the
+  table head).
 
 Related small modules: `script.nim` (ISO 15924 scripts),
 `language.nim`, `direction.nim` (horizontal, vertical, forward,

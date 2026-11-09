@@ -168,3 +168,56 @@ test "guess segment properties":
   preset.guessSegmentProperties()
   check preset.direction() == dirRightToLeft
   check preset.script() == some(Latin)
+
+test "bidi classes":
+  check bidiClassFor(0x41u32) == BidiL
+  check bidiClassFor(0x5D0u32) == BidiR
+  check bidiClassFor(0x627u32) == BidiAL
+  check bidiClassFor(0x30u32) == BidiEN
+  check bidiClassFor(0x660u32) == BidiAN
+  check bidiClassFor(0x2Bu32) == BidiES
+  check bidiClassFor(0x2Cu32) == BidiCS
+  check bidiClassFor(0x24u32) == BidiET
+  check bidiClassFor(0x20u32) == BidiWS
+  check bidiClassFor(0x28u32) == BidiON
+  check bidiClassFor(0x300u32) == BidiNSM
+  check bidiClassFor(0x200Fu32) == BidiR
+  check bidiClassFor(0x200Cu32) == BidiBN
+  check bidiClassFor(0x2029u32) == BidiB
+  check bidiClassFor(0x09u32) == BidiS
+  check bidiClassFor(0x202Au32) == BidiLRE
+  check bidiClassFor(0x202Bu32) == BidiRLE
+  check bidiClassFor(0x202Du32) == BidiLRO
+  check bidiClassFor(0x202Eu32) == BidiRLO
+  check bidiClassFor(0x202Cu32) == BidiPDF
+  check bidiClassFor(0x2066u32) == BidiLRI
+  check bidiClassFor(0x2067u32) == BidiRLI
+  check bidiClassFor(0x2068u32) == BidiFSI
+  check bidiClassFor(0x2069u32) == BidiPDI
+  check bidiClassFor(0x110000u32) == BidiL
+  check bidiClassFor(high(uint32)) == BidiL
+
+test "bidi class range boundaries":
+  check bidiClassFor(0x590u32) == BidiR
+  check bidiClassFor(0x5FFu32) == BidiR
+  check bidiClassFor(0x600u32) == BidiAN
+  check bidiClassFor(0x605u32) == BidiAN
+  check bidiClassFor(0x606u32) == BidiON
+  check bidiClassFor(0x00u32) == BidiBN
+  check bidiClassFor(0x08u32) == BidiBN
+  check bidiClassFor(0x10FFFEu32) == BidiBN
+  check bidiClassFor(0x10FFFFu32) == BidiBN
+
+test "bidi brackets":
+  check bidiBrackets.len == 65
+  check bidiBrackets[0].openCp == 0x0028u32
+  check bidiBrackets[0].closeCp == 0x0029u32
+  var foundCjk = false
+  var foundFull = false
+  for b in bidiBrackets:
+    if b.openCp == 0x3008u32 and b.closeCp == 0x3009u32:
+      foundCjk = true
+    if b.openCp == 0xFF08u32 and b.closeCp == 0xFF09u32:
+      foundFull = true
+  check foundCjk
+  check foundFull

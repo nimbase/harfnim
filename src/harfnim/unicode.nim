@@ -3,6 +3,9 @@ import std/options
 import ./script
 import ./ucd_table
 import ./emoji_table
+import ./bidi_table
+
+export bidi_table
 
 type
   Codepoint* = uint32
@@ -337,6 +340,21 @@ proc generalCategoryFor*(cp: uint32): GeneralCategory =
 proc combiningClassFor*(cp: uint32): uint8 =
   ## Looks up the canonical combining class.
   ucdCcc(cp)
+
+proc bidiClassFor*(cp: uint32): BidiClass =
+  ## Looks up the bidi class; unlisted code points default to left to right.
+  var lo = 0
+  var hi = bidiClassRanges.len
+  while lo < hi:
+    let mid = (lo + hi) shr 1
+    let r = bidiClassRanges[mid]
+    if cp < r.first:
+      hi = mid
+    elif cp > r.last:
+      lo = mid + 1
+    else:
+      return r.cls
+  BidiL
 
 proc mirroringFor*(cp: uint32): Option[uint32] =
   ## Mirrored counterpart, if the codepoint mirrors.
