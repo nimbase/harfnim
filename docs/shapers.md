@@ -8,6 +8,10 @@
 * `src/harfnim/ot/arabic_table.nim`: joining types and fallback data.
 * `shape.nim` helpers: `prepareArabicMasks`, `applyArabicGsub`,
   `applyArabicFallback`, plus Arabic aware default GPOS selection.
+* `recordStch` marks glyphs multiplied by stch as fixed or repeating
+  tiles; `applyStch` runs after the visual reorder and repeats the
+  repeating tiles to fill the preceding word, mirroring harfrust
+  `record_stch`, `apply_stch`, and `postprocess_glyphs_arabic`.
 * Horizontal layout only; vertical text uses the default shaper.
 
 ## Hebrew
@@ -105,6 +109,5 @@
 
 ## Status
 
-Done: Arabic, Hebrew, Hangul, Thai and Lao, Indic, Khmer, Myanmar,
-USE, AAT morx.
-Open: stch stretching.
+Done: Arabic (including stch stretching), Hebrew, Hangul, Thai and
+Lao, Indic, Khmer, Myanmar, USE, AAT morx.

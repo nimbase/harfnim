@@ -1,10 +1,11 @@
-## Arabic shaper: joining, masks, fallback, mark reordering.
+## Arabic shaper: joining, masks, fallback, mark reordering, stch stretch.
 ##
 ## Ported from harfrust `ot/shaper/arabic.rs` + `arabic_fallback.rs` at a
 ## static-font scope. Syriac shares the joining machinery; Mongolian
 ## variation-selector propagation is included, as is the legacy
-## Windows-1256 fixed-gid fallback. stch stretching and pre/post-context
-## across buffer boundaries stay TODO.
+## Windows-1256 fixed-gid fallback. stch multiplications are recorded
+## right after the stch feature and expanded into repeated tiles after
+## positioning. Pre/post-context across buffer boundaries stays TODO.
 
 import std/options
 import std/sequtils
@@ -12,6 +13,7 @@ import std/sequtils
 import ../buffer
 import ../direction
 import ../feature
+import ../font
 import ../tag
 import ../unicode
 import ./apply
@@ -59,6 +61,19 @@ const
     ## Initial form.
   ArabicNone* = 7u8
     ## No joining form.
+  ArabicStretchFixed* = 8u8
+    ## stch fixed tile.
+  ArabicStretchRepeating* = 9u8
+    ## stch repeating tile.
+
+proc isStchAction*(a: uint8): bool =
+  ## True for stch stretch tiles.
+  a == ArabicStretchFixed or a == ArabicStretchRepeating
+
+const
+  ArabicHasStchFlag* = ScratchFlagShaper0
+    ## Scratch flag marking recorded stch stretches, mirroring harfrust
+    ## HB_BUFFER_SCRATCH_FLAG_ARABIC_HAS_STCH.
 
   ArabicFeatureTags*: array[7, string] = ["isol", "fina", "fin2", "fin3",
     "medi", "med2", "init"]
@@ -517,3 +532,179 @@ proc reorderMarksArabic*(buf: var Buffer, start, stop: int) =
       if t >= 0 and t < buf.info.len:
         buf.info[t].setModifiedCombiningClass(newCc)
     s = newStart
+
+# --- stch stretching (justification) ---
+
+proc stchAdd(a, b: int32): int32 =
+  ## Saturating addition for stretch widths.
+  let s = int64(a) + int64(b)
+  if s > int64(high(int32)):
+    high(int32)
+  elif s < int64(low(int32)):
+    low(int32)
+  else:
+    int32(s)
+
+proc stchSub(a, b: int32): int32 =
+  ## Saturating subtraction for stretch widths.
+  stchAdd(a, -b)
+
+proc clampStchI64(v: int64): int32 =
+  ## Clamps a 64-bit stretch value into int32 range.
+  if v > int64(high(int32)):
+    high(int32)
+  elif v < int64(low(int32)):
+    low(int32)
+  else:
+    int32(v)
+
+proc recordStch*(buf: var Buffer, hasStch: bool) =
+  ## Marks glyphs multiplied by the stch feature for the justification
+  ## pass. Call right after stch applied, mirroring harfrust
+  ## record_stch.
+  if not hasStch:
+    return
+  var found = false
+  for i in 0 ..< min(buf.len, buf.info.len):
+    if buf.info[i].multiplied():
+      if buf.info[i].ligComp() mod 2u8 != 0u8:
+        buf.info[i].setArabicAction(ArabicStretchRepeating)
+      else:
+        buf.info[i].setArabicAction(ArabicStretchFixed)
+      found = true
+  if found:
+    buf.scratchFlags = buf.scratchFlags or ArabicHasStchFlag
+
+proc copyStchGlyph(buf: var Buffer, src, dst: int): bool =
+  ## Copies a glyph and its position; false on out of range indexes.
+  if src < 0 or src >= buf.info.len or src >= buf.pos.len:
+    return false
+  if dst < 0 or dst >= buf.info.len or dst >= buf.pos.len:
+    return false
+  buf.info[dst] = buf.info[src]
+  buf.pos[dst] = buf.pos[src]
+  true
+
+proc applyStchPasses(sf: ShaperFont, buf: var Buffer, rtl: bool): bool =
+  ## Two pass stretch: measure the extra glyphs, enlarge, then expand
+  ## from the end. False aborts the stretch; the caller fails the buffer
+  ## but keeps the direction restored.
+  var extra = 0
+  for step in 0 ..< 2:
+    let newLen = buf.len + extra
+    var i = buf.len
+    var j = newLen
+    while i != 0:
+      if i - 1 < 0 or i - 1 >= buf.info.len:
+        return false
+      if not isStchAction(buf.info[i - 1].arabicAction()):
+        if step == 1:
+          j -= 1
+          if not copyStchGlyph(buf, i - 1, j):
+            return false
+        i -= 1
+        continue
+      var wTotal = 0i32
+      var wFixed = 0i32
+      var wRepeating = 0i32
+      var nRepeating = 0i32
+      let finish = i
+      while i != 0:
+        if i - 1 < 0 or i - 1 >= buf.info.len:
+          return false
+        if not isStchAction(buf.info[i - 1].arabicAction()):
+          break
+        i -= 1
+        let info = buf.info[i]
+        let width = sf.hAdvance(newGlyphId(info.glyphId))
+        if info.arabicAction() == ArabicStretchFixed:
+          wFixed = stchAdd(wFixed, width)
+        else:
+          wRepeating = stchAdd(wRepeating, width)
+          nRepeating += 1i32
+      let start = i
+      var context = i
+      while context != 0:
+        if context - 1 < 0 or context - 1 >= buf.info.len:
+          return false
+        let info = buf.info[context - 1]
+        if isStchAction(info.arabicAction()) or
+            not (info.isInfoDefaultIgnorable() or
+              isWordCategory(info.generalCategory())):
+          break
+        context -= 1
+        if context < 0 or context >= buf.pos.len:
+          return false
+        wTotal = stchAdd(wTotal, buf.pos[context].xAdvance)
+      i += 1
+      var nCopies = 0i32
+      var wRemaining = stchSub(wTotal, wFixed)
+      if wRemaining > wRepeating and wRepeating > 0i32:
+        nCopies = wRemaining div wRepeating - 1i32
+      var extraOverlap = 0i32
+      let shortfall = int64(wRemaining) -
+        int64(wRepeating) * int64(nCopies + 1i32)
+      if shortfall > 0 and nRepeating > 0i32:
+        nCopies += 1i32
+        let excess = int64(nCopies + 1i32) * int64(wRepeating) -
+          int64(wRemaining)
+        if excess > 0:
+          extraOverlap = clampStchI64(excess div
+            (int64(nCopies) * int64(nRepeating)))
+          wRemaining = 0i32
+      if step == 0:
+        extra += int(int64(nCopies) * int64(nRepeating))
+      else:
+        buf.unsafeToBreakRange(some(context), some(finish))
+        var xOffset = wRemaining div 2i32
+        var k = finish
+        while k > start:
+          if k - 1 < 0 or k - 1 >= buf.info.len or
+              k - 1 >= buf.pos.len:
+            return false
+          let info = buf.info[k - 1]
+          let width = sf.hAdvance(newGlyphId(info.glyphId))
+          var repeat = 1i32
+          if info.arabicAction() == ArabicStretchRepeating:
+            repeat += nCopies
+          var pos = buf.pos[k - 1]
+          pos.xAdvance = 0i32
+          var n = 0i32
+          while n < repeat:
+            if rtl:
+              xOffset = stchSub(xOffset, width)
+              if n > 0i32:
+                xOffset = stchAdd(xOffset, extraOverlap)
+            pos.xOffset = xOffset
+            j -= 1
+            if j < 0 or j >= buf.info.len or j >= buf.pos.len:
+              return false
+            buf.info[j] = info
+            buf.pos[j] = pos
+            if not rtl:
+              xOffset = stchAdd(xOffset, width)
+              if n > 0i32:
+                xOffset = stchSub(xOffset, extraOverlap)
+            n += 1i32
+          buf.pos[k - 1] = pos
+          k -= 1
+      i -= 1
+    if step == 0:
+      if not buf.ensure(buf.len + extra):
+        break
+    else:
+      buf.len = newLen
+  true
+
+proc applyStch*(sf: ShaperFont, buf: var Buffer) =
+  ## Expands recorded stch runs into repeated tiles, mirroring harfrust
+  ## postprocess_glyphs_arabic. No-op when stch multiplied nothing.
+  if (buf.scratchFlags and ArabicHasStchFlag) == 0u32:
+    return
+  let rtl = buf.direction == dirRightToLeft
+  if not rtl:
+    buf.reverse()
+  if not applyStchPasses(sf, buf, rtl):
+    buf.indexFailed()
+  if not rtl:
+    buf.reverse()

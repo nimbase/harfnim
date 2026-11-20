@@ -123,7 +123,8 @@ them with `clue task examples` (see `examples/README.md`).
 * [x] AAT morx (chains, state machines, noncontextual, contextual,
   ligature, rearrangement, insertion; feat flag compilation; DUMBER
   downgrade; deleted glyph compaction)
-* [ ] stch stretching
+* [x] stch stretching (record multiplied tiles, expand repeating
+  tiles to fill the word after the visual reorder)
 
 ## Tools
 `hr-shape` is a small `hb-shape` compatible CLI (numeric glyph ids and

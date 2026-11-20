@@ -5,8 +5,8 @@
 ## reorder, Hangul jamo composition, Thai SARA AM split and PUA fallback,
 ## Indic consonant-syllable reordering, Khmer Coeng/Ro pref reordering,
 ## Myanmar reph positioning, USE repha/pref recording and post-base
-## reordering, mark/cursive GPOS, and fallback mark positioning are
-## implemented; stch stretching stays TODO.
+## reordering, mark/cursive GPOS, fallback mark positioning, and stch
+## stretching are implemented.
 
 import std/options
 
@@ -219,6 +219,9 @@ proc applyArabicGsub*(buf: var Buffer, gsub: GsubData, scriptTag,
       if lks.len > 0:
         buf.applySubstLookups(gsub, lks, mask)
   applyMasked("stch", stchMask)
+  # Record stch multiplications for the justification pass, mirroring
+  # harfrust record_stch (a GSUB pause right after stch).
+  buf.recordStch(stchMask != 0u32 and lookupsFor("stch").len > 0)
   applyMasked("ccmp", ccmpMask)
   applyMasked("locl", loclMask)
   const arabTags = ["isol", "fina", "fin2", "fin3", "medi", "med2", "init"]
@@ -783,6 +786,10 @@ proc shapeWithPlan*(font: ShaperFont, buf: var Buffer, plan: ShapePlan) =
             buf.pos[i].yAdvance = 0i32
   if buf.direction.isBackward():
     buf.reverse()
+  if useArabic:
+    # stch justification expands recorded stretch runs after the visual
+    # reorder, mirroring harfrust postprocess_glyphs_arabic.
+    applyStch(sf, buf)
   # TODO: fallback spaces.
   buf.deallocateGsubGposVars()
 

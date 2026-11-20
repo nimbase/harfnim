@@ -501,3 +501,245 @@ test "arabic and hebrew runs keep their own shapers":
     (gid: 24u32, cluster: 1u32), (gid: 11u32, cluster: 3u32),
     (gid: 31u32, cluster: 4u32), (gid: 30u32, cluster: 4u32),
     (gid: 12u32, cluster: 8u32)]
+
+proc buildGsubStch(): seq[uint8] =
+  # arab/dflt with stch/init/fina mapping to lookups 0/1/2.
+  # stch is a multiple substitution 10 -> [14, 15]; init maps
+  # 10 -> 12 and fina maps 11 -> 13.
+  var lookup0: seq[uint8] = @[]
+  lookup0.putU16(2u16)
+  lookup0.putU16(9u16)
+  lookup0.putU16(1u16)
+  lookup0.putU16(8u16)
+  lookup0.putU16(1u16)
+  lookup0.putU16(8u16)
+  lookup0.putU16(1u16)
+  lookup0.putU16(14u16)
+  lookup0.putU16(1u16)
+  lookup0.putU16(1u16)
+  lookup0.putU16(10u16)
+  lookup0.putU16(2u16)
+  lookup0.putU16(14u16)
+  lookup0.putU16(15u16)
+  var lookup1: seq[uint8] = @[]
+  lookup1.putU16(1u16)
+  lookup1.putU16(9u16)
+  lookup1.putU16(1u16)
+  lookup1.putU16(8u16)
+  lookup1.putU16(2u16)
+  lookup1.putU16(8u16)
+  lookup1.putU16(1u16)
+  lookup1.putU16(12u16)
+  lookup1.putU16(1u16)
+  lookup1.putU16(1u16)
+  lookup1.putU16(10u16)
+  var lookup2: seq[uint8] = @[]
+  lookup2.putU16(1u16)
+  lookup2.putU16(9u16)
+  lookup2.putU16(1u16)
+  lookup2.putU16(8u16)
+  lookup2.putU16(2u16)
+  lookup2.putU16(8u16)
+  lookup2.putU16(1u16)
+  lookup2.putU16(13u16)
+  lookup2.putU16(1u16)
+  lookup2.putU16(1u16)
+  lookup2.putU16(11u16)
+  doAssert lookup0.len == 28
+  doAssert lookup1.len == 22
+  doAssert lookup2.len == 22
+  result = @[]
+  result.putU32(0x00010000u32)
+  result.putU16(10u16)
+  result.putU16(34u16)
+  result.putU16(72u16)
+  result.putU16(1u16)
+  result.putTag("arab")
+  result.putU16(8u16)
+  result.putU16(4u16)
+  result.putU16(0u16)
+  result.putU16(0u16)
+  result.putU16(0xFFFFu16)
+  result.putU16(3u16)
+  result.putU16(0u16)
+  result.putU16(1u16)
+  result.putU16(2u16)
+  result.putU16(3u16)
+  result.putTag("stch")
+  result.putU16(20u16)
+  result.putTag("init")
+  result.putU16(26u16)
+  result.putTag("fina")
+  result.putU16(32u16)
+  for li in [0u16, 1u16, 2u16]:
+    result.putU16(0u16)
+    result.putU16(1u16)
+    result.putU16(li)
+  result.putU16(3u16)
+  result.putU16(8u16)
+  result.putU16(uint16(8 + lookup0.len))
+  result.putU16(uint16(8 + lookup0.len + lookup1.len))
+  result.add(lookup0)
+  result.add(lookup1)
+  result.add(lookup2)
+  doAssert result.len == 72 + 8 + 28 + 22 + 22
+
+proc stchFont(fixedAdv, repAdv: uint16): seq[uint8] =
+  # BEH U+0628 -> 10, ALEF U+0627 -> 11; stretch tiles 14 (fixed)
+  # and 15 (repeating) take the given advances, everything else 600.
+  let cmap = buildCmap(@[(0x627u16, 11u16), (0x628u16, 10u16)])
+  var head = newSeq[uint8]()
+  head.putU32(0x00010000u32)
+  head.putU32(0u32)
+  head.putU32(0u32)
+  head.putU32(0x5F0F3CF5u32)
+  head.putU16(0u16)
+  head.putU16(1000u16)
+  for _ in 0 ..< 4:
+    head.putU32(0u32)
+  for _ in 0 ..< 4:
+    head.putI16(0i16)
+  head.putU16(0u16)
+  head.putU16(0u16)
+  head.putI16(0i16)
+  head.putI16(0i16)
+  head.putU16(0u16)
+  var hhea = newSeq[uint8]()
+  hhea.putU32(0x00010000u32)
+  hhea.putI16(800i16)
+  hhea.putI16(-200i16)
+  hhea.putI16(0i16)
+  hhea.putU16(600u16)
+  for _ in 0 ..< 11:
+    hhea.putI16(0i16)
+  hhea.putU16(16u16)
+  var maxp = newSeq[uint8]()
+  maxp.putU32(0x00005000u32)
+  maxp.putU16(32u16)
+  var hmtx = newSeq[uint8]()
+  hmtx.putU16(500u16)
+  hmtx.putI16(0i16)
+  for _ in 1 ..< 14:
+    hmtx.putU16(600u16)
+    hmtx.putI16(0i16)
+  hmtx.putU16(fixedAdv)
+  hmtx.putI16(0i16)
+  hmtx.putU16(repAdv)
+  hmtx.putI16(0i16)
+  var loca = newSeq[uint8](66)
+  let tables = @[("head", head), ("hhea", hhea), ("maxp", maxp),
+    ("hmtx", hmtx), ("cmap", cmap), ("loca", loca),
+    ("GSUB", buildGsubStch())]
+  buildFontRaw(tables)
+
+proc shapeStch(text: string, fixedAdv, repAdv: uint16): Buffer =
+  let f = parseFont(stchFont(fixedAdv, repAdv))
+  var sf = newShaperFont(f)
+  sf.setScale(1000)
+  result = newBuffer()
+  result.pushStr(text)
+  sf.shape(result, @[])
+
+test "stch record marks multiplied tiles":
+  var b = newBuffer()
+  b.pushStr("ab")
+  b.info[0].setGlyphProps(b.info[0].glyphProps() or GlyphPropMultiplied)
+  b.info[0].setLigPropsForComponent(0u8)
+  b.info[1].setGlyphProps(b.info[1].glyphProps() or GlyphPropMultiplied)
+  b.info[1].setLigPropsForComponent(1u8)
+  check isStchAction(ArabicStretchFixed)
+  check isStchAction(ArabicStretchRepeating)
+  check not isStchAction(ArabicInit)
+  b.recordStch(false)
+  check (b.scratchFlags and ArabicHasStchFlag) == 0u32
+  b.recordStch(true)
+  check (b.scratchFlags and ArabicHasStchFlag) != 0u32
+  check b.info[0].arabicAction() == ArabicStretchFixed
+  check b.info[1].arabicAction() == ArabicStretchRepeating
+
+test "stch run without room keeps one copy per tile":
+  # BEH plus ALEF: BEH multiplies to fixed plus repeating tiles while
+  # ALEF takes fina. The preceding word covers exactly the fixed tile,
+  # so nothing repeats: advances zero out and offsets center the rest.
+  let b = shapeStch("\u0628\u0627", 600u16, 600u16)
+  check b.len == 3
+  check b.info[0].glyphId == 13u32
+  check b.info[1].glyphId == 15u32
+  check b.info[2].glyphId == 14u32
+  check b.info[0].cluster == 2u32
+  check b.info[1].cluster == 0u32
+  check b.info[2].cluster == 0u32
+  check b.pos[0].xAdvance == 600i32
+  check b.pos[1].xAdvance == 0i32
+  check b.pos[2].xAdvance == 0i32
+  check b.pos[0].xOffset == 0i32
+  check b.pos[1].xOffset == -1200i32
+  check b.pos[2].xOffset == -600i32
+  check b.info[1].arabicAction() == ArabicStretchRepeating
+  check b.info[2].arabicAction() == ArabicStretchFixed
+
+test "stch expands repeating tiles to fill the word":
+  # Narrow tiles leave room: the word advance minus the fixed tile
+  # repeats the repeating tile five times in total.
+  let b = shapeStch("\u0628\u0627", 100u16, 100u16)
+  check b.len == 7
+  check b.info[0].glyphId == 13u32
+  for i in 1 ..< 6:
+    check b.info[i].glyphId == 15u32
+  check b.info[6].glyphId == 14u32
+  for i in 0 ..< 7:
+    if i == 0:
+      check b.info[i].cluster == 2u32
+    else:
+      check b.info[i].cluster == 0u32
+  check b.pos[0].xAdvance == 600i32
+  for i in 1 ..< 7:
+    check b.pos[i].xAdvance == 0i32
+  let offs = [0i32, -350i32, -250i32, -150i32, -50i32, 50i32, 150i32]
+  for i in 0 ..< 7:
+    check b.pos[i].xOffset == offs[i]
+
+test "stch expands ltr runs after reversing":
+  # Manual left-to-right run: fixed tile, repeating tile, word glyph.
+  # The shaper reverses around the run and restores order afterwards.
+  # The word glyph is a CJK ideograph: Ll letters are not
+  # word-category (mirroring harfrust), Lo letters are.
+  let f = parseFont(stchFont(100u16, 100u16))
+  var sf = newShaperFont(f)
+  sf.setScale(1000)
+  var b = newBuffer()
+  b.pushStr("ab\u4E2D")
+  b.guessSegmentProperties()
+  var scratch = 0u32
+  for i in 0 ..< b.len:
+    b.info[i].initUnicodeProps(scratch)
+  b.scratchFlags = scratch
+  b.info[0].glyphId = 14u32
+  b.info[1].glyphId = 15u32
+  b.info[2].glyphId = 20u32
+  b.info[0].setGlyphProps(b.info[0].glyphProps() or GlyphPropMultiplied)
+  b.info[0].setLigPropsForComponent(0u8)
+  b.info[1].setGlyphProps(b.info[1].glyphProps() or GlyphPropMultiplied)
+  b.info[1].setLigPropsForComponent(1u8)
+  b.recordStch(true)
+  doAssert b.ensure(3)
+  b.clearPositions()
+  b.pos[0].xAdvance = 100i32
+  b.pos[1].xAdvance = 100i32
+  b.pos[2].xAdvance = 600i32
+  applyStch(sf, b)
+  check b.len == 7
+  check b.info[0].glyphId == 14u32
+  for i in 1 ..< 6:
+    check b.info[i].glyphId == 15u32
+  check b.info[6].glyphId == 20u32
+  check b.info[0].cluster == 0u32
+  for i in 1 ..< 6:
+    check b.info[i].cluster == 1u32
+  check b.info[6].cluster == 2u32
+  for i in 0 ..< 6:
+    check b.pos[i].xAdvance == 0i32
+  check b.pos[6].xAdvance == 600i32
+  let offs = [250i32, 350i32, 450i32, 550i32, 650i32, 750i32, 0i32]
+  for i in 0 ..< 7:
+    check b.pos[i].xOffset == offs[i]
