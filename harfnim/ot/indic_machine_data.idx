@@ -1,0 +1,11 @@
+nimTitle	indic_machine_data	harfnim/ot/indic_machine_data.html	module harfnim/ot/indic_machine_data		0
+nim	MachineTransKeys	harfnim/ot/indic_machine_data.html#MachineTransKeys	const MachineTransKeys		6
+nim	MachineCharClass	harfnim/ot/indic_machine_data.html#MachineCharClass	const MachineCharClass		27
+nim	MachineIndexOffsets	harfnim/ot/indic_machine_data.html#MachineIndexOffsets	const MachineIndexOffsets		34
+nim	MachineIndices	harfnim/ot/indic_machine_data.html#MachineIndices	const MachineIndices		46
+nim	MachineIndexDefaults	harfnim/ot/indic_machine_data.html#MachineIndexDefaults	const MachineIndexDefaults		184
+nim	MachineCondTargs	harfnim/ot/indic_machine_data.html#MachineCondTargs	const MachineCondTargs		196
+nim	MachineCondActions	harfnim/ot/indic_machine_data.html#MachineCondActions	const MachineCondActions		209
+nim	MachineToStateActions	harfnim/ot/indic_machine_data.html#MachineToStateActions	const MachineToStateActions		222
+nim	MachineFromStateActions	harfnim/ot/indic_machine_data.html#MachineFromStateActions	const MachineFromStateActions		234
+nim	MachineEofTrans	harfnim/ot/indic_machine_data.html#MachineEofTrans	const MachineEofTrans		246

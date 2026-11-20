@@ -1,0 +1,62 @@
+nimTitle	indic_table	harfnim/ot/indic_table.html	module harfnim/ot/indic_table		0
+nim	OtX	harfnim/ot/indic_table.html#OtX	const OtX		13
+nim	OtC	harfnim/ot/indic_table.html#OtC	const OtC		14
+nim	OtV	harfnim/ot/indic_table.html#OtV	const OtV		15
+nim	OtN	harfnim/ot/indic_table.html#OtN	const OtN		16
+nim	OtH	harfnim/ot/indic_table.html#OtH	const OtH		17
+nim	OtZwnj	harfnim/ot/indic_table.html#OtZwnj	const OtZwnj		18
+nim	OtZwj	harfnim/ot/indic_table.html#OtZwj	const OtZwj		19
+nim	OtM	harfnim/ot/indic_table.html#OtM	const OtM		20
+nim	OtSm	harfnim/ot/indic_table.html#OtSm	const OtSm		21
+nim	OtA	harfnim/ot/indic_table.html#OtA	const OtA		22
+nim	OtVd	harfnim/ot/indic_table.html#OtVd	const OtVd		23
+nim	OtPlaceholder	harfnim/ot/indic_table.html#OtPlaceholder	const OtPlaceholder		24
+nim	OtGb	harfnim/ot/indic_table.html#OtGb	const OtGb		25
+nim	OtDottedCircle	harfnim/ot/indic_table.html#OtDottedCircle	const OtDottedCircle		26
+nim	OtRs	harfnim/ot/indic_table.html#OtRs	const OtRs		27
+nim	OtMpst	harfnim/ot/indic_table.html#OtMpst	const OtMpst		28
+nim	OtRepha	harfnim/ot/indic_table.html#OtRepha	const OtRepha		29
+nim	OtRa	harfnim/ot/indic_table.html#OtRa	const OtRa		30
+nim	OtCm	harfnim/ot/indic_table.html#OtCm	const OtCm		31
+nim	OtSymbol	harfnim/ot/indic_table.html#OtSymbol	const OtSymbol		32
+nim	OtCs	harfnim/ot/indic_table.html#OtCs	const OtCs		33
+nim	OtVAbv	harfnim/ot/indic_table.html#OtVAbv	const OtVAbv		34
+nim	OtVBlw	harfnim/ot/indic_table.html#OtVBlw	const OtVBlw		35
+nim	OtVPre	harfnim/ot/indic_table.html#OtVPre	const OtVPre		36
+nim	OtVPst	harfnim/ot/indic_table.html#OtVPst	const OtVPst		37
+nim	OtRobatic	harfnim/ot/indic_table.html#OtRobatic	const OtRobatic		38
+nim	OtXgroup	harfnim/ot/indic_table.html#OtXgroup	const OtXgroup		39
+nim	OtYgroup	harfnim/ot/indic_table.html#OtYgroup	const OtYgroup		40
+nim	OtAs	harfnim/ot/indic_table.html#OtAs	const OtAs		41
+nim	OtMh	harfnim/ot/indic_table.html#OtMh	const OtMh		42
+nim	OtMr	harfnim/ot/indic_table.html#OtMr	const OtMr		43
+nim	OtMw	harfnim/ot/indic_table.html#OtMw	const OtMw		44
+nim	OtMy	harfnim/ot/indic_table.html#OtMy	const OtMy		45
+nim	OtPt	harfnim/ot/indic_table.html#OtPt	const OtPt		46
+nim	OtVs	harfnim/ot/indic_table.html#OtVs	const OtVs		47
+nim	OtMl	harfnim/ot/indic_table.html#OtMl	const OtMl		48
+nim	OtSmpst	harfnim/ot/indic_table.html#OtSmpst	const OtSmpst		49
+nim	OtIv	harfnim/ot/indic_table.html#OtIv	const OtIv		50
+nim	PosStart	harfnim/ot/indic_table.html#PosStart	const PosStart		52
+nim	PosRaToBecomeReph	harfnim/ot/indic_table.html#PosRaToBecomeReph	const PosRaToBecomeReph		53
+nim	PosPreM	harfnim/ot/indic_table.html#PosPreM	const PosPreM		54
+nim	PosPreC	harfnim/ot/indic_table.html#PosPreC	const PosPreC		55
+nim	PosBaseC	harfnim/ot/indic_table.html#PosBaseC	const PosBaseC		56
+nim	PosAfterMain	harfnim/ot/indic_table.html#PosAfterMain	const PosAfterMain		57
+nim	PosAboveC	harfnim/ot/indic_table.html#PosAboveC	const PosAboveC		58
+nim	PosBeforeSub	harfnim/ot/indic_table.html#PosBeforeSub	const PosBeforeSub		59
+nim	PosBelowC	harfnim/ot/indic_table.html#PosBelowC	const PosBelowC		60
+nim	PosAfterSub	harfnim/ot/indic_table.html#PosAfterSub	const PosAfterSub		61
+nim	PosBeforePost	harfnim/ot/indic_table.html#PosBeforePost	const PosBeforePost		62
+nim	PosPostC	harfnim/ot/indic_table.html#PosPostC	const PosPostC		63
+nim	PosAfterPost	harfnim/ot/indic_table.html#PosAfterPost	const PosAfterPost		64
+nim	PosSmvd	harfnim/ot/indic_table.html#PosSmvd	const PosSmvd		65
+nim	PosEnd	harfnim/ot/indic_table.html#PosEnd	const PosEnd		66
+nim	IndicValues	harfnim/ot/indic_table.html#IndicValues	const IndicValues		73
+nim	IndicU8	harfnim/ot/indic_table.html#IndicU8	const IndicU8		98
+nim	indicCategoriesIndex	harfnim/ot/indic_table.html#indicCategoriesIndex,int	proc indicCategoriesIndex(u: int): uint8		182
+nim	getCategories	harfnim/ot/indic_table.html#getCategories,uint32	proc getCategories(u: uint32): tuple[cat, pos: uint8]		194
+nim	indicCategory	harfnim/ot/indic_table.html#indicCategory,GlyphInfo	proc indicCategory(g: GlyphInfo): uint8		199
+nim	setIndicCategory	harfnim/ot/indic_table.html#setIndicCategory,GlyphInfo,uint8	proc setIndicCategory(g: var GlyphInfo; v: uint8)		204
+nim	indicPosition	harfnim/ot/indic_table.html#indicPosition,GlyphInfo	proc indicPosition(g: GlyphInfo): uint8		208
+nim	setIndicPosition	harfnim/ot/indic_table.html#setIndicPosition,GlyphInfo,uint8	proc setIndicPosition(g: var GlyphInfo; v: uint8)		213

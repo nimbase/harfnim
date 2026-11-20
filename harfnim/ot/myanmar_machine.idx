@@ -1,0 +1,7 @@
+nimTitle	myanmar_machine	harfnim/ot/myanmar_machine.html	module harfnim/ot/myanmar_machine		0
+nim	ConsonantSyllable	harfnim/ot/myanmar_machine.html#ConsonantSyllable	SyllableType.ConsonantSyllable		12
+nim	PunctuationCluster	harfnim/ot/myanmar_machine.html#PunctuationCluster	SyllableType.PunctuationCluster		12
+nim	BrokenCluster	harfnim/ot/myanmar_machine.html#BrokenCluster	SyllableType.BrokenCluster		12
+nim	NonMyanmarCluster	harfnim/ot/myanmar_machine.html#NonMyanmarCluster	SyllableType.NonMyanmarCluster		12
+nim	SyllableType	harfnim/ot/myanmar_machine.html#SyllableType	enum SyllableType		12
+nim	findSyllablesMyanmar	harfnim/ot/myanmar_machine.html#findSyllablesMyanmar,Buffer	proc findSyllablesMyanmar(buf: var Buffer)		37

@@ -1,0 +1,99 @@
+nimTitle	unicode	harfnim/unicode.html	module harfnim/unicode		0
+nim	Codepoint	harfnim/unicode.html#Codepoint	type Codepoint		11
+nim	dkSingleton	harfnim/unicode.html#dkSingleton	DecomposedKind.dkSingleton		14
+nim	dkPair	harfnim/unicode.html#dkPair	DecomposedKind.dkPair		14
+nim	DecomposedKind	harfnim/unicode.html#DecomposedKind	enum DecomposedKind		14
+nim	Decomposed	harfnim/unicode.html#Decomposed	object Decomposed		21
+nim	GeneralCategory	harfnim/unicode.html#GeneralCategory	type GeneralCategory		39
+nim	GcControl	harfnim/unicode.html#GcControl	const GcControl		43
+nim	GcFormat	harfnim/unicode.html#GcFormat	const GcFormat		45
+nim	GcUnassigned	harfnim/unicode.html#GcUnassigned	const GcUnassigned		47
+nim	GcPrivateUse	harfnim/unicode.html#GcPrivateUse	const GcPrivateUse		49
+nim	GcSurrogate	harfnim/unicode.html#GcSurrogate	const GcSurrogate		51
+nim	GcLowercaseLetter	harfnim/unicode.html#GcLowercaseLetter	const GcLowercaseLetter		53
+nim	GcModifierLetter	harfnim/unicode.html#GcModifierLetter	const GcModifierLetter		55
+nim	GcOtherLetter	harfnim/unicode.html#GcOtherLetter	const GcOtherLetter		57
+nim	GcTitlecaseLetter	harfnim/unicode.html#GcTitlecaseLetter	const GcTitlecaseLetter		59
+nim	GcUppercaseLetter	harfnim/unicode.html#GcUppercaseLetter	const GcUppercaseLetter		61
+nim	GcSpacingMark	harfnim/unicode.html#GcSpacingMark	const GcSpacingMark		63
+nim	GcEnclosingMark	harfnim/unicode.html#GcEnclosingMark	const GcEnclosingMark		65
+nim	GcNonSpacingMark	harfnim/unicode.html#GcNonSpacingMark	const GcNonSpacingMark		67
+nim	GcDecimalNumber	harfnim/unicode.html#GcDecimalNumber	const GcDecimalNumber		69
+nim	GcLetterNumber	harfnim/unicode.html#GcLetterNumber	const GcLetterNumber		71
+nim	GcOtherNumber	harfnim/unicode.html#GcOtherNumber	const GcOtherNumber		73
+nim	GcConnectPunctuation	harfnim/unicode.html#GcConnectPunctuation	const GcConnectPunctuation		75
+nim	GcDashPunctuation	harfnim/unicode.html#GcDashPunctuation	const GcDashPunctuation		77
+nim	GcClosePunctuation	harfnim/unicode.html#GcClosePunctuation	const GcClosePunctuation		79
+nim	GcFinalPunctuation	harfnim/unicode.html#GcFinalPunctuation	const GcFinalPunctuation		81
+nim	GcInitialPunctuation	harfnim/unicode.html#GcInitialPunctuation	const GcInitialPunctuation		83
+nim	GcOtherPunctuation	harfnim/unicode.html#GcOtherPunctuation	const GcOtherPunctuation		85
+nim	GcOpenPunctuation	harfnim/unicode.html#GcOpenPunctuation	const GcOpenPunctuation		87
+nim	GcCurrencySymbol	harfnim/unicode.html#GcCurrencySymbol	const GcCurrencySymbol		89
+nim	GcModifierSymbol	harfnim/unicode.html#GcModifierSymbol	const GcModifierSymbol		91
+nim	GcMathSymbol	harfnim/unicode.html#GcMathSymbol	const GcMathSymbol		93
+nim	GcOtherSymbol	harfnim/unicode.html#GcOtherSymbol	const GcOtherSymbol		95
+nim	GcLineSeparator	harfnim/unicode.html#GcLineSeparator	const GcLineSeparator		97
+nim	GcParagraphSeparator	harfnim/unicode.html#GcParagraphSeparator	const GcParagraphSeparator		99
+nim	GcSpaceSeparator	harfnim/unicode.html#GcSpaceSeparator	const GcSpaceSeparator		101
+nim	`==`	harfnim/unicode.html#==,GeneralCategory,GeneralCategory	proc `==`(a, b: GeneralCategory): bool		104
+nim	isMark	harfnim/unicode.html#isMark,GeneralCategory	proc isMark(g: GeneralCategory): bool		108
+nim	isLetter	harfnim/unicode.html#isLetter,GeneralCategory	proc isLetter(g: GeneralCategory): bool		112
+nim	gcFlag	harfnim/unicode.html#gcFlag,GeneralCategory	proc gcFlag(g: GeneralCategory): uint32		117
+nim	gcFlagUnsafe	harfnim/unicode.html#gcFlagUnsafe,GeneralCategory	proc gcFlagUnsafe(g: GeneralCategory): uint32		121
+nim	inRangeInclusive	harfnim/unicode.html#inRangeInclusive,GeneralCategory,GeneralCategory,GeneralCategory	proc inRangeInclusive(g, first, last: GeneralCategory): bool		125
+nim	CcNotReordered	harfnim/unicode.html#CcNotReordered	const CcNotReordered		135
+nim	CcOverlay	harfnim/unicode.html#CcOverlay	const CcOverlay		137
+nim	CcNukta	harfnim/unicode.html#CcNukta	const CcNukta		139
+nim	CcKanaVoicing	harfnim/unicode.html#CcKanaVoicing	const CcKanaVoicing		141
+nim	CcVirama	harfnim/unicode.html#CcVirama	const CcVirama		143
+nim	CcAttachedBelowLeft	harfnim/unicode.html#CcAttachedBelowLeft	const CcAttachedBelowLeft		145
+nim	CcAttachedBelow	harfnim/unicode.html#CcAttachedBelow	const CcAttachedBelow		147
+nim	CcAttachedAbove	harfnim/unicode.html#CcAttachedAbove	const CcAttachedAbove		149
+nim	CcAttachedAboveRight	harfnim/unicode.html#CcAttachedAboveRight	const CcAttachedAboveRight		151
+nim	CcBelowLeft	harfnim/unicode.html#CcBelowLeft	const CcBelowLeft		153
+nim	CcBelow	harfnim/unicode.html#CcBelow	const CcBelow		155
+nim	CcBelowRight	harfnim/unicode.html#CcBelowRight	const CcBelowRight		157
+nim	CcLeft	harfnim/unicode.html#CcLeft	const CcLeft		159
+nim	CcRight	harfnim/unicode.html#CcRight	const CcRight		161
+nim	CcAboveLeft	harfnim/unicode.html#CcAboveLeft	const CcAboveLeft		163
+nim	CcAbove	harfnim/unicode.html#CcAbove	const CcAbove		165
+nim	CcAboveRight	harfnim/unicode.html#CcAboveRight	const CcAboveRight		167
+nim	CcDoubleBelow	harfnim/unicode.html#CcDoubleBelow	const CcDoubleBelow		169
+nim	CcDoubleAbove	harfnim/unicode.html#CcDoubleAbove	const CcDoubleAbove		171
+nim	CcIotaSubscript	harfnim/unicode.html#CcIotaSubscript	const CcIotaSubscript		173
+nim	CcInvalid	harfnim/unicode.html#CcInvalid	const CcInvalid		175
+nim	SpaceNotSpace	harfnim/unicode.html#SpaceNotSpace	const SpaceNotSpace		183
+nim	SpaceEm	harfnim/unicode.html#SpaceEm	const SpaceEm		185
+nim	SpaceEm2	harfnim/unicode.html#SpaceEm2	const SpaceEm2		187
+nim	SpaceEm3	harfnim/unicode.html#SpaceEm3	const SpaceEm3		189
+nim	SpaceEm4	harfnim/unicode.html#SpaceEm4	const SpaceEm4		191
+nim	SpaceEm5	harfnim/unicode.html#SpaceEm5	const SpaceEm5		193
+nim	SpaceEm6	harfnim/unicode.html#SpaceEm6	const SpaceEm6		195
+nim	SpaceEm16	harfnim/unicode.html#SpaceEm16	const SpaceEm16		197
+nim	Space4Em18	harfnim/unicode.html#Space4Em18	const Space4Em18		199
+nim	SpaceSpace	harfnim/unicode.html#SpaceSpace	const SpaceSpace		201
+nim	SpaceFigure	harfnim/unicode.html#SpaceFigure	const SpaceFigure		203
+nim	SpacePunctuation	harfnim/unicode.html#SpacePunctuation	const SpacePunctuation		205
+nim	SpaceNarrow	harfnim/unicode.html#SpaceNarrow	const SpaceNarrow		207
+nim	modifiedCombiningClassTable	harfnim/unicode.html#modifiedCombiningClassTable	const modifiedCombiningClassTable		214
+nim	ucdGc	harfnim/unicode.html#ucdGc,uint32	proc ucdGc(u: uint32): uint8		254
+nim	ucdCcc	harfnim/unicode.html#ucdCcc,uint32	proc ucdCcc(u: uint32): uint8		264
+nim	ucdBmg	harfnim/unicode.html#ucdBmg,uint32	proc ucdBmg(u: uint32): int32		278
+nim	ucdSc	harfnim/unicode.html#ucdSc,uint32	proc ucdSc(u: uint32): uint8		289
+nim	ucdDm	harfnim/unicode.html#ucdDm,uint32	proc ucdDm(u: uint32): uint16		299
+nim	scriptFor	harfnim/unicode.html#scriptFor,uint32	proc scriptFor(cp: uint32): Script		329
+nim	generalCategoryFor	harfnim/unicode.html#generalCategoryFor,uint32	proc generalCategoryFor(cp: uint32): GeneralCategory		336
+nim	combiningClassFor	harfnim/unicode.html#combiningClassFor,uint32	proc combiningClassFor(cp: uint32): uint8		340
+nim	bidiClassFor	harfnim/unicode.html#bidiClassFor,uint32	proc bidiClassFor(cp: uint32): BidiClass		344
+nim	mirroringFor	harfnim/unicode.html#mirroringFor,uint32	proc mirroringFor(cp: uint32): Option[uint32]		359
+nim	isEmojiExtendedPictographic	harfnim/unicode.html#isEmojiExtendedPictographic,uint32	proc isEmojiExtendedPictographic(cp: uint32): bool		367
+nim	spaceFallback	harfnim/unicode.html#spaceFallback,uint32	proc spaceFallback(cp: uint32): uint8		371
+nim	modifiedCombiningClass	harfnim/unicode.html#modifiedCombiningClass,uint32	proc modifiedCombiningClass(cp: uint32): uint8		391
+nim	isDefaultIgnorable	harfnim/unicode.html#isDefaultIgnorable,uint32	proc isDefaultIgnorable(cp: uint32): bool		401
+nim	isVariationSelector	harfnim/unicode.html#isVariationSelector,uint32	proc isVariationSelector(cp: uint32): bool		426
+nim	verticalAlternate	harfnim/unicode.html#verticalAlternate,uint32	proc verticalAlternate(cp: uint32): Option[uint32]		431
+nim	composeImpl	harfnim/unicode.html#composeImpl,uint32,uint32	proc composeImpl(a, b: uint32): Option[uint32]		587
+nim	decomposeImpl	harfnim/unicode.html#decomposeImpl,uint32	proc decomposeImpl(ab: uint32): Option[tuple[a, b: uint32]]		609
+nim	compose	harfnim/unicode.html#compose,uint32,uint32	proc compose(a, b: uint32): Option[uint32]		631
+nim	decompose	harfnim/unicode.html#decompose,uint32	proc decompose(cp: uint32): Option[Decomposed]		635
+nim	isMarkCodepoint	harfnim/unicode.html#isMarkCodepoint,uint32	proc isMarkCodepoint(cp: uint32): bool		645

@@ -1,0 +1,54 @@
+nimTitle	gpos	harfnim/ot/gpos.html	module harfnim/ot/gpos		0
+nim	GposSinglePos	harfnim/ot/gpos.html#GposSinglePos	const GposSinglePos		24
+nim	GposPairPos	harfnim/ot/gpos.html#GposPairPos	const GposPairPos		25
+nim	GposCursivePos	harfnim/ot/gpos.html#GposCursivePos	const GposCursivePos		26
+nim	GposMarkBasePos	harfnim/ot/gpos.html#GposMarkBasePos	const GposMarkBasePos		27
+nim	GposMarkLigPos	harfnim/ot/gpos.html#GposMarkLigPos	const GposMarkLigPos		28
+nim	GposMarkMarkPos	harfnim/ot/gpos.html#GposMarkMarkPos	const GposMarkMarkPos		29
+nim	GposContextPos	harfnim/ot/gpos.html#GposContextPos	const GposContextPos		30
+nim	GposChainedContextPos	harfnim/ot/gpos.html#GposChainedContextPos	const GposChainedContextPos		31
+nim	GposExtensionPos	harfnim/ot/gpos.html#GposExtensionPos	const GposExtensionPos		32
+nim	ValueXPlacement	harfnim/ot/gpos.html#ValueXPlacement	const ValueXPlacement		34
+nim	ValueYPlacement	harfnim/ot/gpos.html#ValueYPlacement	const ValueYPlacement		35
+nim	ValueXAdvance	harfnim/ot/gpos.html#ValueXAdvance	const ValueXAdvance		36
+nim	ValueYAdvance	harfnim/ot/gpos.html#ValueYAdvance	const ValueYAdvance		37
+nim	ValueXPlacementDevice	harfnim/ot/gpos.html#ValueXPlacementDevice	const ValueXPlacementDevice		38
+nim	ValueYPlacementDevice	harfnim/ot/gpos.html#ValueYPlacementDevice	const ValueYPlacementDevice		39
+nim	ValueXAdvanceDevice	harfnim/ot/gpos.html#ValueXAdvanceDevice	const ValueXAdvanceDevice		40
+nim	ValueYAdvanceDevice	harfnim/ot/gpos.html#ValueYAdvanceDevice	const ValueYAdvanceDevice		41
+nim	ValueRecord	harfnim/ot/gpos.html#ValueRecord	object ValueRecord		44
+nim	Anchor	harfnim/ot/gpos.html#Anchor	object Anchor		62
+nim	SinglePos	harfnim/ot/gpos.html#SinglePos	object SinglePos		71
+nim	PairValue	harfnim/ot/gpos.html#PairValue	tuple PairValue		80
+nim	PairSet	harfnim/ot/gpos.html#PairSet	object PairSet		83
+nim	PairPos	harfnim/ot/gpos.html#PairPos	object PairPos		90
+nim	pkSingle	harfnim/ot/gpos.html#pkSingle	GposLookupKind.pkSingle		113
+nim	pkPair	harfnim/ot/gpos.html#pkPair	GposLookupKind.pkPair		113
+nim	pkCursive	harfnim/ot/gpos.html#pkCursive	GposLookupKind.pkCursive		113
+nim	pkMarkBase	harfnim/ot/gpos.html#pkMarkBase	GposLookupKind.pkMarkBase		113
+nim	pkMarkLig	harfnim/ot/gpos.html#pkMarkLig	GposLookupKind.pkMarkLig		113
+nim	pkMarkMark	harfnim/ot/gpos.html#pkMarkMark	GposLookupKind.pkMarkMark		113
+nim	pkContext	harfnim/ot/gpos.html#pkContext	GposLookupKind.pkContext		113
+nim	pkChain	harfnim/ot/gpos.html#pkChain	GposLookupKind.pkChain		113
+nim	pkOther	harfnim/ot/gpos.html#pkOther	GposLookupKind.pkOther		113
+nim	GposLookupKind	harfnim/ot/gpos.html#GposLookupKind	enum GposLookupKind		113
+nim	PosLookupEntry	harfnim/ot/gpos.html#PosLookupEntry	tuple PosLookupEntry		134
+nim	MarkSub	harfnim/ot/gpos.html#MarkSub	object MarkSub		137
+nim	LigSub	harfnim/ot/gpos.html#LigSub	object LigSub		155
+nim	CursiveSub	harfnim/ot/gpos.html#CursiveSub	object CursiveSub		177
+nim	PosLookup	harfnim/ot/gpos.html#PosLookup	object PosLookup		186
+nim	GposData	harfnim/ot/gpos.html#GposData	type GposData		213
+nim	valueRecordLen	harfnim/ot/gpos.html#valueRecordLen,uint16	proc valueRecordLen(format: uint16): int		234
+nim	parseValueRecord	harfnim/ot/gpos.html#parseValueRecord,openArray[uint8],int,uint16,int	proc parseValueRecord(bytes: openArray[uint8]; off: int; format: uint16;\n                 parentBase: int): ValueRecord		243
+nim	parseAnchor	harfnim/ot/gpos.html#parseAnchor,openArray[uint8],int	proc parseAnchor(bytes: openArray[uint8]; off: int): Anchor		298
+nim	parseSinglePos	harfnim/ot/gpos.html#parseSinglePos,openArray[uint8],int	proc parseSinglePos(bytes: openArray[uint8]; off: int): SinglePos		319
+nim	parsePairPos	harfnim/ot/gpos.html#parsePairPos,openArray[uint8],int	proc parsePairPos(bytes: openArray[uint8]; off: int): PairPos		419
+nim	parseMarkBase	harfnim/ot/gpos.html#parseMarkBase,openArray[uint8],int	proc parseMarkBase(bytes: openArray[uint8]; off: int): MarkSub		567
+nim	parseMarkMark	harfnim/ot/gpos.html#parseMarkMark,openArray[uint8],int	proc parseMarkMark(bytes: openArray[uint8]; off: int): MarkSub		659
+nim	parseMarkLig	harfnim/ot/gpos.html#parseMarkLig,openArray[uint8],int	proc parseMarkLig(bytes: openArray[uint8]; off: int): LigSub		754
+nim	parseCursive	harfnim/ot/gpos.html#parseCursive,openArray[uint8],int	proc parseCursive(bytes: openArray[uint8]; off: int): CursiveSub		878
+nim	emptyPosLookup	harfnim/ot/gpos.html#emptyPosLookup	proc emptyPosLookup(): PosLookup		1061
+nim	gposLookupCount	harfnim/ot/gpos.html#gposLookupCount,GposData	proc gposLookupCount(gpos: GposData): int		1068
+nim	getGposLookup	harfnim/ot/gpos.html#getGposLookup,GposData,int	proc getGposLookup(gpos: GposData; idx: int): PosLookup		1074
+nim	parseGposTable	harfnim/ot/gpos.html#parseGposTable,openArray[uint8],int	proc parseGposTable(bytes: openArray[uint8]; off: int): GposData		1088
+nim	parseGpos	harfnim/ot/gpos.html#parseGpos,SfntFont	proc parseGpos(f: SfntFont): Option[GposData]		1111

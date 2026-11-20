@@ -1,0 +1,23 @@
+nimTitle	font	harfnim/font.html	module harfnim/font		0
+nim	LayoutTables	harfnim/font.html#LayoutTables	type LayoutTables		19
+nim	ShaperFont	harfnim/font.html#ShaperFont	type ShaperFont		37
+nim	newShaperFont	harfnim/font.html#newShaperFont,SfntFont	proc newShaperFont(font: SfntFont): ShaperFont		58
+nim	cachedGsub	harfnim/font.html#cachedGsub,ShaperFont	proc cachedGsub(f: ShaperFont): Option[GsubData]		69
+nim	cachedGpos	harfnim/font.html#cachedGpos,ShaperFont	proc cachedGpos(f: ShaperFont): Option[GposData]		79
+nim	cachedKern	harfnim/font.html#cachedKern,ShaperFont	proc cachedKern(f: ShaperFont): Option[KernData]		88
+nim	setScale	harfnim/font.html#setScale,ShaperFont,int32	proc setScale(f: var ShaperFont; scale: int32)		98
+nim	setScaleSeparate	harfnim/font.html#setScaleSeparate,ShaperFont,int32,int32	proc setScaleSeparate(f: var ShaperFont; xScale, yScale: int32)		102
+nim	setVariations	harfnim/font.html#setVariations,ShaperFont,openArray[tuple[uint32,float32]]	proc setVariations(f: var ShaperFont;\n              vars: openArray[tuple[tag: uint32, value: float32]])		106
+nim	normalizedCoords	harfnim/font.html#normalizedCoords,ShaperFont	proc normalizedCoords(f: ShaperFont): seq[float32]		116
+nim	nominalGlyph	harfnim/font.html#nominalGlyph,ShaperFont,uint32	proc nominalGlyph(f: ShaperFont; cp: uint32): Option[GlyphId]		120
+nim	nominalGlyphs	harfnim/font.html#nominalGlyphs,ShaperFont,seq[GlyphInfo],int,int	proc nominalGlyphs(f: ShaperFont; infos: var seq[GlyphInfo]; first, last: int): int		124
+nim	variationGlyph	harfnim/font.html#variationGlyph,ShaperFont,uint32,uint32	proc variationGlyph(f: ShaperFont; base, selector: uint32): Option[GlyphId]		137
+nim	hAdvance	harfnim/font.html#hAdvance,ShaperFont,GlyphId	proc hAdvance(f: ShaperFont; gid: GlyphId): int32		141
+nim	vAdvance	harfnim/font.html#vAdvance,ShaperFont,GlyphId	proc vAdvance(f: ShaperFont; gid: GlyphId): int32		147
+nim	drawGlyph	harfnim/font.html#drawGlyph,ShaperFont,GlyphId,proc(DrawOp)	proc drawGlyph(f: ShaperFont; gid: GlyphId; cb: proc (op: DrawOp) {.closure.}): bool		154
+nim	glyphOutline	harfnim/font.html#glyphOutline,ShaperFont,GlyphId	proc glyphOutline(f: ShaperFont; gid: GlyphId): Option[GlyphOutline]		177
+nim	glyphBoundsComputedCached	harfnim/font.html#glyphBoundsComputedCached,ShaperFont,GlyphId	proc glyphBoundsComputedCached(f: ShaperFont; gid: GlyphId): Option[\n    tuple[xMin, yMin, xMax, yMax: int32]]		190
+nim	isVaried	harfnim/font.html#isVaried,ShaperFont	proc isVaried(f: ShaperFont): bool		198
+nim	glyphExtents	harfnim/font.html#glyphExtents,ShaperFont,GlyphId	proc glyphExtents(f: ShaperFont; gid: GlyphId): Option[GlyphExtents]		205
+nim	hasGlyph	harfnim/font.html#hasGlyph,ShaperFont,uint32	proc hasGlyph(f: ShaperFont; cp: uint32): bool		223
+nim	normalizeContextFor	harfnim/font.html#normalizeContextFor,ShaperFont	proc normalizeContextFor(f: ShaperFont): NormalizeContext		227

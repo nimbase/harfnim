@@ -1,0 +1,23 @@
+nimTitle	thai	harfnim/ot/thai.html	module harfnim/ot/thai		0
+nim	Nc	harfnim/ot/thai.html#Nc	Consonant.Nc		19
+nim	Ac	harfnim/ot/thai.html#Ac	Consonant.Ac		19
+nim	Rc	harfnim/ot/thai.html#Rc	Consonant.Rc		19
+nim	Dc	harfnim/ot/thai.html#Dc	Consonant.Dc		19
+nim	NotConsonant	harfnim/ot/thai.html#NotConsonant	Consonant.NotConsonant		19
+nim	Consonant	harfnim/ot/thai.html#Consonant	enum Consonant		19
+nim	Av	harfnim/ot/thai.html#Av	Mark.Av		23
+nim	Bv	harfnim/ot/thai.html#Bv	Mark.Bv		23
+nim	T	harfnim/ot/thai.html#T	Mark.T		23
+nim	NotMark	harfnim/ot/thai.html#NotMark	Mark.NotMark		23
+nim	Mark	harfnim/ot/thai.html#Mark	enum Mark		23
+nim	getConsonantType	harfnim/ot/thai.html#getConsonantType,uint32	proc getConsonantType(u: uint32): Consonant		37
+nim	getMarkType	harfnim/ot/thai.html#getMarkType,uint32	proc getMarkType(u: uint32): Mark		51
+nim	SdMappings	harfnim/ot/thai.html#SdMappings	const SdMappings		64
+nim	SdlMappings	harfnim/ot/thai.html#SdlMappings	const SdlMappings		75
+nim	SlMappings	harfnim/ot/thai.html#SlMappings	const SlMappings		83
+nim	RdMappings	harfnim/ot/thai.html#RdMappings	const RdMappings		98
+nim	isSaraAm	harfnim/ot/thai.html#isSaraAm,uint32	proc isSaraAm(u: uint32): bool		187
+nim	nikhahitFromSaraAm	harfnim/ot/thai.html#nikhahitFromSaraAm,uint32	proc nikhahitFromSaraAm(u: uint32): uint32		191
+nim	saraAaFromSaraAm	harfnim/ot/thai.html#saraAaFromSaraAm,uint32	proc saraAaFromSaraAm(u: uint32): uint32		195
+nim	gsubHasThai	harfnim/ot/thai.html#gsubHasThai,GsubData	proc gsubHasThai(gsub: GsubData): bool		233
+nim	preprocessThai	harfnim/ot/thai.html#preprocessThai,Buffer,ShaperFont,bool	proc preprocessThai(buf: var Buffer; sf: ShaperFont; hasThaiGsub: bool)		242

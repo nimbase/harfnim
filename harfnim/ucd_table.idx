@@ -1,0 +1,9 @@
+nimTitle	ucd_table	harfnim/ucd_table.html	module harfnim/ucd_table		0
+nim	ucdScMap	harfnim/ucd_table.html#ucdScMap	const ucdScMap		3
+nim	ucdDm1P0Map	harfnim/ucd_table.html#ucdDm1P0Map	const ucdDm1P0Map		51
+nim	ucdDm1P2Map	harfnim/ucd_table.html#ucdDm1P2Map	const ucdDm1P2Map		158
+nim	ucdDm2U32Map	harfnim/ucd_table.html#ucdDm2U32Map	const ucdDm2U32Map		175
+nim	ucdDm2U64Map	harfnim/ucd_table.html#ucdDm2U64Map	const ucdDm2U64Map		258
+nim	ucdU8	harfnim/ucd_table.html#ucdU8	const ucdU8		312
+nim	ucdU16	harfnim/ucd_table.html#ucdU16	const ucdU16		2814
+nim	ucdPalette	harfnim/ucd_table.html#ucdPalette	const ucdPalette		4222

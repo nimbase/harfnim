@@ -1,0 +1,13 @@
+nimTitle	coverage	harfnim/ot/coverage.html	module harfnim/ot/coverage		0
+nim	CoverageRange	harfnim/ot/coverage.html#CoverageRange	tuple CoverageRange		6
+nim	Coverage	harfnim/ot/coverage.html#Coverage	object Coverage		9
+nim	ClassRange	harfnim/ot/coverage.html#ClassRange	tuple ClassRange		18
+nim	ClassDef	harfnim/ot/coverage.html#ClassDef	object ClassDef		21
+nim	noCoverage	harfnim/ot/coverage.html#noCoverage	proc noCoverage(): Coverage		32
+nim	noClassDef	harfnim/ot/coverage.html#noClassDef	proc noClassDef(): ClassDef		36
+nim	parseClassDef	harfnim/ot/coverage.html#parseClassDef,openArray[uint8],int	proc parseClassDef(bytes: openArray[uint8]; off: int): ClassDef		40
+nim	classOf	harfnim/ot/coverage.html#classOf,ClassDef,uint32	proc classOf(c: ClassDef; gid: uint32): uint32		96
+nim	parseCoverage	harfnim/ot/coverage.html#parseCoverage,openArray[uint8],int	proc parseCoverage(bytes: openArray[uint8]; off: int): Coverage		120
+nim	coverageIndexRaw	harfnim/ot/coverage.html#coverageIndexRaw,Coverage,uint32	proc coverageIndexRaw(c: Coverage; gid: uint32): int		168
+nim	coverageIndex	harfnim/ot/coverage.html#coverageIndex,Coverage,uint32	proc coverageIndex(c: Coverage; gid: uint32): Option[uint32]		198
+nim	covers	harfnim/ot/coverage.html#covers,Coverage,uint32	proc covers(c: Coverage; gid: uint32): bool		206

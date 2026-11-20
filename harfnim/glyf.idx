@@ -1,0 +1,7 @@
+nimTitle	glyf	harfnim/glyf.html	module harfnim/glyf		0
+nim	TTPoint	harfnim/glyf.html#TTPoint	tuple TTPoint		20
+nim	TTContour	harfnim/glyf.html#TTContour	type TTContour		22
+nim	emitContour	harfnim/glyf.html#emitContour,TTContour,proc(DrawOp)	proc emitContour(pts: TTContour; cb: proc (op: DrawOp) {.closure.})		72
+nim	emitContours	harfnim/glyf.html#emitContours,seq[TTContour],proc(DrawOp)	proc emitContours(cs: seq[TTContour]; cb: proc (op: DrawOp) {.closure.})		120
+nim	decodeGlyphOutlines	harfnim/glyf.html#decodeGlyphOutlines,openArray[uint8],int,int,proc(uint32),int,uint32,GvarContext	proc decodeGlyphOutlines(bytes: openArray[uint8]; off, len: int; glyphAt: proc (\n    gid: uint32): tuple[ok: bool, off, len: int] {.closure.}; depth: int = 0;\n                    gid: uint32 = 0'u32; gvar: GvarContext = noGvarContext()): Option[\n    seq[TTContour]]		212
+nim	drawGlyfGlyph	harfnim/glyf.html#drawGlyfGlyph,openArray[uint8],int,int,proc(uint32),proc(DrawOp),uint32,GvarContext	proc drawGlyfGlyph(bytes: openArray[uint8]; off, len: int; glyphAt: proc (gid: uint32): tuple[\n    ok: bool, off, len: int] {.closure.}; cb: proc (op: DrawOp) {.closure.};\n              gid: uint32 = 0'u32; gvar: GvarContext = noGvarContext()): bool		373

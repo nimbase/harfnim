@@ -1,0 +1,16 @@
+nimTitle	context	harfnim/ot/context.html	module harfnim/ot/context		0
+nim	contextCheckProp	harfnim/ot/context.html#contextCheckProp,GlyphInfo,uint32	proc contextCheckProp(g: GlyphInfo; props: uint32): bool		18
+nim	isSkippable	harfnim/ot/context.html#isSkippable,GlyphInfo,uint32	proc isSkippable(g: GlyphInfo; props: uint32): bool		35
+nim	inputMatchesValue	harfnim/ot/context.html#inputMatchesValue,uint32,uint32	proc inputMatchesValue(gid, expected: uint32): bool		39
+nim	classMatchesValue	harfnim/ot/context.html#classMatchesValue,ClassDef,uint32,uint32	proc classMatchesValue(classDef: ClassDef; gid, expected: uint32): bool		43
+nim	coverageMatchesValue	harfnim/ot/context.html#coverageMatchesValue,Coverage,uint32	proc coverageMatchesValue(cov: Coverage; gid: uint32): bool		47
+nim	vkGlyph	harfnim/ot/context.html#vkGlyph	ValueKind.vkGlyph		52
+nim	vkClass	harfnim/ot/context.html#vkClass	ValueKind.vkClass		52
+nim	vkCoverage	harfnim/ot/context.html#vkCoverage	ValueKind.vkCoverage		52
+nim	ValueKind	harfnim/ot/context.html#ValueKind	enum ValueKind		52
+nim	valueMatches	harfnim/ot/context.html#valueMatches,ValueKind,ClassDef,Coverage,uint32,uint32	proc valueMatches(kind: ValueKind; classDef: ClassDef; cov: Coverage;\n             gid, expected: uint32): bool		61
+nim	nextForwardPos	harfnim/ot/context.html#nextForwardPos,Buffer,uint32,int	proc nextForwardPos(buf: Buffer; props: uint32; start: int): int		73
+nim	prevBackwardOutPos	harfnim/ot/context.html#prevBackwardOutPos,Buffer,uint32,int	proc prevBackwardOutPos(buf: var Buffer; props: uint32; start: int): int		82
+nim	matchInputSeq	harfnim/ot/context.html#matchInputSeq,Buffer,uint32,uint32,openArray[uint32],ValueKind,ClassDef,openArray[Coverage],uint8	proc matchInputSeq(buf: Buffer; props, lookupMask: uint32; seq: openArray[uint32];\n              kind: ValueKind; classDef: ClassDef;\n              coverages: openArray[Coverage]; anchorSyllable: uint8 = 0'u8): Option[\n    tuple[positions: seq[int], matchEnd: int]]		100
+nim	matchLookaheadSeq	harfnim/ot/context.html#matchLookaheadSeq,Buffer,uint32,openArray[uint32],ValueKind,ClassDef,openArray[Coverage],int,uint8	proc matchLookaheadSeq(buf: Buffer; props: uint32; seq: openArray[uint32];\n                  kind: ValueKind; classDef: ClassDef;\n                  coverages: openArray[Coverage]; start: int;\n                  anchorSyllable: uint8 = 0'u8): Option[int]		142
+nim	matchBacktrackSeq	harfnim/ot/context.html#matchBacktrackSeq,Buffer,uint32,openArray[uint32],ValueKind,ClassDef,openArray[Coverage],uint8	proc matchBacktrackSeq(buf: var Buffer; props: uint32; seq: openArray[uint32];\n                  kind: ValueKind; classDef: ClassDef;\n                  coverages: openArray[Coverage]; anchorSyllable: uint8 = 0'u8): bool		173

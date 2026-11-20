@@ -1,0 +1,20 @@
+nimTitle	hangul	harfnim/ot/hangul.html	module harfnim/ot/hangul		0
+nim	Ljmo	harfnim/ot/hangul.html#Ljmo	const Ljmo		20
+nim	Vjmo	harfnim/ot/hangul.html#Vjmo	const Vjmo		21
+nim	Tjmo	harfnim/ot/hangul.html#Tjmo	const Tjmo		22
+nim	isCombiningL	harfnim/ot/hangul.html#isCombiningL,uint32	proc isCombiningL(u: uint32): bool		33
+nim	isCombiningV	harfnim/ot/hangul.html#isCombiningV,uint32	proc isCombiningV(u: uint32): bool		37
+nim	isCombiningT	harfnim/ot/hangul.html#isCombiningT,uint32	proc isCombiningT(u: uint32): bool		41
+nim	isCombinedS	harfnim/ot/hangul.html#isCombinedS,uint32	proc isCombinedS(u: uint32): bool		45
+nim	isL	harfnim/ot/hangul.html#isL,uint32	proc isL(u: uint32): bool		49
+nim	isV	harfnim/ot/hangul.html#isV,uint32	proc isV(u: uint32): bool		53
+nim	isT	harfnim/ot/hangul.html#isT,uint32	proc isT(u: uint32): bool		57
+nim	isHangulTone	harfnim/ot/hangul.html#isHangulTone,uint32	proc isHangulTone(u: uint32): bool		61
+nim	hangulShapingFeature	harfnim/ot/hangul.html#hangulShapingFeature,GlyphInfo	proc hangulShapingFeature(g: GlyphInfo): uint8		65
+nim	setHangulShapingFeature	harfnim/ot/hangul.html#setHangulShapingFeature,GlyphInfo,uint8	proc setHangulShapingFeature(g: var GlyphInfo; v: uint8)		69
+nim	unsafeToBreakEmitted	harfnim/ot/hangul.html#unsafeToBreakEmitted,Buffer,int	proc unsafeToBreakEmitted(buf: var Buffer; start: int)		73
+nim	HangulMasks	harfnim/ot/hangul.html#HangulMasks	object HangulMasks		105
+nim	prepareHangulMasks	harfnim/ot/hangul.html#prepareHangulMasks,Buffer	proc prepareHangulMasks(buf: var Buffer): HangulMasks		118
+nim	setupMasksHangul	harfnim/ot/hangul.html#setupMasksHangul,Buffer,HangulMasks	proc setupMasksHangul(buf: var Buffer; hm: HangulMasks)		131
+nim	preprocessHangul	harfnim/ot/hangul.html#preprocessHangul,Buffer,ShaperFont	proc preprocessHangul(buf: var Buffer; sf: ShaperFont)		144
+nim	applyHangulGsub	harfnim/ot/hangul.html#applyHangulGsub,Buffer,GsubData,Tag,Tag,openArray[Feature],HangulMasks	proc applyHangulGsub(buf: var Buffer; gsub: GsubData; scriptTag, langTag: Tag;\n                userFeatures: openArray[Feature]; hm: HangulMasks)		320

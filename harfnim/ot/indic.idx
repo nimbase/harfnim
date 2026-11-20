@@ -1,0 +1,51 @@
+nimTitle	indic	harfnim/ot/indic.html	module harfnim/ot/indic		0
+nim	IndicNukt	harfnim/ot/indic.html#IndicNukt	const IndicNukt		32
+nim	IndicAkhn	harfnim/ot/indic.html#IndicAkhn	const IndicAkhn		34
+nim	IndicRphf	harfnim/ot/indic.html#IndicRphf	const IndicRphf		36
+nim	IndicRkrf	harfnim/ot/indic.html#IndicRkrf	const IndicRkrf		38
+nim	IndicPref	harfnim/ot/indic.html#IndicPref	const IndicPref		40
+nim	IndicBlwf	harfnim/ot/indic.html#IndicBlwf	const IndicBlwf		42
+nim	IndicAbvf	harfnim/ot/indic.html#IndicAbvf	const IndicAbvf		44
+nim	IndicHalf	harfnim/ot/indic.html#IndicHalf	const IndicHalf		46
+nim	IndicPstf	harfnim/ot/indic.html#IndicPstf	const IndicPstf		48
+nim	IndicVatu	harfnim/ot/indic.html#IndicVatu	const IndicVatu		50
+nim	IndicCjct	harfnim/ot/indic.html#IndicCjct	const IndicCjct		52
+nim	IndicInit	harfnim/ot/indic.html#IndicInit	const IndicInit		54
+nim	IndicPres	harfnim/ot/indic.html#IndicPres	const IndicPres		56
+nim	IndicAbvs	harfnim/ot/indic.html#IndicAbvs	const IndicAbvs		58
+nim	IndicBlws	harfnim/ot/indic.html#IndicBlws	const IndicBlws		60
+nim	IndicPsts	harfnim/ot/indic.html#IndicPsts	const IndicPsts		62
+nim	IndicHaln	harfnim/ot/indic.html#IndicHaln	const IndicHaln		64
+nim	IndicFeatureTags	harfnim/ot/indic.html#IndicFeatureTags	const IndicFeatureTags		67
+nim	IndicGlobalFeature	harfnim/ot/indic.html#IndicGlobalFeature	const IndicGlobalFeature		73
+nim	RephAfterMain	harfnim/ot/indic.html#RephAfterMain	RephPosition.RephAfterMain		79
+nim	RephBeforeSub	harfnim/ot/indic.html#RephBeforeSub	RephPosition.RephBeforeSub		79
+nim	RephAfterSub	harfnim/ot/indic.html#RephAfterSub	RephPosition.RephAfterSub		79
+nim	RephBeforePost	harfnim/ot/indic.html#RephBeforePost	RephPosition.RephBeforePost		79
+nim	RephAfterPost	harfnim/ot/indic.html#RephAfterPost	RephPosition.RephAfterPost		79
+nim	RephPosition	harfnim/ot/indic.html#RephPosition	enum RephPosition		79
+nim	RephImplicit	harfnim/ot/indic.html#RephImplicit	RephMode.RephImplicit		92
+nim	RephExplicit	harfnim/ot/indic.html#RephExplicit	RephMode.RephExplicit		92
+nim	RephLogRepha	harfnim/ot/indic.html#RephLogRepha	RephMode.RephLogRepha		92
+nim	RephMode	harfnim/ot/indic.html#RephMode	enum RephMode		92
+nim	BlwfPreAndPost	harfnim/ot/indic.html#BlwfPreAndPost	BlwfMode.BlwfPreAndPost		101
+nim	BlwfPostOnly	harfnim/ot/indic.html#BlwfPostOnly	BlwfMode.BlwfPostOnly		101
+nim	BlwfMode	harfnim/ot/indic.html#BlwfMode	enum BlwfMode		101
+nim	IndicConfig	harfnim/ot/indic.html#IndicConfig	object IndicConfig		108
+nim	IndicConfigs	harfnim/ot/indic.html#IndicConfigs	const IndicConfigs		123
+nim	indicConfigFor	harfnim/ot/indic.html#indicConfigFor,Option[Script]	proc indicConfigFor(script: Option[Script]): IndicConfig		160
+nim	catFlag	harfnim/ot/indic.html#catFlag,uint8	proc catFlag(c: uint8): uint32		168
+nim	isOneOf	harfnim/ot/indic.html#isOneOf,GlyphInfo,uint32	proc isOneOf(g: GlyphInfo; flags: uint32): bool		172
+nim	isJoiner	harfnim/ot/indic.html#isJoiner,GlyphInfo	proc isJoiner(g: GlyphInfo): bool		179
+nim	isConsonant	harfnim/ot/indic.html#isConsonant,GlyphInfo	proc isConsonant(g: GlyphInfo): bool		183
+nim	isHalant	harfnim/ot/indic.html#isHalant,GlyphInfo	proc isHalant(g: GlyphInfo): bool		189
+nim	ligatedAndDidntMultiply	harfnim/ot/indic.html#ligatedAndDidntMultiply,GlyphInfo	proc ligatedAndDidntMultiply(g: GlyphInfo): bool		193
+nim	IndicShapePlan	harfnim/ot/indic.html#IndicShapePlan	object IndicShapePlan		198
+nim	newIndicShapePlan	harfnim/ot/indic.html#newIndicShapePlan,GsubData,Tag,Tag,Option[Script]	proc newIndicShapePlan(gsub: GsubData; scriptTag, langTag: Tag;\n                  script: Option[Script]): IndicShapePlan		230
+nim	indicDecompose	harfnim/ot/indic.html#indicDecompose,uint32	proc indicDecompose(ab: uint32): Option[tuple[a, b: uint32]]		422
+nim	indicCompose	harfnim/ot/indic.html#indicCompose,uint32,uint32	proc indicCompose(a, b: uint32): Option[uint32]		430
+nim	setupIndicProperties	harfnim/ot/indic.html#setupIndicProperties,Buffer	proc setupIndicProperties(buf: var Buffer)		439
+nim	setupSyllablesIndic	harfnim/ot/indic.html#setupSyllablesIndic,Buffer	proc setupSyllablesIndic(buf: var Buffer)		447
+nim	initialReorderingIndic	harfnim/ot/indic.html#initialReorderingIndic,Buffer,ShaperFont,GsubData,IndicShapePlan	proc initialReorderingIndic(buf: var Buffer; sf: ShaperFont; gsub: GsubData;\n                       plan: IndicShapePlan): bool		782
+nim	finalReorderingIndic	harfnim/ot/indic.html#finalReorderingIndic,Buffer,ShaperFont,IndicShapePlan	proc finalReorderingIndic(buf: var Buffer; sf: ShaperFont; plan: IndicShapePlan): bool		1003
+nim	applyIndicGsub	harfnim/ot/indic.html#applyIndicGsub,Buffer,ShaperFont,GsubData,Tag,Tag,openArray[Feature],IndicShapePlan	proc applyIndicGsub(buf: var Buffer; sf: ShaperFont; gsub: GsubData;\n               scriptTag, langTag: Tag; userFeatures: openArray[Feature];\n               plan: var IndicShapePlan)		1036

@@ -1,0 +1,47 @@
+nimTitle	arabic	harfnim/ot/arabic.html	module harfnim/ot/arabic		0
+nim	ajU	harfnim/ot/arabic.html#ajU	ArabicJoining.ajU		26
+nim	ajL	harfnim/ot/arabic.html#ajL	ArabicJoining.ajL		26
+nim	ajR	harfnim/ot/arabic.html#ajR	ArabicJoining.ajR		26
+nim	ajD	harfnim/ot/arabic.html#ajD	ArabicJoining.ajD		26
+nim	ajAlaph	harfnim/ot/arabic.html#ajAlaph	ArabicJoining.ajAlaph		26
+nim	ajDalath	harfnim/ot/arabic.html#ajDalath	ArabicJoining.ajDalath		26
+nim	ajT	harfnim/ot/arabic.html#ajT	ArabicJoining.ajT		26
+nim	ajX	harfnim/ot/arabic.html#ajX	ArabicJoining.ajX		26
+nim	ArabicJoining	harfnim/ot/arabic.html#ArabicJoining	enum ArabicJoining		26
+nim	ArabicIsol	harfnim/ot/arabic.html#ArabicIsol	const ArabicIsol		46
+nim	ArabicFina	harfnim/ot/arabic.html#ArabicFina	const ArabicFina		48
+nim	ArabicFin2	harfnim/ot/arabic.html#ArabicFin2	const ArabicFin2		50
+nim	ArabicFin3	harfnim/ot/arabic.html#ArabicFin3	const ArabicFin3		52
+nim	ArabicMedi	harfnim/ot/arabic.html#ArabicMedi	const ArabicMedi		54
+nim	ArabicMed2	harfnim/ot/arabic.html#ArabicMed2	const ArabicMed2		56
+nim	ArabicInit	harfnim/ot/arabic.html#ArabicInit	const ArabicInit		58
+nim	ArabicNone	harfnim/ot/arabic.html#ArabicNone	const ArabicNone		60
+nim	ArabicFeatureTags	harfnim/ot/arabic.html#ArabicFeatureTags	const ArabicFeatureTags		63
+nim	joiningTypeFor	harfnim/ot/arabic.html#joiningTypeFor,uint32,GeneralCategory	proc joiningTypeFor(cp: uint32; gc: GeneralCategory): ArabicJoining		67
+nim	isWordCategory	harfnim/ot/arabic.html#isWordCategory,GeneralCategory	proc isWordCategory(gc: GeneralCategory): bool		81
+nim	arabicAction	harfnim/ot/arabic.html#arabicAction,GlyphInfo	proc arabicAction(g: GlyphInfo): uint8		89
+nim	setArabicAction	harfnim/ot/arabic.html#setArabicAction,GlyphInfo,uint8	proc setArabicAction(g: var GlyphInfo; v: uint8)		93
+nim	StateTable	harfnim/ot/arabic.html#StateTable	const StateTable		99
+nim	colForJoining	harfnim/ot/arabic.html#colForJoining,ArabicJoining	proc colForJoining(j: ArabicJoining): int		124
+nim	arabicJoining	harfnim/ot/arabic.html#arabicJoining,Buffer	proc arabicJoining(buf: var Buffer)		136
+nim	mongolianVariationSelectors	harfnim/ot/arabic.html#mongolianVariationSelectors,Buffer	proc mongolianVariationSelectors(buf: var Buffer)		199
+nim	setupMasksArabic	harfnim/ot/arabic.html#setupMasksArabic,Buffer,array[,uint32],bool	proc setupMasksArabic(buf: var Buffer; maskArray: array[8, uint32]; isMongolian: bool)		210
+nim	FallbackSingle	harfnim/ot/arabic.html#FallbackSingle	tuple FallbackSingle		223
+nim	FallbackLig	harfnim/ot/arabic.html#FallbackLig	tuple FallbackLig		225
+nim	Win1256Signature	harfnim/ot/arabic.html#Win1256Signature	const Win1256Signature		232
+nim	Win1256InitMappings	harfnim/ot/arabic.html#Win1256InitMappings	const Win1256InitMappings		240
+nim	Win1256MediMappings	harfnim/ot/arabic.html#Win1256MediMappings	const Win1256MediMappings		249
+nim	Win1256FinaMappings	harfnim/ot/arabic.html#Win1256FinaMappings	const Win1256FinaMappings		259
+nim	Win1256LamAlefLigatures	harfnim/ot/arabic.html#Win1256LamAlefLigatures	const Win1256LamAlefLigatures		267
+nim	Win1256ShaddaLigatures	harfnim/ot/arabic.html#Win1256ShaddaLigatures	const Win1256ShaddaLigatures		273
+nim	shapingFormFor	harfnim/ot/arabic.html#shapingFormFor,uint16,int	proc shapingFormFor(cp: uint16; featIdx: int): uint16		279
+nim	buildFallbackSingles	harfnim/ot/arabic.html#buildFallbackSingles,proc(uint32),int	proc buildFallbackSingles(nominal: proc (cp: uint32): Option[GlyphId]; featIdx: int): seq[\n    FallbackSingle]		288
+nim	buildFallbackLigs	harfnim/ot/arabic.html#buildFallbackLigs,proc(uint32),bool,bool	proc buildFallbackLigs(nominal: proc (cp: uint32): Option[GlyphId]; threePass: bool;\n                  withMarks: bool): seq[FallbackLig]		313
+nim	applyFallbackSingle	harfnim/ot/arabic.html#applyFallbackSingle,Buffer,seq[FallbackSingle],uint32	proc applyFallbackSingle(buf: var Buffer; mappings: seq[FallbackSingle]; mask: uint32)		367
+nim	applyFallbackLig	harfnim/ot/arabic.html#applyFallbackLig,Buffer,seq[FallbackLig],uint32,bool	proc applyFallbackLig(buf: var Buffer; ligs: seq[FallbackLig]; mask: uint32;\n                 ignoreMarks: bool)		389
+nim	isWin1256Font	harfnim/ot/arabic.html#isWin1256Font,proc(uint32)	proc isWin1256Font(nominal: proc (cp: uint32): Option[GlyphId]): bool		426
+nim	win1256Singles	harfnim/ot/arabic.html#win1256Singles,int	proc win1256Singles(featIdx: int): seq[FallbackSingle]		435
+nim	win1256LamAlefLigs	harfnim/ot/arabic.html#win1256LamAlefLigs	proc win1256LamAlefLigs(): seq[FallbackLig]		459
+nim	win1256ShaddaLigs	harfnim/ot/arabic.html#win1256ShaddaLigs	proc win1256ShaddaLigs(): seq[FallbackLig]		465
+nim	ModifierCombiningMarks	harfnim/ot/arabic.html#ModifierCombiningMarks	const ModifierCombiningMarks		471
+nim	reorderMarksArabic	harfnim/ot/arabic.html#reorderMarksArabic,Buffer,int,int	proc reorderMarksArabic(buf: var Buffer; start, stop: int)		475

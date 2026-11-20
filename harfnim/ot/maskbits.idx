@@ -1,0 +1,2 @@
+nimTitle	maskbits	harfnim/ot/maskbits.html	module harfnim/ot/maskbits		0
+nim	allocMaskBit	harfnim/ot/maskbits.html#allocMaskBit,uint32,uint32	proc allocMaskBit(nextBit: var uint32; value: uint32): tuple[mask, val: uint32]		10

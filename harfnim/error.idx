@@ -1,0 +1,11 @@
+nimTitle	error	harfnim/error.html	module harfnim/error		0
+nim	seAlreadyShaped	harfnim/error.html#seAlreadyShaped	ShapeErrorKind.seAlreadyShaped		6
+nim	seDirectionUnset	harfnim/error.html#seDirectionUnset	ShapeErrorKind.seDirectionUnset		6
+nim	seDirectionMismatch	harfnim/error.html#seDirectionMismatch	ShapeErrorKind.seDirectionMismatch		6
+nim	seScriptMismatch	harfnim/error.html#seScriptMismatch	ShapeErrorKind.seScriptMismatch		6
+nim	ShapeErrorKind	harfnim/error.html#ShapeErrorKind	enum ShapeErrorKind		6
+nim	ShapeError	harfnim/error.html#ShapeError	object ShapeError		17
+nim	alreadyShapedError	harfnim/error.html#alreadyShapedError	proc alreadyShapedError(): ref ShapeError		30
+nim	directionUnsetError	harfnim/error.html#directionUnsetError	proc directionUnsetError(): ref ShapeError		34
+nim	directionMismatchError	harfnim/error.html#directionMismatchError,Direction,Direction	proc directionMismatchError(plan, buffer: Direction): ref ShapeError		38
+nim	scriptMismatchError	harfnim/error.html#scriptMismatchError,Script,Script	proc scriptMismatchError(plan, buffer: Script): ref ShapeError		47

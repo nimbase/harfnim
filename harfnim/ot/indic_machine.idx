@@ -1,0 +1,9 @@
+nimTitle	indic_machine	harfnim/ot/indic_machine.html	module harfnim/ot/indic_machine		0
+nim	ConsonantSyllable	harfnim/ot/indic_machine.html#ConsonantSyllable	SyllableType.ConsonantSyllable		15
+nim	VowelSyllable	harfnim/ot/indic_machine.html#VowelSyllable	SyllableType.VowelSyllable		15
+nim	StandaloneCluster	harfnim/ot/indic_machine.html#StandaloneCluster	SyllableType.StandaloneCluster		15
+nim	SymbolCluster	harfnim/ot/indic_machine.html#SymbolCluster	SyllableType.SymbolCluster		15
+nim	BrokenCluster	harfnim/ot/indic_machine.html#BrokenCluster	SyllableType.BrokenCluster		15
+nim	NonIndicCluster	harfnim/ot/indic_machine.html#NonIndicCluster	SyllableType.NonIndicCluster		15
+nim	SyllableType	harfnim/ot/indic_machine.html#SyllableType	enum SyllableType		15
+nim	findSyllablesIndic	harfnim/ot/indic_machine.html#findSyllablesIndic,Buffer	proc findSyllablesIndic(buf: var Buffer)		47

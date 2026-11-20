@@ -1,0 +1,15 @@
+nimTitle	myanmar_machine_data	harfnim/ot/myanmar_machine_data.html	module harfnim/ot/myanmar_machine_data		0
+nim	MyanmarTransKeys	harfnim/ot/myanmar_machine_data.html#MyanmarTransKeys	const MyanmarTransKeys		6
+nim	MyanmarCharClass	harfnim/ot/myanmar_machine_data.html#MyanmarCharClass	const MyanmarCharClass		16
+nim	MyanmarIndexOffsets	harfnim/ot/myanmar_machine_data.html#MyanmarIndexOffsets	const MyanmarIndexOffsets		23
+nim	MyanmarIndices	harfnim/ot/myanmar_machine_data.html#MyanmarIndices	const MyanmarIndices		30
+nim	MyanmarIndexDefaults	harfnim/ot/myanmar_machine_data.html#MyanmarIndexDefaults	const MyanmarIndexDefaults		103
+nim	MyanmarCondTargs	harfnim/ot/myanmar_machine_data.html#MyanmarCondTargs	const MyanmarCondTargs		110
+nim	MyanmarCondActions	harfnim/ot/myanmar_machine_data.html#MyanmarCondActions	const MyanmarCondActions		117
+nim	MyanmarToStateActions	harfnim/ot/myanmar_machine_data.html#MyanmarToStateActions	const MyanmarToStateActions		124
+nim	MyanmarFromStateActions	harfnim/ot/myanmar_machine_data.html#MyanmarFromStateActions	const MyanmarFromStateActions		131
+nim	MyanmarEofTrans	harfnim/ot/myanmar_machine_data.html#MyanmarEofTrans	const MyanmarEofTrans		138
+nim	MyanmarStart	harfnim/ot/myanmar_machine_data.html#MyanmarStart	const MyanmarStart		145
+nim	MyanmarFirstFinal	harfnim/ot/myanmar_machine_data.html#MyanmarFirstFinal	const MyanmarFirstFinal		147
+nim	MyanmarError	harfnim/ot/myanmar_machine_data.html#MyanmarError	const MyanmarError		149
+nim	MyanmarEnMain	harfnim/ot/myanmar_machine_data.html#MyanmarEnMain	const MyanmarEnMain		151

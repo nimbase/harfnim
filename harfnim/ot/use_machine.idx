@@ -1,0 +1,16 @@
+nimTitle	use_machine	harfnim/ot/use_machine.html	module harfnim/ot/use_machine		0
+nim	IndependentCluster	harfnim/ot/use_machine.html#IndependentCluster	SyllableType.IndependentCluster		13
+nim	ViramaTerminatedCluster	harfnim/ot/use_machine.html#ViramaTerminatedCluster	SyllableType.ViramaTerminatedCluster		13
+nim	SakotTerminatedCluster	harfnim/ot/use_machine.html#SakotTerminatedCluster	SyllableType.SakotTerminatedCluster		13
+nim	StandardCluster	harfnim/ot/use_machine.html#StandardCluster	SyllableType.StandardCluster		13
+nim	NumberJoinerTerminatedCluster	harfnim/ot/use_machine.html#NumberJoinerTerminatedCluster	SyllableType.NumberJoinerTerminatedCluster		13
+nim	NumeralCluster	harfnim/ot/use_machine.html#NumeralCluster	SyllableType.NumeralCluster		13
+nim	SymbolCluster	harfnim/ot/use_machine.html#SymbolCluster	SyllableType.SymbolCluster		13
+nim	HieroglyphCluster	harfnim/ot/use_machine.html#HieroglyphCluster	SyllableType.HieroglyphCluster		13
+nim	BrokenCluster	harfnim/ot/use_machine.html#BrokenCluster	SyllableType.BrokenCluster		13
+nim	NonCluster	harfnim/ot/use_machine.html#NonCluster	SyllableType.NonCluster		13
+nim	SyllableType	harfnim/ot/use_machine.html#SyllableType	enum SyllableType		13
+nim	UseSyllableLookaheadMemo	harfnim/ot/use_machine.html#UseSyllableLookaheadMemo	object UseSyllableLookaheadMemo		37
+nim	newUseSyllableLookaheadMemo	harfnim/ot/use_machine.html#newUseSyllableLookaheadMemo	proc newUseSyllableLookaheadMemo(): UseSyllableLookaheadMemo		45
+nim	isDoomedRevisit	harfnim/ot/use_machine.html#isDoomedRevisit,UseSyllableLookaheadMemo,int,int,int,int	proc isDoomedRevisit(memo: var UseSyllableLookaheadMemo; p, ts, cs, len: int): bool		49
+nim	findSyllablesUse	harfnim/ot/use_machine.html#findSyllablesUse,Buffer	proc findSyllablesUse(buf: var Buffer)		93

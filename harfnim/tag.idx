@@ -1,0 +1,16 @@
+nimTitle	tag	harfnim/tag.html	module harfnim/tag		0
+nim	Tag	harfnim/tag.html#Tag	type Tag		2
+nim	makeTag	harfnim/tag.html#makeTag,char,char,char,char	proc makeTag(a, b, c, d: char): Tag		5
+nim	tagFromBytes	harfnim/tag.html#tagFromBytes,array[,uint8]	proc tagFromBytes(b: array[4, uint8]): Tag		10
+nim	tagFromStr	harfnim/tag.html#tagFromStr,string	proc tagFromStr(s: string): Tag		15
+nim	toBytes	harfnim/tag.html#toBytes,Tag	proc toBytes(t: Tag): array[4, uint8]		22
+nim	toStr	harfnim/tag.html#toStr,Tag	proc toStr(t: Tag): string		27
+nim	toU32	harfnim/tag.html#toU32,Tag	proc toU32(t: Tag): uint32		34
+nim	fromU32	harfnim/tag.html#fromU32,uint32	proc fromU32(v: uint32): Tag		37
+nim	`==`	harfnim/tag.html#==,Tag,Tag	proc `==`(a, b: Tag): bool		41
+nim	`$`	harfnim/tag.html#$,Tag	proc `$`(t: Tag): string		44
+nim	isNull	harfnim/tag.html#isNull,Tag	proc isNull(t: Tag): bool		48
+nim	toUpper	harfnim/tag.html#toUpper,Tag	proc toUpper(t: Tag): Tag		52
+nim	toLower	harfnim/tag.html#toLower,Tag	proc toLower(t: Tag): Tag		61
+nim	defaultScriptTag	harfnim/tag.html#defaultScriptTag	proc defaultScriptTag(): Tag		70
+nim	defaultLanguageTag	harfnim/tag.html#defaultLanguageTag	proc defaultLanguageTag(): Tag		73

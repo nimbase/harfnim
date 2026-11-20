@@ -1,0 +1,6 @@
+nimTitle	subset	harfnim/subset.html	module harfnim/subset		0
+nim	SubsetError	harfnim/subset.html#SubsetError	object SubsetError		36
+nim	SubsetOpts	harfnim/subset.html#SubsetOpts	object SubsetOpts		39
+nim	defaultSubsetOpts	harfnim/subset.html#defaultSubsetOpts	proc defaultSubsetOpts(): SubsetOpts		47
+nim	subsetFont	harfnim/subset.html#subsetFont,openArray[uint8],openArray[uint32]	proc subsetFont(data: openArray[uint8]; unicodes: openArray[uint32];\n           opts = defaultSubsetOpts()): tuple[bytes: seq[uint8],\n    oldToNew: Table[uint32, uint32]]		1317
+nim	subsetFontString	harfnim/subset.html#subsetFontString,string,openArray[uint32]	proc subsetFontString(data: string; unicodes: openArray[uint32];\n                 opts = defaultSubsetOpts()): tuple[bytes: string,\n    oldToNew: Table[uint32, uint32]]		1325

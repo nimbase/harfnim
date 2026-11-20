@@ -1,0 +1,9 @@
+nimTitle	arabic_table	harfnim/ot/arabic_table.html	module harfnim/ot/arabic_table		0
+nim	ArabicJoiningBytes	harfnim/ot/arabic_table.html#ArabicJoiningBytes	const ArabicJoiningBytes		2
+nim	arabicJoiningB4	harfnim/ot/arabic_table.html#arabicJoiningB4,openArray[uint8],int	proc arabicJoiningB4(a: openArray[uint8]; i: int): uint8		52
+nim	arabicJoiningTypeRaw	harfnim/ot/arabic_table.html#arabicJoiningTypeRaw,int	proc arabicJoiningTypeRaw(u: int): uint8		56
+nim	ShapingEntry	harfnim/ot/arabic_table.html#ShapingEntry	tuple ShapingEntry		67
+nim	ShapingTable	harfnim/ot/arabic_table.html#ShapingTable	const ShapingTable		68
+nim	Ligature3Table	harfnim/ot/arabic_table.html#Ligature3Table	const Ligature3Table		146
+nim	LigatureTable	harfnim/ot/arabic_table.html#LigatureTable	const LigatureTable		151
+nim	LigatureMarkTable	harfnim/ot/arabic_table.html#LigatureMarkTable	const LigatureMarkTable		211

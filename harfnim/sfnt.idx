@@ -1,0 +1,42 @@
+nimTitle	sfnt	harfnim/sfnt.html	module harfnim/sfnt		0
+nim	FontError	harfnim/sfnt.html#FontError	object FontError		11
+nim	TableEntry	harfnim/sfnt.html#TableEntry	object TableEntry		13
+nim	NameEntry	harfnim/sfnt.html#NameEntry	object NameEntry		22
+nim	FvarAxis	harfnim/sfnt.html#FvarAxis	object FvarAxis		35
+nim	AvarSegment	harfnim/sfnt.html#AvarSegment	tuple AvarSegment		50
+nim	SfntFont	harfnim/sfnt.html#SfntFont	type SfntFont		53
+nim	LocaCache	harfnim/sfnt.html#LocaCache	type LocaCache		99
+nim	readU16	harfnim/sfnt.html#readU16,openArray[uint8],int	proc readU16(bytes: openArray[uint8]; off: int): uint16		148
+nim	readI16	harfnim/sfnt.html#readI16,openArray[uint8],int	proc readI16(bytes: openArray[uint8]; off: int): int16		153
+nim	readU32	harfnim/sfnt.html#readU32,openArray[uint8],int	proc readU32(bytes: openArray[uint8]; off: int): uint32		157
+nim	readU24	harfnim/sfnt.html#readU24,openArray[uint8],int	proc readU24(bytes: openArray[uint8]; off: int): uint32		163
+nim	readI24	harfnim/sfnt.html#readI24,openArray[uint8],int	proc readI24(bytes: openArray[uint8]; off: int): int32		169
+nim	readOffset24	harfnim/sfnt.html#readOffset24,openArray[uint8],int	proc readOffset24(bytes: openArray[uint8]; off: int): int		177
+nim	readOffset32	harfnim/sfnt.html#readOffset32,openArray[uint8],int	proc readOffset32(bytes: openArray[uint8]; off: int): int		181
+nim	hasTable	harfnim/sfnt.html#hasTable,SfntFont,uint32	proc hasTable(f: SfntFont; tag: uint32): bool		210
+nim	tableData	harfnim/sfnt.html#tableData,SfntFont,uint32	proc tableData(f: SfntFont; tag: uint32): tuple[ok: bool, offset, len: int]		214
+nim	decodeNameBytes	harfnim/sfnt.html#decodeNameBytes,NameEntry	proc decodeNameBytes(e: NameEntry): string		406
+nim	fixedToFloat	harfnim/sfnt.html#fixedToFloat,int32	proc fixedToFloat(v: int32): float32		420
+nim	f2dot14ToFloat	harfnim/sfnt.html#f2dot14ToFloat,int16	proc f2dot14ToFloat(v: int16): float32		424
+nim	parseFvarAxes	harfnim/sfnt.html#parseFvarAxes,seq[uint8],int,int	proc parseFvarAxes(bytes: seq[uint8]; tableOff, tableLen: int): seq[FvarAxis]		428
+nim	parseAvarMaps	harfnim/sfnt.html#parseAvarMaps,seq[uint8],int,int,int	proc parseAvarMaps(bytes: seq[uint8]; tableOff, tableLen, axisCount: int): seq[\n    seq[AvarSegment]]		457
+nim	normalizeAxisValue	harfnim/sfnt.html#normalizeAxisValue,FvarAxis,float32	proc normalizeAxisValue(axis: FvarAxis; userValue: float32): float32		485
+nim	applyAvarMap	harfnim/sfnt.html#applyAvarMap,seq[AvarSegment],float32	proc applyAvarMap(segments: seq[AvarSegment]; v: float32): float32		505
+nim	parseFont	harfnim/sfnt.html#parseFont,openArray[uint8],int	proc parseFont(data: openArray[uint8]; faceIndex: int = 0): SfntFont		628
+nim	parseFontString	harfnim/sfnt.html#parseFontString,string,int	proc parseFontString(data: string; faceIndex: int = 0): SfntFont		635
+nim	mapUnicode	harfnim/sfnt.html#mapUnicode,SfntFont,uint32	proc mapUnicode(f: SfntFont; cp: uint32): Option[GlyphId]		743
+nim	mapUnicodeVariant	harfnim/sfnt.html#mapUnicodeVariant,SfntFont,uint32,uint32	proc mapUnicodeVariant(f: SfntFont; base, selector: uint32): Option[GlyphId]		755
+nim	fontName	harfnim/sfnt.html#fontName,SfntFont,uint16,uint16,uint16,uint16	proc fontName(f: SfntFont; nameID: uint16; platformID = 3'u16; encodingID = 1'u16;\n         languageID = 0x0409'u16): Option[string]		776
+nim	hAdvance	harfnim/sfnt.html#hAdvance,SfntFont,uint32	proc hAdvance(f: SfntFont; gid: uint32): int32		813
+nim	hSideBearing	harfnim/sfnt.html#hSideBearing,SfntFont,uint32	proc hSideBearing(f: SfntFont; gid: uint32): int32		817
+nim	hAdvanceDelta	harfnim/sfnt.html#hAdvanceDelta,SfntFont,uint32,seq[float32]	proc hAdvanceDelta(f: SfntFont; gid: uint32; coords: seq[float32]): int32		821
+nim	vAdvanceDelta	harfnim/sfnt.html#vAdvanceDelta,SfntFont,uint32,seq[float32]	proc vAdvanceDelta(f: SfntFont; gid: uint32; coords: seq[float32]): int32		829
+nim	vAdvance	harfnim/sfnt.html#vAdvance,SfntFont,uint32	proc vAdvance(f: SfntFont; gid: uint32): int32		836
+nim	cachedGlyphOffsets	harfnim/sfnt.html#cachedGlyphOffsets,SfntFont	proc cachedGlyphOffsets(f: SfntFont): tuple[ok: bool, starts, ends: seq[int]]		882
+nim	glyphBoundsUnscaled	harfnim/sfnt.html#glyphBoundsUnscaled,SfntFont,uint32	proc glyphBoundsUnscaled(f: SfntFont; gid: uint32): Option[\n    tuple[xMin, yMin, xMax, yMax: int32]]		898
+nim	numFaces	harfnim/sfnt.html#numFaces,openArray[uint8]	proc numFaces(data: openArray[uint8]): int		917
+nim	hasGvar	harfnim/sfnt.html#hasGvar,SfntFont	proc hasGvar(f: SfntFont): bool		935
+nim	glyphDataRange	harfnim/sfnt.html#glyphDataRange,SfntFont,uint32	proc glyphDataRange(f: SfntFont; gid: uint32): tuple[ok: bool, off, len: int]		951
+nim	drawGlyph	harfnim/sfnt.html#drawGlyph,SfntFont,uint32,proc(DrawOp),seq[float32]	proc drawGlyph(f: SfntFont; gid: uint32; cb: proc (op: DrawOp) {.closure.};\n          coords: seq[float32] = @[]): bool		1002
+nim	glyphOutline	harfnim/sfnt.html#glyphOutline,SfntFont,uint32,seq[float32]	proc glyphOutline(f: SfntFont; gid: uint32; coords: seq[float32] = @[]): Option[\n    GlyphOutline]		1016
+nim	glyphBoundsComputed	harfnim/sfnt.html#glyphBoundsComputed,SfntFont,uint32	proc glyphBoundsComputed(f: SfntFont; gid: uint32): Option[\n    tuple[xMin, yMin, xMax, yMax: int32]]		1026

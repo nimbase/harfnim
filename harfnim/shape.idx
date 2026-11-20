@@ -1,0 +1,16 @@
+nimTitle	shape	harfnim/shape.html	module harfnim/shape		0
+nim	ShapePlan	harfnim/shape.html#ShapePlan	object ShapePlan		42
+nim	newShapePlan	harfnim/shape.html#newShapePlan,Tag,Tag,openArray[Feature]	proc newShapePlan(scriptTag, langTag: Tag; features: openArray[Feature]): ShapePlan		51
+nim	synthesizeGlyphClasses	harfnim/shape.html#synthesizeGlyphClasses,Buffer	proc synthesizeGlyphClasses(buf: var Buffer)		133
+nim	ArabicMasks	harfnim/shape.html#ArabicMasks	object ArabicMasks		146
+nim	prepareArabicMasks	harfnim/shape.html#prepareArabicMasks,Buffer	proc prepareArabicMasks(buf: var Buffer): ArabicMasks		169
+nim	applyArabicGsub	harfnim/shape.html#applyArabicGsub,Buffer,GsubData,Tag,Tag,openArray[Feature],ShaperFont,ArabicMasks	proc applyArabicGsub(buf: var Buffer; gsub: GsubData; scriptTag, langTag: Tag;\n                userFeatures: openArray[Feature]; sf: ShaperFont;\n                am: ArabicMasks)		196
+nim	applyArabicFallback	harfnim/shape.html#applyArabicFallback,Buffer,ShaperFont,ArabicMasks	proc applyArabicFallback(buf: var Buffer; sf: ShaperFont; am: ArabicMasks)		328
+nim	applyDefaultGpos	harfnim/shape.html#applyDefaultGpos,Buffer,GposData,Tag,Tag,openArray[Feature],Scale,VarStore,seq[float32]	proc applyDefaultGpos(buf: var Buffer; gpos: GposData; scriptTag, langTag: Tag;\n                 userFeatures: openArray[Feature]; scale: Scale;\n                 store: VarStore = VarStore(); coords: seq[float32] = @[])		381
+nim	zeroMarkWidths	harfnim/shape.html#zeroMarkWidths,Buffer,bool	proc zeroMarkWidths(buf: var Buffer; adjust: bool)		425
+nim	recategorizeMarks	harfnim/shape.html#recategorizeMarks,Buffer	proc recategorizeMarks(buf: var Buffer)		440
+nim	zeroWidthDefaultIgnorables	harfnim/shape.html#zeroWidthDefaultIgnorables,Buffer	proc zeroWidthDefaultIgnorables(buf: var Buffer)		472
+nim	fallbackPositionMarks	harfnim/shape.html#fallbackPositionMarks,Buffer,ShaperFont	proc fallbackPositionMarks(buf: var Buffer; sf: ShaperFont)		492
+nim	shapePlan	harfnim/shape.html#shapePlan,ShaperFont,Buffer,openArray[Feature]	proc shapePlan(font: ShaperFont; buf: var Buffer; features: openArray[Feature]): ShapePlan		554
+nim	shapeWithPlan	harfnim/shape.html#shapeWithPlan,ShaperFont,Buffer,ShapePlan	proc shapeWithPlan(font: ShaperFont; buf: var Buffer; plan: ShapePlan)		566
+nim	shape	harfnim/shape.html#shape,ShaperFont,Buffer,openArray[Feature]	proc shape(font: ShaperFont; buf: var Buffer; features: openArray[Feature] = [])		769

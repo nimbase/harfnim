@@ -1,0 +1,17 @@
+nimTitle	normalize	harfnim/normalize.html	module harfnim/normalize		0
+nim	MaxCombiningMarks	harfnim/normalize.html#MaxCombiningMarks	const MaxCombiningMarks		6
+nim	nmNone	harfnim/normalize.html#nmNone	NormalizationMode.nmNone		10
+nim	nmDecomposed	harfnim/normalize.html#nmDecomposed	NormalizationMode.nmDecomposed		10
+nim	nmComposedDiacritics	harfnim/normalize.html#nmComposedDiacritics	NormalizationMode.nmComposedDiacritics		10
+nim	nmComposedDiacriticsNoShortCircuit	harfnim/normalize.html#nmComposedDiacriticsNoShortCircuit	NormalizationMode.nmComposedDiacriticsNoShortCircuit		10
+nim	nmAuto	harfnim/normalize.html#nmAuto	NormalizationMode.nmAuto		10
+nim	NormalizationMode	harfnim/normalize.html#NormalizationMode	enum NormalizationMode		10
+nim	DecomposeFn	harfnim/normalize.html#DecomposeFn	type DecomposeFn		23
+nim	ComposeFn	harfnim/normalize.html#ComposeFn	type ComposeFn		25
+nim	ReorderMarksFn	harfnim/normalize.html#ReorderMarksFn	type ReorderMarksFn		27
+nim	NominalGlyphFn	harfnim/normalize.html#NominalGlyphFn	type NominalGlyphFn		29
+nim	NominalGlyphsFn	harfnim/normalize.html#NominalGlyphsFn	type NominalGlyphsFn		31
+nim	VariationGlyphFn	harfnim/normalize.html#VariationGlyphFn	type VariationGlyphFn		33
+nim	NormalizeContext	harfnim/normalize.html#NormalizeContext	object NormalizeContext		36
+nim	newNormalizeContext	harfnim/normalize.html#newNormalizeContext,NominalGlyphFn,NominalGlyphsFn,VariationGlyphFn,Option[DecomposeFn],Option[ComposeFn],Option[ReorderMarksFn]	proc newNormalizeContext(nominalGlyph: NominalGlyphFn;\n                    nominalGlyphs: NominalGlyphsFn;\n                    variationGlyph: VariationGlyphFn;\n                    decompose: Option[DecomposeFn] = none(DecomposeFn);\n                    compose: Option[ComposeFn] = none(ComposeFn);\n                    reorderMarks: Option[ReorderMarksFn] = none(ReorderMarksFn)): NormalizeContext		63
+nim	normalize	harfnim/normalize.html#normalize,Buffer,NormalizationMode,bool,NormalizeContext	proc normalize(buf: var Buffer; mode: NormalizationMode; hasGposMark: bool;\n          ctx: NormalizeContext)		261

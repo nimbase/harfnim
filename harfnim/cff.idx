@@ -1,0 +1,11 @@
+nimTitle	cff	harfnim/cff.html	module harfnim/cff		0
+nim	Index	harfnim/cff.html#Index	object Index		67
+nim	CffFont	harfnim/cff.html#CffFont	object CffFont		82
+nim	readIndex	harfnim/cff.html#readIndex,seq[uint8],int,int	proc readIndex(bytes: seq[uint8]; off, limit: int): Index		149
+nim	indexBounds	harfnim/cff.html#indexBounds,seq[uint8],Index,int,int,int	proc indexBounds(bytes: seq[uint8]; idx: Index; i: int; start, finish: var int): bool		186
+nim	readIndex2	harfnim/cff.html#readIndex2,seq[uint8],int,int	proc readIndex2(bytes: seq[uint8]; off, limit: int): Index		201
+nim	decodeDict	harfnim/cff.html#decodeDict,seq[uint8],int,int	proc decodeDict(bytes: seq[uint8]; start, finish: int): Option[seq[DictEntry]]		272
+nim	parseCff	harfnim/cff.html#parseCff,seq[uint8],int,int,int32	proc parseCff(bytes: seq[uint8]; cffOff, cffLen: int; upem: int32): Option[CffFont]		411
+nim	fdFor	harfnim/cff.html#fdFor,CffFont,int	proc fdFor(f: CffFont; gid: int): tuple[ok: bool, fd: int]		532
+nim	parseCff2	harfnim/cff.html#parseCff2,seq[uint8],int,int,int32	proc parseCff2(bytes: seq[uint8]; cffOff, cffLen: int; upem: int32): Option[CffFont]		810
+nim	drawCffGlyph	harfnim/cff.html#drawCffGlyph,CffFont,uint32,proc(DrawOp),seq[float32]	proc drawCffGlyph(f: CffFont; gid: uint32; cb: proc (op: DrawOp) {.closure.};\n             coords: seq[float32] = @[]): bool		1585

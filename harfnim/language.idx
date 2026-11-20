@@ -1,0 +1,7 @@
+nimTitle	language	harfnim/language.html	module harfnim/language		0
+nim	Language	harfnim/language.html#Language	object Language		4
+nim	newLanguage	harfnim/language.html#newLanguage,string	proc newLanguage(s: string): tuple[ok: bool, lang: Language]		9
+nim	parseLanguage	harfnim/language.html#parseLanguage,string	proc parseLanguage(s: string): Language		18
+nim	asStr	harfnim/language.html#asStr,Language	proc asStr(l: Language): string		25
+nim	`$`	harfnim/language.html#$,Language	proc `$`(l: Language): string		28
+nim	`==`	harfnim/language.html#==,Language,Language	proc `==`(a, b: Language): bool		31

@@ -1,0 +1,26 @@
+nimTitle	apply	harfnim/ot/apply.html	module harfnim/ot/apply		0
+nim	checkGlyphProperty	harfnim/ot/apply.html#checkGlyphProperty,GlyphInfo,uint32	proc checkGlyphProperty(info: GlyphInfo; props: uint32): bool		20
+nim	lookupProps	harfnim/ot/apply.html#lookupProps,Lookup	proc lookupProps(lookup: Lookup): uint32		36
+nim	replaceWithSubstituted	harfnim/ot/apply.html#replaceWithSubstituted,Buffer,uint32	proc replaceWithSubstituted(buf: var Buffer; gid: uint32)		43
+nim	replaceWithSubstitutedInplace	harfnim/ot/apply.html#replaceWithSubstitutedInplace,Buffer,uint32	proc replaceWithSubstitutedInplace(buf: var Buffer; gid: uint32)		52
+nim	applyLookup	harfnim/ot/apply.html#applyLookup,Buffer,GsubData,Lookup,uint32,int,bool	proc applyLookup(buf: var Buffer; gsub: GsubData; lookup: Lookup; mask: uint32;\n            nestingLeft: int = MaxNestingLevel; perSyllable: bool = false): bool		114
+nim	applyLookupBackward	harfnim/ot/apply.html#applyLookupBackward,Buffer,GsubData,Lookup,uint32,bool	proc applyLookupBackward(buf: var Buffer; gsub: GsubData; lookup: Lookup;\n                    mask: uint32; perSyllable: bool = false): bool		130
+nim	applyPosLookup	harfnim/ot/apply.html#applyPosLookup,Buffer,GposData,PosLookup,uint32,Scale,int,VarStore,seq[float32]	proc applyPosLookup(buf: var Buffer; gpos: GposData; lookup: PosLookup; mask: uint32;\n               scale: Scale; nestingLeft: int = MaxNestingLevel;\n               store: VarStore = VarStore(); coords: seq[float32] = @[]): bool		132
+nim	applySubstLookups	harfnim/ot/apply.html#applySubstLookups,Buffer,GsubData,openArray[uint16],uint32,bool	proc applySubstLookups(buf: var Buffer; gsub: GsubData;\n                  lookupIndices: openArray[uint16]; mask: uint32;\n                  perSyllable: bool = false)		772
+nim	lookupProps	harfnim/ot/apply.html#lookupProps,PosLookup	proc lookupProps(lookup: PosLookup): uint32		816
+nim	AttachMark	harfnim/ot/apply.html#AttachMark	const AttachMark		993
+nim	AttachCursive	harfnim/ot/apply.html#AttachCursive	const AttachCursive		994
+nim	positionStart	harfnim/ot/apply.html#positionStart,Buffer	proc positionStart(buf: var Buffer)		996
+nim	crossOffset	harfnim/ot/apply.html#crossOffset,Buffer,int	proc crossOffset(buf: Buffer; idx: int): int32		1002
+nim	findMarkBase	harfnim/ot/apply.html#findMarkBase,Buffer,Coverage,bool	proc findMarkBase(buf: var Buffer; coverage: Coverage; ligature: bool): Option[int]		1049
+nim	attachMark	harfnim/ot/apply.html#attachMark,Buffer,Anchor,Anchor,int,Scale	proc attachMark(buf: var Buffer; baseAnchor, markAnchor: Anchor; basePos: int;\n           scale: Scale)		1071
+nim	applyMarkBase	harfnim/ot/apply.html#applyMarkBase,Buffer,MarkSub,uint32,uint32,Scale	proc applyMarkBase(buf: var Buffer; sub: MarkSub; props, mask: uint32; scale: Scale): bool		1102
+nim	applyMarkMark	harfnim/ot/apply.html#applyMarkMark,Buffer,MarkSub,uint32,uint32,Scale	proc applyMarkMark(buf: var Buffer; sub: MarkSub; props, mask: uint32; scale: Scale): bool		1136
+nim	applyMarkLig	harfnim/ot/apply.html#applyMarkLig,Buffer,LigSub,uint32,uint32,Scale	proc applyMarkLig(buf: var Buffer; sub: LigSub; props, mask: uint32; scale: Scale): bool		1191
+nim	applyCursive	harfnim/ot/apply.html#applyCursive,Buffer,CursiveSub,uint32,Scale,uint16	proc applyCursive(buf: var Buffer; sub: CursiveSub; props: uint32; scale: Scale;\n             lookupFlag: uint16): bool		1238
+nim	propagateAttachmentOffsets	harfnim/ot/apply.html#propagateAttachmentOffsets,Buffer	proc propagateAttachmentOffsets(buf: var Buffer)		1388
+nim	applyPosLookups	harfnim/ot/apply.html#applyPosLookups,Buffer,GposData,openArray[uint16],uint32,Scale,VarStore,seq[float32]	proc applyPosLookups(buf: var Buffer; gpos: GposData;\n                lookupIndices: openArray[uint16]; mask: uint32; scale: Scale;\n                store: VarStore = VarStore(); coords: seq[float32] = @[])		1723
+nim	KernWalkMask	harfnim/ot/apply.html#KernWalkMask	const KernWalkMask		1745
+nim	applyKernTable	harfnim/ot/apply.html#applyKernTable,Buffer,KernData,uint32,Scale	proc applyKernTable(buf: var Buffer; kern: KernData; mask: uint32; scale: Scale)		1747
+nim	mapGlyphsFast	harfnim/ot/apply.html#mapGlyphsFast,Buffer	proc mapGlyphsFast(buf: var Buffer)		1810
+nimgrp	lookupprops	harfnim/ot/apply.html#lookupProps-procs-all	proc		36

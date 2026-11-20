@@ -1,0 +1,15 @@
+nimTitle	use	harfnim/ot/use.html	module harfnim/ot/use		0
+nim	UseBasicTags	harfnim/ot/use.html#UseBasicTags	const UseBasicTags		30
+nim	UseTopoTags	harfnim/ot/use.html#UseTopoTags	const UseTopoTags		33
+nim	UseOtherTags	harfnim/ot/use.html#UseOtherTags	const UseOtherTags		35
+nim	UseShapePlan	harfnim/ot/use.html#UseShapePlan	object UseShapePlan		40
+nim	newUseShapePlan	harfnim/ot/use.html#newUseShapePlan	proc newUseShapePlan(): UseShapePlan		48
+nim	useCategory	harfnim/ot/use.html#useCategory,GlyphInfo	proc useCategory(g: GlyphInfo): uint8		58
+nim	setUseCategory	harfnim/ot/use.html#setUseCategory,GlyphInfo,uint8	proc setUseCategory(g: var GlyphInfo; v: uint8)		62
+nim	isHalantUse	harfnim/ot/use.html#isHalantUse,GlyphInfo	proc isHalantUse(g: GlyphInfo): bool		66
+nim	useCompose	harfnim/ot/use.html#useCompose,uint32,uint32	proc useCompose(a, b: uint32): Option[uint32]		71
+nim	preprocessUse	harfnim/ot/use.html#preprocessUse,Buffer	proc preprocessUse(buf: var Buffer)		77
+nim	setupSyllablesUse	harfnim/ot/use.html#setupSyllablesUse,Buffer,UseShapePlan	proc setupSyllablesUse(buf: var Buffer; plan: UseShapePlan)		183
+nim	reorderSyllableUse	harfnim/ot/use.html#reorderSyllableUse,Buffer,int,int	proc reorderSyllableUse(buf: var Buffer; start, stop: int): bool		248
+nim	reorderUse	harfnim/ot/use.html#reorderUse,Buffer,ShaperFont	proc reorderUse(buf: var Buffer; sf: ShaperFont): bool		290
+nim	applyUseGsub	harfnim/ot/use.html#applyUseGsub,Buffer,ShaperFont,GsubData,Tag,Tag,openArray[Feature],UseShapePlan	proc applyUseGsub(buf: var Buffer; sf: ShaperFont; gsub: GsubData;\n             scriptTag, langTag: Tag; userFeatures: openArray[Feature];\n             plan: var UseShapePlan)		327

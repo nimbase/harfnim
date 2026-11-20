@@ -1,0 +1,11 @@
+nimTitle	myanmar	harfnim/ot/myanmar.html	module harfnim/ot/myanmar		0
+nim	MyanmarBasicTags	harfnim/ot/myanmar.html#MyanmarBasicTags	const MyanmarBasicTags		24
+nim	MyanmarOtherTags	harfnim/ot/myanmar.html#MyanmarOtherTags	const MyanmarOtherTags		26
+nim	myanmarCategory	harfnim/ot/myanmar.html#myanmarCategory,GlyphInfo	proc myanmarCategory(g: GlyphInfo): uint8		29
+nim	setMyanmarCategory	harfnim/ot/myanmar.html#setMyanmarCategory,GlyphInfo,uint8	proc setMyanmarCategory(g: var GlyphInfo; v: uint8)		33
+nim	myanmarPosition	harfnim/ot/myanmar.html#myanmarPosition,GlyphInfo	proc myanmarPosition(g: GlyphInfo): uint8		37
+nim	setMyanmarPosition	harfnim/ot/myanmar.html#setMyanmarPosition,GlyphInfo,uint8	proc setMyanmarPosition(g: var GlyphInfo; v: uint8)		41
+nim	setupMyanmarProperties	harfnim/ot/myanmar.html#setupMyanmarProperties,Buffer	proc setupMyanmarProperties(buf: var Buffer)		53
+nim	setupSyllablesMyanmar	harfnim/ot/myanmar.html#setupSyllablesMyanmar,Buffer	proc setupSyllablesMyanmar(buf: var Buffer)		60
+nim	reorderMyanmar	harfnim/ot/myanmar.html#reorderMyanmar,Buffer,ShaperFont	proc reorderMyanmar(buf: var Buffer; sf: ShaperFont): bool		164
+nim	applyMyanmarGsub	harfnim/ot/myanmar.html#applyMyanmarGsub,Buffer,ShaperFont,GsubData,Tag,Tag,openArray[Feature]	proc applyMyanmarGsub(buf: var Buffer; sf: ShaperFont; gsub: GsubData;\n                 scriptTag, langTag: Tag; userFeatures: openArray[Feature])		199

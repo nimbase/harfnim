@@ -1,0 +1,18 @@
+nimTitle	khmer	harfnim/ot/khmer.html	module harfnim/ot/khmer		0
+nim	KhmerPref	harfnim/ot/khmer.html#KhmerPref	const KhmerPref		27
+nim	KhmerBlwf	harfnim/ot/khmer.html#KhmerBlwf	const KhmerBlwf		29
+nim	KhmerAbvf	harfnim/ot/khmer.html#KhmerAbvf	const KhmerAbvf		31
+nim	KhmerPstf	harfnim/ot/khmer.html#KhmerPstf	const KhmerPstf		33
+nim	KhmerCfar	harfnim/ot/khmer.html#KhmerCfar	const KhmerCfar		35
+nim	KhmerFeatureTags	harfnim/ot/khmer.html#KhmerFeatureTags	const KhmerFeatureTags		38
+nim	KhmerGlobalFeature	harfnim/ot/khmer.html#KhmerGlobalFeature	const KhmerGlobalFeature		41
+nim	KhmerShapePlan	harfnim/ot/khmer.html#KhmerShapePlan	object KhmerShapePlan		46
+nim	newKhmerShapePlan	harfnim/ot/khmer.html#newKhmerShapePlan,GsubData,Tag,Tag	proc newKhmerShapePlan(gsub: GsubData; scriptTag, langTag: Tag): KhmerShapePlan		59
+nim	khmerCategory	harfnim/ot/khmer.html#khmerCategory,GlyphInfo	proc khmerCategory(g: GlyphInfo): uint8		86
+nim	setKhmerCategory	harfnim/ot/khmer.html#setKhmerCategory,GlyphInfo,uint8	proc setKhmerCategory(g: var GlyphInfo; v: uint8)		90
+nim	khmerDecompose	harfnim/ot/khmer.html#khmerDecompose,uint32	proc khmerDecompose(ab: uint32): Option[tuple[a, b: uint32]]		94
+nim	khmerCompose	harfnim/ot/khmer.html#khmerCompose,uint32,uint32	proc khmerCompose(a, b: uint32): Option[uint32]		102
+nim	setupKhmerProperties	harfnim/ot/khmer.html#setupKhmerProperties,Buffer	proc setupKhmerProperties(buf: var Buffer)		108
+nim	setupSyllablesKhmer	harfnim/ot/khmer.html#setupSyllablesKhmer,Buffer	proc setupSyllablesKhmer(buf: var Buffer)		115
+nim	reorderKhmer	harfnim/ot/khmer.html#reorderKhmer,Buffer,ShaperFont,KhmerShapePlan	proc reorderKhmer(buf: var Buffer; sf: ShaperFont; plan: KhmerShapePlan): bool		189
+nim	applyKhmerGsub	harfnim/ot/khmer.html#applyKhmerGsub,Buffer,ShaperFont,GsubData,Tag,Tag,openArray[Feature],KhmerShapePlan	proc applyKhmerGsub(buf: var Buffer; sf: ShaperFont; gsub: GsubData;\n               scriptTag, langTag: Tag; userFeatures: openArray[Feature];\n               plan: var KhmerShapePlan)		226

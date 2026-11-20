@@ -1,0 +1,9 @@
+nimTitle	khmer_machine	harfnim/ot/khmer_machine.html	module harfnim/ot/khmer_machine		0
+nim	ConsonantSyllable	harfnim/ot/khmer_machine.html#ConsonantSyllable	SyllableType.ConsonantSyllable		8
+nim	BrokenCluster	harfnim/ot/khmer_machine.html#BrokenCluster	SyllableType.BrokenCluster		8
+nim	NonKhmerCluster	harfnim/ot/khmer_machine.html#NonKhmerCluster	SyllableType.NonKhmerCluster		8
+nim	SyllableType	harfnim/ot/khmer_machine.html#SyllableType	enum SyllableType		8
+nim	SyllableLookaheadMemo	harfnim/ot/khmer_machine.html#SyllableLookaheadMemo	object SyllableLookaheadMemo		17
+nim	newSyllableLookaheadMemo	harfnim/ot/khmer_machine.html#newSyllableLookaheadMemo	proc newSyllableLookaheadMemo(): SyllableLookaheadMemo		25
+nim	isDoomedRevisit	harfnim/ot/khmer_machine.html#isDoomedRevisit,SyllableLookaheadMemo,int,int,int,int	proc isDoomedRevisit(memo: var SyllableLookaheadMemo; p, ts, cs, len: int): bool		29
+nim	findSyllablesKhmer	harfnim/ot/khmer_machine.html#findSyllablesKhmer,Buffer	proc findSyllablesKhmer(buf: var Buffer)		73

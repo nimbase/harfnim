@@ -1,0 +1,59 @@
+nimTitle	gsub	harfnim/ot/gsub.html	module harfnim/ot/gsub		0
+nim	LookupRightToLeft	harfnim/ot/gsub.html#LookupRightToLeft	const LookupRightToLeft		9
+nim	LookupIgnoreBaseGlyphs	harfnim/ot/gsub.html#LookupIgnoreBaseGlyphs	const LookupIgnoreBaseGlyphs		10
+nim	LookupIgnoreLigatures	harfnim/ot/gsub.html#LookupIgnoreLigatures	const LookupIgnoreLigatures		11
+nim	LookupIgnoreMarks	harfnim/ot/gsub.html#LookupIgnoreMarks	const LookupIgnoreMarks		12
+nim	LookupUseMarkFilteringSet	harfnim/ot/gsub.html#LookupUseMarkFilteringSet	const LookupUseMarkFilteringSet		13
+nim	LookupMarkAttachmentTypeMask	harfnim/ot/gsub.html#LookupMarkAttachmentTypeMask	const LookupMarkAttachmentTypeMask		14
+nim	LookupIgnoreFlags	harfnim/ot/gsub.html#LookupIgnoreFlags	const LookupIgnoreFlags		15
+nim	GsubSingleSubst	harfnim/ot/gsub.html#GsubSingleSubst	const GsubSingleSubst		17
+nim	GsubMultipleSubst	harfnim/ot/gsub.html#GsubMultipleSubst	const GsubMultipleSubst		18
+nim	GsubAlternateSubst	harfnim/ot/gsub.html#GsubAlternateSubst	const GsubAlternateSubst		19
+nim	GsubLigatureSubst	harfnim/ot/gsub.html#GsubLigatureSubst	const GsubLigatureSubst		20
+nim	GsubContextSubst	harfnim/ot/gsub.html#GsubContextSubst	const GsubContextSubst		21
+nim	GsubChainedContextSubst	harfnim/ot/gsub.html#GsubChainedContextSubst	const GsubChainedContextSubst		22
+nim	GsubExtensionSubst	harfnim/ot/gsub.html#GsubExtensionSubst	const GsubExtensionSubst		23
+nim	GsubReverseChainSubst	harfnim/ot/gsub.html#GsubReverseChainSubst	const GsubReverseChainSubst		24
+nim	MaxNestingLevel	harfnim/ot/gsub.html#MaxNestingLevel	const MaxNestingLevel		26
+nim	MaxContextLength	harfnim/ot/gsub.html#MaxContextLength	const MaxContextLength		27
+nim	LangSys	harfnim/ot/gsub.html#LangSys	object LangSys		30
+nim	ScriptTable	harfnim/ot/gsub.html#ScriptTable	object ScriptTable		37
+nim	ssDelta	harfnim/ot/gsub.html#ssDelta	SingleSubstKind.ssDelta		44
+nim	ssArray	harfnim/ot/gsub.html#ssArray	SingleSubstKind.ssArray		44
+nim	SingleSubstKind	harfnim/ot/gsub.html#SingleSubstKind	enum SingleSubstKind		44
+nim	SingleSubst	harfnim/ot/gsub.html#SingleSubst	object SingleSubst		51
+nim	MultipleSubst	harfnim/ot/gsub.html#MultipleSubst	object MultipleSubst		66
+nim	AlternateSubst	harfnim/ot/gsub.html#AlternateSubst	object AlternateSubst		73
+nim	Ligature	harfnim/ot/gsub.html#Ligature	object Ligature		80
+nim	LigatureSubst	harfnim/ot/gsub.html#LigatureSubst	object LigatureSubst		87
+nim	lkSingle	harfnim/ot/gsub.html#lkSingle	GsubLookupKind.lkSingle		94
+nim	lkMultiple	harfnim/ot/gsub.html#lkMultiple	GsubLookupKind.lkMultiple		94
+nim	lkAlternate	harfnim/ot/gsub.html#lkAlternate	GsubLookupKind.lkAlternate		94
+nim	lkLigature	harfnim/ot/gsub.html#lkLigature	GsubLookupKind.lkLigature		94
+nim	lkContext	harfnim/ot/gsub.html#lkContext	GsubLookupKind.lkContext		94
+nim	lkChain	harfnim/ot/gsub.html#lkChain	GsubLookupKind.lkChain		94
+nim	lkReverse	harfnim/ot/gsub.html#lkReverse	GsubLookupKind.lkReverse		94
+nim	lkOther	harfnim/ot/gsub.html#lkOther	GsubLookupKind.lkOther		94
+nim	GsubLookupKind	harfnim/ot/gsub.html#GsubLookupKind	enum GsubLookupKind		94
+nim	LookupEntry	harfnim/ot/gsub.html#LookupEntry	tuple LookupEntry		113
+nim	LookupRecord	harfnim/ot/gsub.html#LookupRecord	tuple LookupRecord		116
+nim	ContextRule	harfnim/ot/gsub.html#ContextRule	object ContextRule		119
+nim	ChainRule	harfnim/ot/gsub.html#ChainRule	object ChainRule		126
+nim	ContextSubst	harfnim/ot/gsub.html#ContextSubst	object ContextSubst		137
+nim	ChainContextSubst	harfnim/ot/gsub.html#ChainContextSubst	object ChainContextSubst		152
+nim	ReverseChainSubst	harfnim/ot/gsub.html#ReverseChainSubst	object ReverseChainSubst		175
+nim	Lookup	harfnim/ot/gsub.html#Lookup	object Lookup		186
+nim	GsubData	harfnim/ot/gsub.html#GsubData	type GsubData		213
+nim	parseLangSys	harfnim/ot/gsub.html#parseLangSys,openArray[uint8],int	proc parseLangSys(bytes: openArray[uint8]; off: int): LangSys		240
+nim	parseScriptTable	harfnim/ot/gsub.html#parseScriptTable,openArray[uint8],int	proc parseScriptTable(bytes: openArray[uint8]; off: int): ScriptTable		252
+nim	parseScriptList	harfnim/ot/gsub.html#parseScriptList,openArray[uint8],int	proc parseScriptList(bytes: openArray[uint8]; off: int): seq[\n    tuple[tag: uint32, script: ScriptTable]]		271
+nim	parseFeatureList	harfnim/ot/gsub.html#parseFeatureList,openArray[uint8],int	proc parseFeatureList(bytes: openArray[uint8]; off: int): seq[\n    tuple[tag: uint32, lookups: seq[uint16]]]		285
+nim	parseSingleSubst	harfnim/ot/gsub.html#parseSingleSubst,openArray[uint8],int	proc parseSingleSubst(bytes: openArray[uint8]; off: int): SingleSubst		307
+nim	parseContextSubst	harfnim/ot/gsub.html#parseContextSubst,openArray[uint8],int	proc parseContextSubst(bytes: openArray[uint8]; off: int): ContextSubst		754
+nim	parseChainContextSubst	harfnim/ot/gsub.html#parseChainContextSubst,openArray[uint8],int	proc parseChainContextSubst(bytes: openArray[uint8]; off: int): ChainContextSubst		865
+nim	emptyLookup	harfnim/ot/gsub.html#emptyLookup	proc emptyLookup(): Lookup		1211
+nim	gsubLookupCount	harfnim/ot/gsub.html#gsubLookupCount,GsubData	proc gsubLookupCount(gsub: GsubData): int		1219
+nim	getGsubLookup	harfnim/ot/gsub.html#getGsubLookup,GsubData,int	proc getGsubLookup(gsub: GsubData; idx: int): Lookup		1226
+nim	parseGsubTable	harfnim/ot/gsub.html#parseGsubTable,openArray[uint8],int	proc parseGsubTable(bytes: openArray[uint8]; off: int): GsubData		1241
+nim	parseGsub	harfnim/ot/gsub.html#parseGsub,SfntFont	proc parseGsub(f: SfntFont): Option[GsubData]		1266
+nim	singleSubstitute	harfnim/ot/gsub.html#singleSubstitute,SingleSubst,uint32,uint32	proc singleSubstitute(sub: SingleSubst; gid: uint32; index: uint32): Option[uint32]		1295

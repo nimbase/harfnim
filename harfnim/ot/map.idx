@@ -1,0 +1,14 @@
+nimTitle	map	harfnim/ot/map.html	module harfnim/ot/map		0
+nim	findScript	harfnim/ot/map.html#findScript,GsubData,Tag	proc findScript(gsub: GsubData; scriptTag: Tag): Option[int]		13
+nim	findScriptGpos	harfnim/ot/map.html#findScriptGpos,GposData,Tag	proc findScriptGpos(gpos: GposData; scriptTag: Tag): Option[int]		24
+nim	resolveLangSys	harfnim/ot/map.html#resolveLangSys,ScriptTable,Tag	proc resolveLangSys(script: ScriptTable; langTag: Tag): Option[LangSys]		35
+nim	gsubLangSys	harfnim/ot/map.html#gsubLangSys,GsubData,Tag,Tag	proc gsubLangSys(gsub: GsubData; scriptTag, langTag: Tag): Option[LangSys]		42
+nim	gposLangSys	harfnim/ot/map.html#gposLangSys,GposData,Tag,Tag	proc gposLangSys(gpos: GposData; scriptTag, langTag: Tag): Option[LangSys]		50
+nim	gsubLookupsForLang	harfnim/ot/map.html#gsubLookupsForLang,GsubData,LangSys,uint32	proc gsubLookupsForLang(gsub: GsubData; lang: LangSys; tagU32: uint32): seq[uint16]		57
+nim	gposLookupsForLang	harfnim/ot/map.html#gposLookupsForLang,GposData,LangSys,uint32	proc gposLookupsForLang(gpos: GposData; lang: LangSys; tagU32: uint32): seq[uint16]		73
+nim	gsubLookupsForTag	harfnim/ot/map.html#gsubLookupsForTag,GsubData,Tag,Tag,uint32	proc gsubLookupsForTag(gsub: GsubData; scriptTag, langTag: Tag; tagU32: uint32): seq[\n    uint16]		88
+nim	gposLookupsForTag	harfnim/ot/map.html#gposLookupsForTag,GposData,Tag,Tag,uint32	proc gposLookupsForTag(gpos: GposData; scriptTag, langTag: Tag; tagU32: uint32): seq[\n    uint16]		96
+nim	gsubFeaturesFor	harfnim/ot/map.html#gsubFeaturesFor,GsubData,Tag,Tag	proc gsubFeaturesFor(gsub: GsubData; scriptTag, langTag: Tag): seq[\n    tuple[tag: uint32, lookups: seq[uint16]]]		104
+nim	applyGsubFeatures	harfnim/ot/map.html#applyGsubFeatures,Buffer,GsubData,Tag,Tag,openArray[Feature]	proc applyGsubFeatures(buf: var Buffer; gsub: GsubData; scriptTag, langTag: Tag;\n                  features: openArray[Feature])		123
+nim	gposFeaturesFor	harfnim/ot/map.html#gposFeaturesFor,GposData,Tag,Tag	proc gposFeaturesFor(gpos: GposData; scriptTag, langTag: Tag): seq[\n    tuple[tag: uint32, lookups: seq[uint16]]]		148
+nim	applyGposFeatures	harfnim/ot/map.html#applyGposFeatures,Buffer,GposData,Tag,Tag,openArray[Feature],Scale,VarStore,seq[float32]	proc applyGposFeatures(buf: var Buffer; gpos: GposData; scriptTag, langTag: Tag;\n                  features: openArray[Feature]; scale: Scale;\n                  store: VarStore = VarStore(); coords: seq[float32] = @[])		167

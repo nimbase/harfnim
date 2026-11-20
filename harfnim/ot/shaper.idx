@@ -1,0 +1,17 @@
+nimTitle	shaper	harfnim/ot/shaper.html	module harfnim/ot/shaper		0
+nim	skDefault	harfnim/ot/shaper.html#skDefault	ShaperKind.skDefault		17
+nim	skArabic	harfnim/ot/shaper.html#skArabic	ShaperKind.skArabic		17
+nim	skHebrew	harfnim/ot/shaper.html#skHebrew	ShaperKind.skHebrew		17
+nim	skHangul	harfnim/ot/shaper.html#skHangul	ShaperKind.skHangul		17
+nim	skThai	harfnim/ot/shaper.html#skThai	ShaperKind.skThai		17
+nim	skIndic	harfnim/ot/shaper.html#skIndic	ShaperKind.skIndic		17
+nim	skKhmer	harfnim/ot/shaper.html#skKhmer	ShaperKind.skKhmer		17
+nim	skMyanmar	harfnim/ot/shaper.html#skMyanmar	ShaperKind.skMyanmar		17
+nim	skUse	harfnim/ot/shaper.html#skUse	ShaperKind.skUse		17
+nim	ShaperKind	harfnim/ot/shaper.html#ShaperKind	enum ShaperKind		17
+nim	gsubScriptTagFor	harfnim/ot/shaper.html#gsubScriptTagFor,GsubData,Tag	proc gsubScriptTagFor(gsub: GsubData; scriptTag: Tag): Option[Tag]		28
+nim	newTagFor	harfnim/ot/shaper.html#newTagFor,Script	proc newTagFor(script: Script): Option[Tag]		40
+nim	preferredScriptTags	harfnim/ot/shaper.html#preferredScriptTags,Script,Tag	proc preferredScriptTags(script: Script; oldTag: Tag): seq[Tag]		67
+nim	chooseGsubScript	harfnim/ot/shaper.html#chooseGsubScript,GsubData,Option[Script],Tag	proc chooseGsubScript(gsub: GsubData; script: Option[Script]; oldTag: Tag): Tag		81
+nim	categorizeShaper	harfnim/ot/shaper.html#categorizeShaper,Option[Script],bool,Option[Tag]	proc categorizeShaper(script: Option[Script]; isHorizontal: bool;\n                 gsubScript: Option[Tag] = none(Tag)): ShaperKind		105
+nim	gposHasMark	harfnim/ot/shaper.html#gposHasMark,GposData,Tag,Tag	proc gposHasMark(gpos: GposData; scriptTag, langTag: Tag): bool		192

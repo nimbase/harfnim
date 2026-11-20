@@ -1,0 +1,16 @@
+nimTitle	use_machine_data	harfnim/ot/use_machine_data.html	module harfnim/ot/use_machine_data		0
+nim	UseTransKeys	harfnim/ot/use_machine_data.html#UseTransKeys	const UseTransKeys		9
+nim	UseCharClass	harfnim/ot/use_machine_data.html#UseCharClass	const UseCharClass		28
+nim	UseIndexOffsets	harfnim/ot/use_machine_data.html#UseIndexOffsets	const UseIndexOffsets		35
+nim	UseIndices	harfnim/ot/use_machine_data.html#UseIndices	const UseIndices		47
+nim	UseIndexDefaults	harfnim/ot/use_machine_data.html#UseIndexDefaults	const UseIndexDefaults		260
+nim	UseCondTargs	harfnim/ot/use_machine_data.html#UseCondTargs	const UseCondTargs		272
+nim	UseCondActions	harfnim/ot/use_machine_data.html#UseCondActions	const UseCondActions		285
+nim	UseToStateActions	harfnim/ot/use_machine_data.html#UseToStateActions	const UseToStateActions		298
+nim	UseFromStateActions	harfnim/ot/use_machine_data.html#UseFromStateActions	const UseFromStateActions		310
+nim	UseEofTrans	harfnim/ot/use_machine_data.html#UseEofTrans	const UseEofTrans		322
+nim	UseStart	harfnim/ot/use_machine_data.html#UseStart	const UseStart		334
+nim	UseFirstFinal	harfnim/ot/use_machine_data.html#UseFirstFinal	const UseFirstFinal		336
+nim	UseError	harfnim/ot/use_machine_data.html#UseError	const UseError		338
+nim	UseEnMain	harfnim/ot/use_machine_data.html#UseEnMain	const UseEnMain		340
+nim	UseMaxSyllableLookahead	harfnim/ot/use_machine_data.html#UseMaxSyllableLookahead	const UseMaxSyllableLookahead		343

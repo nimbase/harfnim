@@ -1,0 +1,5 @@
+nimTitle	syllabic	harfnim/ot/syllabic.html	module harfnim/ot/syllabic		0
+nim	MaxSyllableLength	harfnim/ot/syllabic.html#MaxSyllableLength	const MaxSyllableLength		13
+nim	insertDottedCircles	harfnim/ot/syllabic.html#insertDottedCircles,Buffer,ShaperFont,uint8,uint8,Option[uint8],Option[uint8]	proc insertDottedCircles(buf: var Buffer; sf: ShaperFont;\n                    brokenType, dottedCategory: uint8;\n                    rephaCategory: Option[uint8]; dottedPosition: Option[uint8]): bool		16
+nim	clearSyllables	harfnim/ot/syllabic.html#clearSyllables,Buffer	proc clearSyllables(buf: var Buffer)		65
+nim	recordSyllableCut	harfnim/ot/syllabic.html#recordSyllableCut,Buffer,int,int	proc recordSyllableCut(buf: var Buffer; start, stop: int)		72

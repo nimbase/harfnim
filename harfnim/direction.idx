@@ -1,0 +1,14 @@
+nimTitle	direction	harfnim/direction.html	module harfnim/direction		0
+nim	dirInvalid	harfnim/direction.html#dirInvalid	Direction.dirInvalid		6
+nim	dirLeftToRight	harfnim/direction.html#dirLeftToRight	Direction.dirLeftToRight		6
+nim	dirRightToLeft	harfnim/direction.html#dirRightToLeft	Direction.dirRightToLeft		6
+nim	dirTopToBottom	harfnim/direction.html#dirTopToBottom	Direction.dirTopToBottom		6
+nim	dirBottomToTop	harfnim/direction.html#dirBottomToTop	Direction.dirBottomToTop		6
+nim	Direction	harfnim/direction.html#Direction	enum Direction		6
+nim	directionForScript	harfnim/direction.html#directionForScript,Script	proc directionForScript(s: Script): tuple[ok: bool, dir: Direction]		19
+nim	isHorizontal	harfnim/direction.html#isHorizontal,Direction	proc isHorizontal(d: Direction): bool		33
+nim	isVertical	harfnim/direction.html#isVertical,Direction	proc isVertical(d: Direction): bool		37
+nim	isForward	harfnim/direction.html#isForward,Direction	proc isForward(d: Direction): bool		41
+nim	isBackward	harfnim/direction.html#isBackward,Direction	proc isBackward(d: Direction): bool		47
+nim	reverse	harfnim/direction.html#reverse,Direction	proc reverse(d: Direction): Direction		51
+nim	parseDirection	harfnim/direction.html#parseDirection,string	proc parseDirection(s: string): Direction		60

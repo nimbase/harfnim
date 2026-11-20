@@ -1,0 +1,27 @@
+nimTitle	bidi_table	harfnim/bidi_table.html	module harfnim/bidi_table		0
+nim	BidiL	harfnim/bidi_table.html#BidiL	BidiClass.BidiL		16
+nim	BidiR	harfnim/bidi_table.html#BidiR	BidiClass.BidiR		16
+nim	BidiAL	harfnim/bidi_table.html#BidiAL	BidiClass.BidiAL		16
+nim	BidiEN	harfnim/bidi_table.html#BidiEN	BidiClass.BidiEN		16
+nim	BidiES	harfnim/bidi_table.html#BidiES	BidiClass.BidiES		16
+nim	BidiET	harfnim/bidi_table.html#BidiET	BidiClass.BidiET		16
+nim	BidiAN	harfnim/bidi_table.html#BidiAN	BidiClass.BidiAN		16
+nim	BidiCS	harfnim/bidi_table.html#BidiCS	BidiClass.BidiCS		16
+nim	BidiNSM	harfnim/bidi_table.html#BidiNSM	BidiClass.BidiNSM		16
+nim	BidiBN	harfnim/bidi_table.html#BidiBN	BidiClass.BidiBN		16
+nim	BidiB	harfnim/bidi_table.html#BidiB	BidiClass.BidiB		16
+nim	BidiS	harfnim/bidi_table.html#BidiS	BidiClass.BidiS		16
+nim	BidiWS	harfnim/bidi_table.html#BidiWS	BidiClass.BidiWS		16
+nim	BidiON	harfnim/bidi_table.html#BidiON	BidiClass.BidiON		16
+nim	BidiLRE	harfnim/bidi_table.html#BidiLRE	BidiClass.BidiLRE		16
+nim	BidiRLE	harfnim/bidi_table.html#BidiRLE	BidiClass.BidiRLE		16
+nim	BidiLRO	harfnim/bidi_table.html#BidiLRO	BidiClass.BidiLRO		16
+nim	BidiRLO	harfnim/bidi_table.html#BidiRLO	BidiClass.BidiRLO		16
+nim	BidiPDF	harfnim/bidi_table.html#BidiPDF	BidiClass.BidiPDF		16
+nim	BidiLRI	harfnim/bidi_table.html#BidiLRI	BidiClass.BidiLRI		16
+nim	BidiRLI	harfnim/bidi_table.html#BidiRLI	BidiClass.BidiRLI		16
+nim	BidiFSI	harfnim/bidi_table.html#BidiFSI	BidiClass.BidiFSI		16
+nim	BidiPDI	harfnim/bidi_table.html#BidiPDI	BidiClass.BidiPDI		16
+nim	BidiClass	harfnim/bidi_table.html#BidiClass	enum BidiClass		16
+nim	bidiClassRanges	harfnim/bidi_table.html#bidiClassRanges	const bidiClassRanges		65
+nim	bidiBrackets	harfnim/bidi_table.html#bidiBrackets	const bidiBrackets		325

@@ -1,0 +1,13 @@
+nimTitle	scale	harfnim/scale.html	module harfnim/scale		0
+nim	GlyphExtents	harfnim/scale.html#GlyphExtents	object GlyphExtents		4
+nim	Scale	harfnim/scale.html#Scale	object Scale		15
+nim	defaultScale	harfnim/scale.html#defaultScale	proc defaultScale(): Scale		26
+nim	newScale	harfnim/scale.html#newScale,int32,int32,int32	proc newScale(xScale, yScale: int32; upem: int32): Scale		37
+nim	identityScale	harfnim/scale.html#identityScale,int32	proc identityScale(upem: int32): Scale		46
+nim	scaleX	harfnim/scale.html#scaleX,Scale,int32	proc scaleX(s: Scale; x: int32): int32		62
+nim	scaleY	harfnim/scale.html#scaleY,Scale,int32	proc scaleY(s: Scale; y: int32): int32		66
+nim	scaleXF	harfnim/scale.html#scaleXF,Scale,float32	proc scaleXF(s: Scale; x: float32): int32		70
+nim	scaleYF	harfnim/scale.html#scaleYF,Scale,float32	proc scaleYF(s: Scale; y: float32): int32		74
+nim	clampXAdvance	harfnim/scale.html#clampXAdvance,Scale,int32	proc clampXAdvance(s: Scale; advance: int32): int32		85
+nim	clampYAdvance	harfnim/scale.html#clampYAdvance,Scale,int32	proc clampYAdvance(s: Scale; advance: int32): int32		89
+nim	scaleExtents	harfnim/scale.html#scaleExtents,Scale,GlyphExtents	proc scaleExtents(s: Scale; e: GlyphExtents): GlyphExtents		93

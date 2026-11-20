@@ -1,0 +1,7 @@
+nimTitle	gvar	harfnim/gvar.html	module harfnim/gvar		0
+nim	GvarTable	harfnim/gvar.html#GvarTable	object GvarTable		32
+nim	GvarContext	harfnim/gvar.html#GvarContext	object GvarContext		47
+nim	noGvarContext	harfnim/gvar.html#noGvarContext	proc noGvarContext(): GvarContext		54
+nim	hasData	harfnim/gvar.html#hasData,GvarContext	proc hasData(c: GvarContext): bool		58
+nim	parseGvar	harfnim/gvar.html#parseGvar,seq[uint8],int,int	proc parseGvar(bytes: seq[uint8]; off, len: int): GvarTable		121
+nim	applyGvarDeltas	harfnim/gvar.html#applyGvarDeltas,GvarContext,int,int,openArray[int],seq[int32],seq[int32]	proc applyGvarDeltas(ctx: GvarContext; gid, numPoints: int; ends: openArray[int];\n                xs, ys: var seq[int32]): bool		313

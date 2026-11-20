@@ -1,0 +1,2 @@
+nimTitle	variations	harfnim/variations.html	module harfnim/variations		0
+nim	normalizeCoords	harfnim/variations.html#normalizeCoords,seq[FvarAxis],seq[seq[AvarSegment]],openArray[tuple[uint32,float32]]	proc normalizeCoords(axes: seq[FvarAxis]; avar: seq[seq[AvarSegment]];\n                vars: openArray[tuple[tag: uint32, value: float32]]): seq[\n    float32]		10

@@ -1,0 +1,9 @@
+nimTitle	feature	harfnim/feature.html	module harfnim/feature		0
+nim	Feature	harfnim/feature.html#Feature	object Feature		5
+nim	GlobalStart	harfnim/feature.html#GlobalStart	const GlobalStart		17
+nim	GlobalEnd	harfnim/feature.html#GlobalEnd	const GlobalEnd		19
+nim	newFeature	harfnim/feature.html#newFeature,Tag,uint32,uint32,uint32	proc newFeature(t: Tag; value: uint32; first, last: uint32): Feature		22
+nim	globalFeature	harfnim/feature.html#globalFeature,Tag,uint32	proc globalFeature(t: Tag; value: uint32 = 1): Feature		26
+nim	isGlobal	harfnim/feature.html#isGlobal,Feature	proc isGlobal(f: Feature): bool		30
+nim	`==`	harfnim/feature.html#==,Feature,Feature	proc `==`(a, b: Feature): bool		34
+nim	parseFeature	harfnim/feature.html#parseFeature,string	proc parseFeature(s: string): Feature		115

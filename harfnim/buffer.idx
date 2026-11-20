@@ -1,0 +1,292 @@
+nimTitle	buffer	harfnim/buffer.html	module harfnim/buffer		0
+nim	Mask	harfnim/buffer.html#Mask	type Mask		12
+nim	GlyphId	harfnim/buffer.html#GlyphId	type GlyphId		14
+nim	newGlyphId	harfnim/buffer.html#newGlyphId,uint32	proc newGlyphId(v: uint32): GlyphId		17
+nim	value	harfnim/buffer.html#value,GlyphId	proc value(g: GlyphId): uint32		20
+nim	`==`	harfnim/buffer.html#==,GlyphId,GlyphId	proc `==`(a, b: GlyphId): bool		23
+nim	ContextLength	harfnim/buffer.html#ContextLength	const ContextLength		28
+nim	MaxLenFactor	harfnim/buffer.html#MaxLenFactor	const MaxLenFactor		29
+nim	MaxLenMin	harfnim/buffer.html#MaxLenMin	const MaxLenMin		30
+nim	MaxLenDefault	harfnim/buffer.html#MaxLenDefault	const MaxLenDefault		31
+nim	MaxOpsFactor	harfnim/buffer.html#MaxOpsFactor	const MaxOpsFactor		32
+nim	MaxOpsMin	harfnim/buffer.html#MaxOpsMin	const MaxOpsMin		33
+nim	MaxOpsDefault	harfnim/buffer.html#MaxOpsDefault	const MaxOpsDefault		34
+nim	GlyphPosition	harfnim/buffer.html#GlyphPosition	object GlyphPosition		41
+nim	attachChain	harfnim/buffer.html#attachChain,GlyphPosition	proc attachChain(p: GlyphPosition): int16		54
+nim	setAttachChain	harfnim/buffer.html#setAttachChain,GlyphPosition,int16	proc setAttachChain(p: var GlyphPosition; n: int16)		58
+nim	attachType	harfnim/buffer.html#attachType,GlyphPosition	proc attachType(p: GlyphPosition): uint8		62
+nim	setAttachType	harfnim/buffer.html#setAttachType,GlyphPosition,uint8	proc setAttachType(p: var GlyphPosition; n: uint8)		66
+nim	GlyphFlags	harfnim/buffer.html#GlyphFlags	type GlyphFlags		75
+nim	UnsafeToBreak	harfnim/buffer.html#UnsafeToBreak	const UnsafeToBreak		79
+nim	UnsafeToConcat	harfnim/buffer.html#UnsafeToConcat	const UnsafeToConcat		81
+nim	SafeToInsertTatweel	harfnim/buffer.html#SafeToInsertTatweel	const SafeToInsertTatweel		83
+nim	AllGlyphFlags	harfnim/buffer.html#AllGlyphFlags	const AllGlyphFlags		85
+nim	DefinedGlyphFlagBits	harfnim/buffer.html#DefinedGlyphFlagBits	const DefinedGlyphFlagBits		87
+nim	GlyphInfo	harfnim/buffer.html#GlyphInfo	object GlyphInfo		95
+nim	flagsOf	harfnim/buffer.html#flagsOf,GlyphInfo	proc flagsOf(g: GlyphInfo): GlyphFlags		106
+nim	asCodepoint	harfnim/buffer.html#asCodepoint,GlyphInfo	proc asCodepoint(g: GlyphInfo): uint32		110
+nim	asGlyph	harfnim/buffer.html#asGlyph,GlyphInfo	proc asGlyph(g: GlyphInfo): GlyphId		113
+nim	asGid16	harfnim/buffer.html#asGid16,GlyphInfo	proc asGid16(g: GlyphInfo): tuple[ok: bool, gid: uint16]		117
+nim	getVarU8	harfnim/buffer.html#getVarU8,GlyphInfo,int,int	proc getVarU8(g: GlyphInfo; varIndex, index: int): uint8		126
+nim	setVarU8	harfnim/buffer.html#setVarU8,GlyphInfo,int,int,uint8	proc setVarU8(g: var GlyphInfo; varIndex, index: int; v: uint8)		130
+nim	getVarU16	harfnim/buffer.html#getVarU16,GlyphInfo,int,int	proc getVarU16(g: GlyphInfo; varIndex, index: int): uint16		136
+nim	setVarU16	harfnim/buffer.html#setVarU16,GlyphInfo,int,int,uint16	proc setVarU16(g: var GlyphInfo; varIndex, index: int; v: uint16)		140
+nim	getVarU32	harfnim/buffer.html#getVarU32,GlyphInfo,int	proc getVarU32(g: GlyphInfo; varIndex: int): uint32		146
+nim	setVarU32	harfnim/buffer.html#setVarU32,GlyphInfo,int,uint32	proc setVarU32(g: var GlyphInfo; varIndex: int; v: uint32)		150
+nim	unicodeProps	harfnim/buffer.html#unicodeProps,GlyphInfo	proc unicodeProps(g: GlyphInfo): uint16		158
+nim	setUnicodeProps	harfnim/buffer.html#setUnicodeProps,GlyphInfo,uint16	proc setUnicodeProps(g: var GlyphInfo; v: uint16)		161
+nim	glyphProps	harfnim/buffer.html#glyphProps,GlyphInfo	proc glyphProps(g: GlyphInfo): uint16		165
+nim	setGlyphProps	harfnim/buffer.html#setGlyphProps,GlyphInfo,uint16	proc setGlyphProps(g: var GlyphInfo; v: uint16)		168
+nim	ligProps	harfnim/buffer.html#ligProps,GlyphInfo	proc ligProps(g: GlyphInfo): uint8		172
+nim	setLigProps	harfnim/buffer.html#setLigProps,GlyphInfo,uint8	proc setLigProps(g: var GlyphInfo; v: uint8)		175
+nim	syllable	harfnim/buffer.html#syllable,GlyphInfo	proc syllable(g: GlyphInfo): uint8		179
+nim	setSyllable	harfnim/buffer.html#setSyllable,GlyphInfo,uint8	proc setSyllable(g: var GlyphInfo; v: uint8)		182
+nim	normalizerGlyphIndex	harfnim/buffer.html#normalizerGlyphIndex,GlyphInfo	proc normalizerGlyphIndex(g: GlyphInfo): uint32		186
+nim	setNormalizerGlyphIndex	harfnim/buffer.html#setNormalizerGlyphIndex,GlyphInfo,uint32	proc setNormalizerGlyphIndex(g: var GlyphInfo; v: uint32)		189
+nim	otShaperCategory	harfnim/buffer.html#otShaperCategory,GlyphInfo	proc otShaperCategory(g: GlyphInfo): uint8		193
+nim	setOtShaperCategory	harfnim/buffer.html#setOtShaperCategory,GlyphInfo,uint8	proc setOtShaperCategory(g: var GlyphInfo; v: uint8)		196
+nim	otShaperAuxiliary	harfnim/buffer.html#otShaperAuxiliary,GlyphInfo	proc otShaperAuxiliary(g: GlyphInfo): uint8		200
+nim	setOtShaperAuxiliary	harfnim/buffer.html#setOtShaperAuxiliary,GlyphInfo,uint8	proc setOtShaperAuxiliary(g: var GlyphInfo; v: uint8)		203
+nim	toBits	harfnim/buffer.html#toBits,GlyphFlags	proc toBits(f: GlyphFlags): uint32		211
+nim	fromBitsTruncate	harfnim/buffer.html#fromBitsTruncate,uint32	proc fromBitsTruncate(bits: uint32): GlyphFlags		214
+nim	contains	harfnim/buffer.html#contains,GlyphFlags,GlyphFlags	proc contains(a, b: GlyphFlags): bool		218
+nim	intersects	harfnim/buffer.html#intersects,GlyphFlags,GlyphFlags	proc intersects(a, b: GlyphFlags): bool		221
+nim	`or`	harfnim/buffer.html#or,GlyphFlags,GlyphFlags	proc `or`(a, b: GlyphFlags): GlyphFlags		225
+nim	`and`	harfnim/buffer.html#and,GlyphFlags,GlyphFlags	proc `and`(a, b: GlyphFlags): GlyphFlags		228
+nim	`not`	harfnim/buffer.html#not,GlyphFlags	proc `not`(a: GlyphFlags): GlyphFlags		231
+nim	`==`	harfnim/buffer.html#==,GlyphFlags,GlyphFlags	proc `==`(a, b: GlyphFlags): bool		234
+nim	isUnsafeToBreak	harfnim/buffer.html#isUnsafeToBreak,GlyphFlags	proc isUnsafeToBreak(f: GlyphFlags): bool		238
+nim	isUnsafeToConcat	harfnim/buffer.html#isUnsafeToConcat,GlyphFlags	proc isUnsafeToConcat(f: GlyphFlags): bool		241
+nim	isSafeToInsertTatweel	harfnim/buffer.html#isSafeToInsertTatweel,GlyphFlags	proc isSafeToInsertTatweel(f: GlyphFlags): bool		244
+nim	unsafeToBreak	harfnim/buffer.html#unsafeToBreak,GlyphInfo	proc unsafeToBreak(g: GlyphInfo): bool		248
+nim	unsafeToConcat	harfnim/buffer.html#unsafeToConcat,GlyphInfo	proc unsafeToConcat(g: GlyphInfo): bool		251
+nim	safeToInsertTatweel	harfnim/buffer.html#safeToInsertTatweel,GlyphInfo	proc safeToInsertTatweel(g: GlyphInfo): bool		254
+nim	GlyphPropBaseGlyph	harfnim/buffer.html#GlyphPropBaseGlyph	const GlyphPropBaseGlyph		263
+nim	GlyphPropLigature	harfnim/buffer.html#GlyphPropLigature	const GlyphPropLigature		265
+nim	GlyphPropMark	harfnim/buffer.html#GlyphPropMark	const GlyphPropMark		267
+nim	GlyphPropClassMask	harfnim/buffer.html#GlyphPropClassMask	const GlyphPropClassMask		269
+nim	GlyphPropSubstituted	harfnim/buffer.html#GlyphPropSubstituted	const GlyphPropSubstituted		271
+nim	GlyphPropLigated	harfnim/buffer.html#GlyphPropLigated	const GlyphPropLigated		273
+nim	GlyphPropMultiplied	harfnim/buffer.html#GlyphPropMultiplied	const GlyphPropMultiplied		275
+nim	GlyphPropPreserve	harfnim/buffer.html#GlyphPropPreserve	const GlyphPropPreserve		277
+nim	UnicodePropGeneralCategory	harfnim/buffer.html#UnicodePropGeneralCategory	const UnicodePropGeneralCategory		281
+nim	UnicodePropIgnorable	harfnim/buffer.html#UnicodePropIgnorable	const UnicodePropIgnorable		283
+nim	UnicodePropHidden	harfnim/buffer.html#UnicodePropHidden	const UnicodePropHidden		285
+nim	UnicodePropContinuation	harfnim/buffer.html#UnicodePropContinuation	const UnicodePropContinuation		287
+nim	UnicodePropCfZwj	harfnim/buffer.html#UnicodePropCfZwj	const UnicodePropCfZwj		289
+nim	UnicodePropCfZwnj	harfnim/buffer.html#UnicodePropCfZwnj	const UnicodePropCfZwnj		291
+nim	UnicodePropCfVs	harfnim/buffer.html#UnicodePropCfVs	const UnicodePropCfVs		293
+nim	UnicodePropCfAatDeleted	harfnim/buffer.html#UnicodePropCfAatDeleted	const UnicodePropCfAatDeleted		295
+nim	ScratchFlagDefault	harfnim/buffer.html#ScratchFlagDefault	const ScratchFlagDefault		299
+nim	ScratchFlagHasFractionSlash	harfnim/buffer.html#ScratchFlagHasFractionSlash	const ScratchFlagHasFractionSlash		301
+nim	ScratchFlagHasDefaultIgnorables	harfnim/buffer.html#ScratchFlagHasDefaultIgnorables	const ScratchFlagHasDefaultIgnorables		303
+nim	ScratchFlagHasSpaceFallback	harfnim/buffer.html#ScratchFlagHasSpaceFallback	const ScratchFlagHasSpaceFallback		305
+nim	ScratchFlagHasGposAttachment	harfnim/buffer.html#ScratchFlagHasGposAttachment	const ScratchFlagHasGposAttachment		307
+nim	ScratchFlagHasCgj	harfnim/buffer.html#ScratchFlagHasCgj	const ScratchFlagHasCgj		309
+nim	ScratchFlagHasBrokenSyllable	harfnim/buffer.html#ScratchFlagHasBrokenSyllable	const ScratchFlagHasBrokenSyllable		311
+nim	ScratchFlagHasVariationSelectorFallback	harfnim/buffer.html#ScratchFlagHasVariationSelectorFallback	const ScratchFlagHasVariationSelectorFallback		313
+nim	ScratchFlagHasContinuations	harfnim/buffer.html#ScratchFlagHasContinuations	const ScratchFlagHasContinuations		315
+nim	ScratchFlagShaper0	harfnim/buffer.html#ScratchFlagShaper0	const ScratchFlagShaper0		317
+nim	contentUnicode	harfnim/buffer.html#contentUnicode	ContentType.contentUnicode		325
+nim	contentGlyphs	harfnim/buffer.html#contentGlyphs	ContentType.contentGlyphs		325
+nim	ContentType	harfnim/buffer.html#ContentType	enum ContentType		325
+nim	ClusterLevelMonotoneGraphemes	harfnim/buffer.html#ClusterLevelMonotoneGraphemes	const ClusterLevelMonotoneGraphemes		333
+nim	ClusterLevelMonotoneCharacters	harfnim/buffer.html#ClusterLevelMonotoneCharacters	const ClusterLevelMonotoneCharacters		335
+nim	ClusterLevelCharacters	harfnim/buffer.html#ClusterLevelCharacters	const ClusterLevelCharacters		337
+nim	ClusterLevelGraphemes	harfnim/buffer.html#ClusterLevelGraphemes	const ClusterLevelGraphemes		339
+nim	ClusterLevelDefault	harfnim/buffer.html#ClusterLevelDefault	const ClusterLevelDefault		341
+nim	clMonotoneGraphemes	harfnim/buffer.html#clMonotoneGraphemes	ClusterLevel.clMonotoneGraphemes		345
+nim	clMonotoneCharacters	harfnim/buffer.html#clMonotoneCharacters	ClusterLevel.clMonotoneCharacters		345
+nim	clCharacters	harfnim/buffer.html#clCharacters	ClusterLevel.clCharacters		345
+nim	clGraphemes	harfnim/buffer.html#clGraphemes	ClusterLevel.clGraphemes		345
+nim	ClusterLevel	harfnim/buffer.html#ClusterLevel	enum ClusterLevel		345
+nim	clusterLevelFromCode	harfnim/buffer.html#clusterLevelFromCode,uint32	proc clusterLevelFromCode(code: uint32): ClusterLevel		356
+nim	clusterLevelCode	harfnim/buffer.html#clusterLevelCode,ClusterLevel	proc clusterLevelCode(l: ClusterLevel): uint32		364
+nim	isMonotone	harfnim/buffer.html#isMonotone,ClusterLevel	proc isMonotone(l: ClusterLevel): bool		372
+nim	isGraphemes	harfnim/buffer.html#isGraphemes,ClusterLevel	proc isGraphemes(l: ClusterLevel): bool		376
+nim	BufferFlags	harfnim/buffer.html#BufferFlags	type BufferFlags		381
+nim	BeginningOfText	harfnim/buffer.html#BeginningOfText	const BeginningOfText		385
+nim	EndOfText	harfnim/buffer.html#EndOfText	const EndOfText		387
+nim	PreserveDefaultIgnorables	harfnim/buffer.html#PreserveDefaultIgnorables	const PreserveDefaultIgnorables		389
+nim	RemoveDefaultIgnorables	harfnim/buffer.html#RemoveDefaultIgnorables	const RemoveDefaultIgnorables		391
+nim	DoNotInsertDottedCircle	harfnim/buffer.html#DoNotInsertDottedCircle	const DoNotInsertDottedCircle		393
+nim	BufferFlagVerify	harfnim/buffer.html#BufferFlagVerify	const BufferFlagVerify		395
+nim	ProduceUnsafeToConcat	harfnim/buffer.html#ProduceUnsafeToConcat	const ProduceUnsafeToConcat		397
+nim	ProduceSafeToInsertTatweel	harfnim/buffer.html#ProduceSafeToInsertTatweel	const ProduceSafeToInsertTatweel		399
+nim	DefinedBufferFlagBits	harfnim/buffer.html#DefinedBufferFlagBits	const DefinedBufferFlagBits		401
+nim	toBits	harfnim/buffer.html#toBits,BufferFlags	proc toBits(f: BufferFlags): uint32		404
+nim	`==`	harfnim/buffer.html#==,BufferFlags,BufferFlags	proc `==`(a, b: BufferFlags): bool		407
+nim	`or`	harfnim/buffer.html#or,BufferFlags,BufferFlags	proc `or`(a, b: BufferFlags): BufferFlags		410
+nim	`and`	harfnim/buffer.html#and,BufferFlags,BufferFlags	proc `and`(a, b: BufferFlags): BufferFlags		413
+nim	contains	harfnim/buffer.html#contains,BufferFlags,BufferFlags	proc contains(a, b: BufferFlags): bool		416
+nim	SerializeFlags	harfnim/buffer.html#SerializeFlags	type SerializeFlags		421
+nim	NoClusters	harfnim/buffer.html#NoClusters	const NoClusters		425
+nim	NoPositions	harfnim/buffer.html#NoPositions	const NoPositions		427
+nim	NoGlyphNames	harfnim/buffer.html#NoGlyphNames	const NoGlyphNames		429
+nim	SerializeGlyphExtents	harfnim/buffer.html#SerializeGlyphExtents	const SerializeGlyphExtents		431
+nim	GlyphFlagsFlag	harfnim/buffer.html#GlyphFlagsFlag	const GlyphFlagsFlag		433
+nim	NoAdvances	harfnim/buffer.html#NoAdvances	const NoAdvances		435
+nim	toBits	harfnim/buffer.html#toBits,SerializeFlags	proc toBits(f: SerializeFlags): uint8		438
+nim	`==`	harfnim/buffer.html#==,SerializeFlags,SerializeFlags	proc `==`(a, b: SerializeFlags): bool		441
+nim	contains	harfnim/buffer.html#contains,SerializeFlags,SerializeFlags	proc contains(a, b: SerializeFlags): bool		444
+nim	BufferVar	harfnim/buffer.html#BufferVar	tuple BufferVar		453
+nim	varBits	harfnim/buffer.html#varBits,BufferVar	proc varBits(v: BufferVar): uint8		456
+nim	GlyphPropsVar	harfnim/buffer.html#GlyphPropsVar	const GlyphPropsVar		463
+nim	LigPropsVar	harfnim/buffer.html#LigPropsVar	const LigPropsVar		465
+nim	SyllableVar	harfnim/buffer.html#SyllableVar	const SyllableVar		467
+nim	UnicodePropsVar	harfnim/buffer.html#UnicodePropsVar	const UnicodePropsVar		469
+nim	NormalizerGlyphIndexVar	harfnim/buffer.html#NormalizerGlyphIndexVar	const NormalizerGlyphIndexVar		471
+nim	OtShaperCategoryVar	harfnim/buffer.html#OtShaperCategoryVar	const OtShaperCategoryVar		473
+nim	OtShaperAuxiliaryVar	harfnim/buffer.html#OtShaperAuxiliaryVar	const OtShaperAuxiliaryVar		475
+nim	Buffer	harfnim/buffer.html#Buffer	object Buffer		483
+nim	mergeClusters	harfnim/buffer.html#mergeClusters,Buffer,int,int	proc mergeClusters(b: var Buffer; start, stop: int)		539
+nim	mergeClustersImpl	harfnim/buffer.html#mergeClustersImpl,Buffer,int,int	proc mergeClustersImpl(b: var Buffer; start, stop: int)		540
+nim	tryMergeClusters	harfnim/buffer.html#tryMergeClusters,Buffer,int,int	proc tryMergeClusters(b: var Buffer; start, stop: int): bool		541
+nim	mergeOutClustersImpl	harfnim/buffer.html#mergeOutClustersImpl,Buffer,int,int	proc mergeOutClustersImpl(b: var Buffer; start, stop: int)		542
+nim	tryMergeOutClusters	harfnim/buffer.html#tryMergeOutClusters,Buffer,int,int	proc tryMergeOutClusters(b: var Buffer; start, stop: int): bool		543
+nim	nextGlyphs	harfnim/buffer.html#nextGlyphs,Buffer,int	proc nextGlyphs(b: var Buffer; n: int)		545
+nim	mergeDeletedCluster	harfnim/buffer.html#mergeDeletedCluster,Buffer	proc mergeDeletedCluster(b: var Buffer): bool		546
+nim	reverseGroups	harfnim/buffer.html#reverseGroups,Buffer,proc(GlyphInfo,GlyphInfo),bool	proc reverseGroups(b: var Buffer; group: proc (a, bb: GlyphInfo): bool {.closure.};\n              mergeClusters: bool)		547
+nim	setGlyphFlagsRange	harfnim/buffer.html#setGlyphFlagsRange,Buffer,GlyphFlags,Option[int],Option[int],Option[bool],Option[bool]	proc setGlyphFlagsRange(b: var Buffer; flags: GlyphFlags; start, stop: Option[int];\n                   interior, fromOutBuffer: Option[bool])		549
+nim	setGlyphFlagsImpl	harfnim/buffer.html#setGlyphFlagsImpl,Buffer,uint32,int,int,bool,bool	proc setGlyphFlagsImpl(b: var Buffer; mask: uint32; start, stop: int;\n                  interior, fromOutBuffer: bool)		551
+nim	infosFindMinCluster	harfnim/buffer.html#infosFindMinCluster,Buffer,seq[GlyphInfo],int,int,Option[uint32]	proc infosFindMinCluster(b: Buffer; infos: seq[GlyphInfo]; start, stop: int;\n                    cluster: Option[uint32]): uint32		553
+nim	infosSetGlyphFlags	harfnim/buffer.html#infosSetGlyphFlags,Buffer,bool,int,int,uint32,uint32	proc infosSetGlyphFlags(b: var Buffer; outInfos: bool; start, stop: int;\n                   cluster: uint32; mask: uint32)		555
+nim	unsafeToBreakRange	harfnim/buffer.html#unsafeToBreakRange,Buffer,Option[int],Option[int]	proc unsafeToBreakRange(b: var Buffer; start, stop: Option[int])		557
+nim	shiftForward	harfnim/buffer.html#shiftForward,Buffer,int	proc shiftForward(b: var Buffer; count: int): bool		558
+nim	setCluster	harfnim/buffer.html#setCluster,GlyphInfo,uint32,Mask	proc setCluster(g: var GlyphInfo; cluster: uint32; mask: Mask)		564
+nim	setClusterFlags	harfnim/buffer.html#setClusterFlags,seq[GlyphInfo],uint32,int,int,uint32,Mask	proc setClusterFlags(infos: var seq[GlyphInfo]; clusterLevel: uint32;\n                start, stop: int; cluster: uint32; mask: Mask): bool		565
+nim	ensure	harfnim/buffer.html#ensure,Buffer,int	proc ensure(b: var Buffer; size: int): bool		567
+nim	enlarge	harfnim/buffer.html#enlarge,Buffer,int	proc enlarge(b: var Buffer; size: int): bool		568
+nim	clearPositions	harfnim/buffer.html#clearPositions,Buffer	proc clearPositions(b: var Buffer)		570
+nim	substituted	harfnim/buffer.html#substituted,GlyphInfo	proc substituted(g: GlyphInfo): bool		571
+nim	newBuffer	harfnim/buffer.html#newBuffer	proc newBuffer(): Buffer		573
+nim	clear	harfnim/buffer.html#clear,Buffer	proc clear(b: var Buffer)		584
+nim	reset	harfnim/buffer.html#reset,Buffer	proc reset(b: var Buffer)		604
+nim	contentType	harfnim/buffer.html#contentType,Buffer	proc contentType(b: Buffer): Option[ContentType]		612
+nim	setContentType	harfnim/buffer.html#setContentType,Buffer,Option[ContentType]	proc setContentType(b: var Buffer; t: Option[ContentType])		615
+nim	length	harfnim/buffer.html#length,Buffer	proc length(b: Buffer): int		619
+nim	isEmpty	harfnim/buffer.html#isEmpty,Buffer	proc isEmpty(b: Buffer): bool		622
+nim	setLength	harfnim/buffer.html#setLength,Buffer,int	proc setLength(b: var Buffer; n: int): bool		651
+nim	reserve	harfnim/buffer.html#reserve,Buffer,int	proc reserve(b: var Buffer; size: int): bool		664
+nim	allocationSuccessful	harfnim/buffer.html#allocationSuccessful,Buffer	proc allocationSuccessful(b: Buffer): bool		667
+nim	push	harfnim/buffer.html#push,Buffer,uint32,uint32	proc push(b: var Buffer; codepoint, cluster: uint32)		671
+nim	pushCodepoints	harfnim/buffer.html#pushCodepoints,Buffer,openArray[uint32]	proc pushCodepoints(b: var Buffer; codepoints: openArray[uint32])		679
+nim	pushGlyphInfos	harfnim/buffer.html#pushGlyphInfos,Buffer,openArray[GlyphInfo]	proc pushGlyphInfos(b: var Buffer; infos: openArray[GlyphInfo]): bool		688
+nim	pushStr	harfnim/buffer.html#pushStr,Buffer,string	proc pushStr(b: var Buffer; text: string)		730
+nim	setPreContext	harfnim/buffer.html#setPreContext,Buffer,string	proc setPreContext(b: var Buffer; text: string)		752
+nim	setPreContextCodepoints	harfnim/buffer.html#setPreContextCodepoints,Buffer,openArray[uint32]	proc setPreContextCodepoints(b: var Buffer; codepoints: openArray[uint32])		765
+nim	preContextCodepoints	harfnim/buffer.html#preContextCodepoints,Buffer	proc preContextCodepoints(b: Buffer): seq[uint32]		772
+nim	setPostContext	harfnim/buffer.html#setPostContext,Buffer,string	proc setPostContext(b: var Buffer; text: string)		778
+nim	setPostContextCodepoints	harfnim/buffer.html#setPostContextCodepoints,Buffer,openArray[uint32]	proc setPostContextCodepoints(b: var Buffer; codepoints: openArray[uint32])		788
+nim	postContextCodepoints	harfnim/buffer.html#postContextCodepoints,Buffer	proc postContextCodepoints(b: Buffer): seq[uint32]		795
+nim	direction	harfnim/buffer.html#direction,Buffer	proc direction(b: Buffer): Direction		801
+nim	setDirection	harfnim/buffer.html#setDirection,Buffer,Direction	proc setDirection(b: var Buffer; d: Direction)		804
+nim	script	harfnim/buffer.html#script,Buffer	proc script(b: Buffer): Option[Script]		808
+nim	setScript	harfnim/buffer.html#setScript,Buffer,Option[Script]	proc setScript(b: var Buffer; s: Option[Script])		811
+nim	language	harfnim/buffer.html#language,Buffer	proc language(b: Buffer): Option[Language]		815
+nim	setLanguage	harfnim/buffer.html#setLanguage,Buffer,Option[Language]	proc setLanguage(b: var Buffer; l: Option[Language])		818
+nim	flags	harfnim/buffer.html#flags,Buffer	proc flags(b: Buffer): BufferFlags		822
+nim	setFlags	harfnim/buffer.html#setFlags,Buffer,BufferFlags	proc setFlags(b: var Buffer; f: BufferFlags)		825
+nim	clusterLevel	harfnim/buffer.html#clusterLevel,Buffer	proc clusterLevel(b: Buffer): ClusterLevel		829
+nim	setClusterLevel	harfnim/buffer.html#setClusterLevel,Buffer,ClusterLevel	proc setClusterLevel(b: var Buffer; l: ClusterLevel)		833
+nim	invisibleGlyph	harfnim/buffer.html#invisibleGlyph,Buffer	proc invisibleGlyph(b: Buffer): Option[GlyphId]		837
+nim	setInvisibleGlyph	harfnim/buffer.html#setInvisibleGlyph,Buffer,Option[GlyphId]	proc setInvisibleGlyph(b: var Buffer; g: Option[GlyphId])		840
+nim	notFoundVsGlyph	harfnim/buffer.html#notFoundVsGlyph,Buffer	proc notFoundVsGlyph(b: Buffer): Option[uint32]		844
+nim	setNotFoundVsGlyph	harfnim/buffer.html#setNotFoundVsGlyph,Buffer,Option[uint32]	proc setNotFoundVsGlyph(b: var Buffer; g: Option[uint32])		847
+nim	glyphInfos	harfnim/buffer.html#glyphInfos,Buffer	proc glyphInfos(b: var Buffer): var seq[GlyphInfo]		851
+nim	glyphInfosView	harfnim/buffer.html#glyphInfosView,Buffer	proc glyphInfosView(b: Buffer): seq[GlyphInfo]		854
+nim	glyphPositions	harfnim/buffer.html#glyphPositions,Buffer	proc glyphPositions(b: Buffer): seq[GlyphPosition]		861
+nim	glyphPositionsMut	harfnim/buffer.html#glyphPositionsMut,Buffer	proc glyphPositionsMut(b: var Buffer): var seq[GlyphPosition]		870
+nim	reverseRange	harfnim/buffer.html#reverseRange,Buffer,int,int	proc reverseRange(b: var Buffer; first, last: int)		876
+nim	reverse	harfnim/buffer.html#reverse,Buffer	proc reverse(b: var Buffer)		886
+nim	reverseClusters	harfnim/buffer.html#reverseClusters,Buffer	proc reverseClusters(b: var Buffer)		892
+nim	resetClusters	harfnim/buffer.html#resetClusters,Buffer	proc resetClusters(b: var Buffer)		897
+nim	initUnicodeProps	harfnim/buffer.html#initUnicodeProps,GlyphInfo,uint32	proc initUnicodeProps(g: var GlyphInfo; scratch: var uint32)		906
+nim	unhide	harfnim/buffer.html#unhide,GlyphInfo	proc unhide(g: var GlyphInfo)		939
+nim	generalCategory	harfnim/buffer.html#generalCategory,GlyphInfo	proc generalCategory(g: GlyphInfo): GeneralCategory		945
+nim	setGeneralCategory	harfnim/buffer.html#setGeneralCategory,GlyphInfo,GeneralCategory	proc setGeneralCategory(g: var GlyphInfo; cat: GeneralCategory)		949
+nim	isUnicodeMark	harfnim/buffer.html#isUnicodeMark,GlyphInfo	proc isUnicodeMark(g: GlyphInfo): bool		954
+nim	setModifiedCombiningClass	harfnim/buffer.html#setModifiedCombiningClass,GlyphInfo,uint8	proc setModifiedCombiningClass(g: var GlyphInfo; c: uint8)		958
+nim	modifiedCombiningClass	harfnim/buffer.html#modifiedCombiningClass,GlyphInfo	proc modifiedCombiningClass(g: GlyphInfo): uint8		964
+nim	isUnicodeSpace	harfnim/buffer.html#isUnicodeSpace,GlyphInfo	proc isUnicodeSpace(g: GlyphInfo): bool		971
+nim	setUnicodeSpaceFallbackType	harfnim/buffer.html#setUnicodeSpaceFallbackType,GlyphInfo,uint8	proc setUnicodeSpaceFallbackType(g: var GlyphInfo; s: uint8)		975
+nim	unicodeSpaceFallbackType	harfnim/buffer.html#unicodeSpaceFallbackType,GlyphInfo	proc unicodeSpaceFallbackType(g: GlyphInfo): uint8		981
+nim	isUnicodeFormat	harfnim/buffer.html#isUnicodeFormat,GlyphInfo	proc isUnicodeFormat(g: GlyphInfo): bool		988
+nim	isZwnj	harfnim/buffer.html#isZwnj,GlyphInfo	proc isZwnj(g: GlyphInfo): bool		992
+nim	isZwj	harfnim/buffer.html#isZwj,GlyphInfo	proc isZwj(g: GlyphInfo): bool		996
+nim	isInfoVariationSelector	harfnim/buffer.html#isInfoVariationSelector,GlyphInfo	proc isInfoVariationSelector(g: GlyphInfo): bool		1000
+nim	setVariationSelector	harfnim/buffer.html#setVariationSelector,GlyphInfo,bool	proc setVariationSelector(g: var GlyphInfo; customize: bool)		1005
+nim	isInfoDefaultIgnorable	harfnim/buffer.html#isInfoDefaultIgnorable,GlyphInfo	proc isInfoDefaultIgnorable(g: GlyphInfo): bool		1013
+nim	clearDefaultIgnorable	harfnim/buffer.html#clearDefaultIgnorable,GlyphInfo	proc clearDefaultIgnorable(g: var GlyphInfo)		1018
+nim	isHidden	harfnim/buffer.html#isHidden,GlyphInfo	proc isHidden(g: GlyphInfo): bool		1022
+nim	setContinuation	harfnim/buffer.html#setContinuation,GlyphInfo,uint32	proc setContinuation(g: var GlyphInfo; scratch: var uint32)		1026
+nim	clearContinuation	harfnim/buffer.html#clearContinuation,GlyphInfo	proc clearContinuation(g: var GlyphInfo)		1031
+nim	isContinuation	harfnim/buffer.html#isContinuation,GlyphInfo	proc isContinuation(g: GlyphInfo): bool		1035
+nim	guessSegmentProperties	harfnim/buffer.html#guessSegmentProperties,Buffer	proc guessSegmentProperties(b: var Buffer)		1039
+nim	allocateVar	harfnim/buffer.html#allocateVar,Buffer,BufferVar	proc allocateVar(b: var Buffer; v: BufferVar)		1059
+nim	tryAllocateVar	harfnim/buffer.html#tryAllocateVar,Buffer,BufferVar	proc tryAllocateVar(b: var Buffer; v: BufferVar): bool		1065
+nim	deallocateVar	harfnim/buffer.html#deallocateVar,Buffer,BufferVar	proc deallocateVar(b: var Buffer; v: BufferVar)		1073
+nim	indexFailed	harfnim/buffer.html#indexFailed,Buffer	proc indexFailed(b: var Buffer)		1079
+nim	infoSliceMut	harfnim/buffer.html#infoSliceMut,Buffer	proc infoSliceMut(b: var Buffer): var seq[GlyphInfo]		1083
+nim	cur	harfnim/buffer.html#cur,Buffer,int	proc cur(b: var Buffer; i: int): ptr GlyphInfo		1087
+nim	curPosMut	harfnim/buffer.html#curPosMut,Buffer	proc curPosMut(b: var Buffer): ptr GlyphPosition		1094
+nim	prev	harfnim/buffer.html#prev,Buffer	proc prev(b: var Buffer): ptr GlyphInfo		1100
+nim	prevMut	harfnim/buffer.html#prevMut,Buffer	proc prevMut(b: var Buffer): ptr GlyphInfo		1113
+nim	outAt	harfnim/buffer.html#outAt,Buffer,int	proc outAt(b: var Buffer; i: int): ptr GlyphInfo		1117
+nim	rotateOutRightByOne	harfnim/buffer.html#rotateOutRightByOne,Buffer,int,int	proc rotateOutRightByOne(b: var Buffer; start, fin: int): bool		1127
+nim	backtrackLen	harfnim/buffer.html#backtrackLen,Buffer	proc backtrackLen(b: Buffer): int		1184
+nim	lookaheadLen	harfnim/buffer.html#lookaheadLen,Buffer	proc lookaheadLen(b: Buffer): int		1188
+nim	nextSerial	harfnim/buffer.html#nextSerial,Buffer	proc nextSerial(b: var Buffer): uint8		1192
+nim	groupEnd	harfnim/buffer.html#groupEnd,Buffer,int,proc(GlyphInfo,GlyphInfo)	proc groupEnd(b: Buffer; start: int; group: proc (a, bb: GlyphInfo): bool {.closure.}): int		1199
+nim	sync	harfnim/buffer.html#sync,Buffer	proc sync(b: var Buffer): bool		1232
+nim	clearOutput	harfnim/buffer.html#clearOutput,Buffer	proc clearOutput(b: var Buffer)		1251
+nim	replaceGlyphs	harfnim/buffer.html#replaceGlyphs,Buffer,int,int,openArray[uint32]	proc replaceGlyphs(b: var Buffer; numIn, numOut: int; glyphData: openArray[uint32])		1301
+nim	replaceGlyph	harfnim/buffer.html#replaceGlyph,Buffer,uint32	proc replaceGlyph(b: var Buffer; glyphIndex: uint32)		1321
+nim	outputGlyph	harfnim/buffer.html#outputGlyph,Buffer,uint32	proc outputGlyph(b: var Buffer; glyphIndex: uint32)		1331
+nim	outputInfo	harfnim/buffer.html#outputInfo,Buffer,GlyphInfo	proc outputInfo(b: var Buffer; g: GlyphInfo)		1348
+nim	copyGlyph	harfnim/buffer.html#copyGlyph,Buffer	proc copyGlyph(b: var Buffer)		1355
+nim	nextGlyph	harfnim/buffer.html#nextGlyph,Buffer	proc nextGlyph(b: var Buffer)		1367
+nim	skipGlyph	harfnim/buffer.html#skipGlyph,Buffer	proc skipGlyph(b: var Buffer)		1389
+nim	setMasks	harfnim/buffer.html#setMasks,Buffer,Mask,Mask,uint32,uint32	proc setMasks(b: var Buffer; value, mask: Mask; clusterStart, clusterEnd: uint32)		1393
+nim	mergeGraphemeClusters	harfnim/buffer.html#mergeGraphemeClusters,Buffer,int,int	proc mergeGraphemeClusters(b: var Buffer; start, stop: int)		1457
+nim	mergeOutClusters	harfnim/buffer.html#mergeOutClusters,Buffer,int,int	proc mergeOutClusters(b: var Buffer; start, stop: int)		1466
+nim	mergeOutGraphemeClusters	harfnim/buffer.html#mergeOutGraphemeClusters,Buffer,int,int	proc mergeOutGraphemeClusters(b: var Buffer; start, stop: int)		1474
+nim	deleteGlyph	harfnim/buffer.html#deleteGlyph,Buffer	proc deleteGlyph(b: var Buffer)		1542
+nim	deleteGlyphsInplace	harfnim/buffer.html#deleteGlyphsInplace,Buffer,proc(GlyphInfo)	proc deleteGlyphsInplace(b: var Buffer; filter: proc (g: GlyphInfo): bool {.closure.})		1584
+nim	safeToInsertTatweelRange	harfnim/buffer.html#safeToInsertTatweelRange,Buffer,Option[int],Option[int]	proc safeToInsertTatweelRange(b: var Buffer; start, stop: Option[int])		1621
+nim	unsafeToConcatRange	harfnim/buffer.html#unsafeToConcatRange,Buffer,Option[int],Option[int]	proc unsafeToConcatRange(b: var Buffer; start, stop: Option[int])		1628
+nim	unsafeToBreakFromOutbuffer	harfnim/buffer.html#unsafeToBreakFromOutbuffer,Buffer,Option[int],Option[int]	proc unsafeToBreakFromOutbuffer(b: var Buffer; start, stop: Option[int])		1634
+nim	unsafeToConcatFromOutbuffer	harfnim/buffer.html#unsafeToConcatFromOutbuffer,Buffer,Option[int],Option[int]	proc unsafeToConcatFromOutbuffer(b: var Buffer; start, stop: Option[int])		1639
+nim	moveTo	harfnim/buffer.html#moveTo,Buffer,int	proc moveTo(b: var Buffer; i: int): bool		1720
+nim	sort	harfnim/buffer.html#sort,Buffer,int,int,proc(GlyphInfo,GlyphInfo)	proc sort(b: var Buffer; start, stop: int;\n     cmp: proc (a, bb: GlyphInfo): bool {.closure.})		1773
+nim	enter	harfnim/buffer.html#enter,Buffer	proc enter(b: var Buffer)		1798
+nim	leave	harfnim/buffer.html#leave,Buffer	proc leave(b: var Buffer)		1805
+nim	allocateLigId	harfnim/buffer.html#allocateLigId,Buffer	proc allocateLigId(b: var Buffer): uint8		1811
+nim	allocateUnicodeVars	harfnim/buffer.html#allocateUnicodeVars,Buffer	proc allocateUnicodeVars(b: var Buffer)		1818
+nim	deallocateUnicodeVars	harfnim/buffer.html#deallocateUnicodeVars,Buffer	proc deallocateUnicodeVars(b: var Buffer)		1822
+nim	allocateGsubGposVars	harfnim/buffer.html#allocateGsubGposVars,Buffer	proc allocateGsubGposVars(b: var Buffer)		1826
+nim	deallocateGsubGposVars	harfnim/buffer.html#deallocateGsubGposVars,Buffer	proc deallocateGsubGposVars(b: var Buffer)		1831
+nim	nextSyllable	harfnim/buffer.html#nextSyllable,Buffer,int,int	proc nextSyllable(b: Buffer; start: int; maxSyllableLength: int = 64): int		1836
+nim	IsLigBase	harfnim/buffer.html#IsLigBase	const IsLigBase		1853
+nim	setLigPropsForLigature	harfnim/buffer.html#setLigPropsForLigature,GlyphInfo,uint8,uint8	proc setLigPropsForLigature(g: var GlyphInfo; ligId, ligNumComps: uint8)		1856
+nim	setLigPropsForMark	harfnim/buffer.html#setLigPropsForMark,GlyphInfo,uint8,uint8	proc setLigPropsForMark(g: var GlyphInfo; ligId, ligComp: uint8)		1860
+nim	setLigPropsForComponent	harfnim/buffer.html#setLigPropsForComponent,GlyphInfo,uint8	proc setLigPropsForComponent(g: var GlyphInfo; comp: uint8)		1864
+nim	ligId	harfnim/buffer.html#ligId,GlyphInfo	proc ligId(g: GlyphInfo): uint8		1868
+nim	ligatedInternal	harfnim/buffer.html#ligatedInternal,GlyphInfo	proc ligatedInternal(g: GlyphInfo): bool		1872
+nim	ligComp	harfnim/buffer.html#ligComp,GlyphInfo	proc ligComp(g: GlyphInfo): uint8		1876
+nim	ligNumComps	harfnim/buffer.html#ligNumComps,GlyphInfo	proc ligNumComps(g: GlyphInfo): uint8		1880
+nim	isBaseGlyph	harfnim/buffer.html#isBaseGlyph,GlyphInfo	proc isBaseGlyph(g: GlyphInfo): bool		1887
+nim	isLigature	harfnim/buffer.html#isLigature,GlyphInfo	proc isLigature(g: GlyphInfo): bool		1891
+nim	isMarkGlyph	harfnim/buffer.html#isMarkGlyph,GlyphInfo	proc isMarkGlyph(g: GlyphInfo): bool		1895
+nim	ligated	harfnim/buffer.html#ligated,GlyphInfo	proc ligated(g: GlyphInfo): bool		1903
+nim	multiplied	harfnim/buffer.html#multiplied,GlyphInfo	proc multiplied(g: GlyphInfo): bool		1907
+nim	ligatedAndDidntMultiply	harfnim/buffer.html#ligatedAndDidntMultiply,GlyphInfo	proc ligatedAndDidntMultiply(g: GlyphInfo): bool		1911
+nim	clearLigatedAndMultiplied	harfnim/buffer.html#clearLigatedAndMultiplied,GlyphInfo	proc clearLigatedAndMultiplied(g: var GlyphInfo)		1915
+nim	ligNumCompsInLigation	harfnim/buffer.html#ligNumCompsInLigation,GlyphInfo	proc ligNumCompsInLigation(g: GlyphInfo): uint8		1920
+nim	serialize	harfnim/buffer.html#serialize,Buffer,SerializeFlags	proc serialize(b: Buffer; flags: SerializeFlags): string		1959
+nim	`$`	harfnim/buffer.html#$,Buffer	proc `$`(b: Buffer): string		1997
+nimgrp	tobits	harfnim/buffer.html#toBits-procs-all	proc		211
+nimgrp	and	harfnim/buffer.html#and-procs-all	proc		228
+nimgrp	==	harfnim/buffer.html#==-procs-all	proc		23
+nimgrp	contains	harfnim/buffer.html#contains-procs-all	proc		218
+nimgrp	or	harfnim/buffer.html#or-procs-all	proc		225

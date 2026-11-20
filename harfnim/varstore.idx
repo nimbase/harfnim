@@ -1,0 +1,12 @@
+nimTitle	varstore	harfnim/varstore.html	module harfnim/varstore		0
+nim	VarRegion	harfnim/varstore.html#VarRegion	tuple VarRegion		11
+nim	VarData	harfnim/varstore.html#VarData	object VarData		13
+nim	VarStore	harfnim/varstore.html#VarStore	object VarStore		20
+nim	DeltaSetIndexMap	harfnim/varstore.html#DeltaSetIndexMap	object DeltaSetIndexMap		30
+nim	NoVariationIndex	harfnim/varstore.html#NoVariationIndex	const NoVariationIndex		37
+nim	parseItemVariationStore	harfnim/varstore.html#parseItemVariationStore,seq[uint8],int,int	proc parseItemVariationStore(bytes: seq[uint8]; off, len: int): VarStore		207
+nim	parseVarStore	harfnim/varstore.html#parseVarStore,seq[uint8],int,int	proc parseVarStore(bytes: seq[uint8]; off, len: int): VarStore		211
+nim	parseDeltaSetIndexMap	harfnim/varstore.html#parseDeltaSetIndexMap,seq[uint8],int,int	proc parseDeltaSetIndexMap(bytes: seq[uint8]; off, len: int): DeltaSetIndexMap		215
+nim	mapVarIndex	harfnim/varstore.html#mapVarIndex,DeltaSetIndexMap,int	proc mapVarIndex(m: DeltaSetIndexMap; gid: int): uint32		257
+nim	regionScalar	harfnim/varstore.html#regionScalar,seq[VarRegion],openArray[float32]	proc regionScalar(region: seq[VarRegion]; coords: openArray[float32]): float64		264
+nim	deltaFor	harfnim/varstore.html#deltaFor,VarStore,uint32,openArray[float32]	proc deltaFor(store: VarStore; varIdx: uint32; coords: openArray[float32]): int32		288

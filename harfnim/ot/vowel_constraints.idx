@@ -1,0 +1,18 @@
+nimTitle	vowel_constraints	harfnim/ot/vowel_constraints.html	module harfnim/ot/vowel_constraints		0
+nim	VowelPair	harfnim/ot/vowel_constraints.html#VowelPair	tuple VowelPair		16
+nim	DevanagariVowels	harfnim/ot/vowel_constraints.html#DevanagariVowels	const DevanagariVowels		19
+nim	BengaliVowels	harfnim/ot/vowel_constraints.html#BengaliVowels	const BengaliVowels		27
+nim	GurmukhiVowels	harfnim/ot/vowel_constraints.html#GurmukhiVowels	const GurmukhiVowels		32
+nim	GujaratiVowels	harfnim/ot/vowel_constraints.html#GujaratiVowels	const GujaratiVowels		37
+nim	OriyaVowels	harfnim/ot/vowel_constraints.html#OriyaVowels	const OriyaVowels		42
+nim	TeluguVowels	harfnim/ot/vowel_constraints.html#TeluguVowels	const TeluguVowels		47
+nim	KannadaVowels	harfnim/ot/vowel_constraints.html#KannadaVowels	const KannadaVowels		53
+nim	MalayalamVowels	harfnim/ot/vowel_constraints.html#MalayalamVowels	const MalayalamVowels		58
+nim	SinhalaVowels	harfnim/ot/vowel_constraints.html#SinhalaVowels	const SinhalaVowels		64
+nim	BrahmiVowels	harfnim/ot/vowel_constraints.html#BrahmiVowels	const BrahmiVowels		73
+nim	KhojkiVowels	harfnim/ot/vowel_constraints.html#KhojkiVowels	const KhojkiVowels		78
+nim	KhudawadiVowels	harfnim/ot/vowel_constraints.html#KhudawadiVowels	const KhudawadiVowels		84
+nim	TirhutaVowels	harfnim/ot/vowel_constraints.html#TirhutaVowels	const TirhutaVowels		88
+nim	ModiVowels	harfnim/ot/vowel_constraints.html#ModiVowels	const ModiVowels		94
+nim	TakriVowels	harfnim/ot/vowel_constraints.html#TakriVowels	const TakriVowels		98
+nim	preprocessVowelConstraints	harfnim/ot/vowel_constraints.html#preprocessVowelConstraints,Buffer	proc preprocessVowelConstraints(buf: var Buffer)		151

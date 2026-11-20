@@ -1,0 +1,7 @@
+nimTitle	kern	harfnim/ot/kern.html	module harfnim/ot/kern		0
+nim	KernPair	harfnim/ot/kern.html#KernPair	tuple KernPair		16
+nim	KernSubtable	harfnim/ot/kern.html#KernSubtable	object KernSubtable		19
+nim	KernData	harfnim/ot/kern.html#KernData	object KernData		28
+nim	kernValueAt	harfnim/ot/kern.html#kernValueAt,KernSubtable,uint32,uint32	proc kernValueAt(sub: KernSubtable; left, right: uint32): int32		57
+nim	parseKernTable	harfnim/ot/kern.html#parseKernTable,openArray[uint8],int	proc parseKernTable(bytes: openArray[uint8]; off: int): KernData		76
+nim	parseKern	harfnim/ot/kern.html#parseKern,SfntFont	proc parseKern(f: SfntFont): Option[KernData]		155

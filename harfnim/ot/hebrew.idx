@@ -1,0 +1,10 @@
+nimTitle	hebrew	harfnim/ot/hebrew.html	module harfnim/ot/hebrew		0
+nim	HebSheva	harfnim/ot/hebrew.html#HebSheva	const HebSheva		19
+nim	HebHiriq	harfnim/ot/hebrew.html#HebHiriq	const HebHiriq		20
+nim	HebPatah	harfnim/ot/hebrew.html#HebPatah	const HebPatah		21
+nim	HebQamats	harfnim/ot/hebrew.html#HebQamats	const HebQamats		22
+nim	HebMeteg	harfnim/ot/hebrew.html#HebMeteg	const HebMeteg		23
+nim	HebBelow	harfnim/ot/hebrew.html#HebBelow	const HebBelow		24
+nim	DageshForms	harfnim/ot/hebrew.html#DageshForms	const DageshForms		28
+nim	hebrewComposeFn	harfnim/ot/hebrew.html#hebrewComposeFn,bool	proc hebrewComposeFn(hasGposMark: bool): ComposeFn		58
+nim	reorderMarksHebrew	harfnim/ot/hebrew.html#reorderMarksHebrew,Buffer,int,int	proc reorderMarksHebrew(buf: var Buffer; start, stop: int)		114

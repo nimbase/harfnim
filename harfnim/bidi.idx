@@ -1,0 +1,8 @@
+nimTitle	bidi	harfnim/bidi.html	module harfnim/bidi		0
+nim	bdLtr	harfnim/bidi.html#bdLtr	BaseDirection.bdLtr		17
+nim	bdRtl	harfnim/bidi.html#bdRtl	BaseDirection.bdRtl		17
+nim	bdAuto	harfnim/bidi.html#bdAuto	BaseDirection.bdAuto		17
+nim	BaseDirection	harfnim/bidi.html#BaseDirection	enum BaseDirection		17
+nim	VisualRun	harfnim/bidi.html#VisualRun	object VisualRun		26
+nim	VisualText	harfnim/bidi.html#VisualText	object VisualText		37
+nim	visualRuns	harfnim/bidi.html#visualRuns,string,BaseDirection	proc visualRuns(text: string; base: BaseDirection): VisualText		631

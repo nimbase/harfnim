@@ -1,0 +1,24 @@
+nimTitle	draw	harfnim/draw.html	module harfnim/draw		0
+nim	moveTo	harfnim/draw.html#moveTo	DrawOpKind.moveTo		5
+nim	lineTo	harfnim/draw.html#lineTo	DrawOpKind.lineTo		5
+nim	quadraticTo	harfnim/draw.html#quadraticTo	DrawOpKind.quadraticTo		5
+nim	cubicTo	harfnim/draw.html#cubicTo	DrawOpKind.cubicTo		5
+nim	closePath	harfnim/draw.html#closePath	DrawOpKind.closePath		5
+nim	DrawOpKind	harfnim/draw.html#DrawOpKind	enum DrawOpKind		5
+nim	DrawPoint	harfnim/draw.html#DrawPoint	tuple DrawPoint		18
+nim	DrawOp	harfnim/draw.html#DrawOp	object DrawOp		21
+nim	OutlinePoint	harfnim/draw.html#OutlinePoint	object OutlinePoint		37
+nim	OutlineContour	harfnim/draw.html#OutlineContour	object OutlineContour		44
+nim	GlyphOutline	harfnim/draw.html#GlyphOutline	object GlyphOutline		51
+nim	OutlineBuilder	harfnim/draw.html#OutlineBuilder	object OutlineBuilder		56
+nim	OutlineCache	harfnim/draw.html#OutlineCache	type OutlineCache		65
+nim	roundHalfAway	harfnim/draw.html#roundHalfAway,float64	proc roundHalfAway(v: float64): int32		78
+nim	newOutlineCache	harfnim/draw.html#newOutlineCache,int	proc newOutlineCache(maxItems = 256): OutlineCache		82
+nim	cacheLookup	harfnim/draw.html#cacheLookup,OutlineCache,uint32	proc cacheLookup(c: OutlineCache; gid: uint32): tuple[hit: bool,\n    v: Option[GlyphOutline]]		87
+nim	cacheStore	harfnim/draw.html#cacheStore,OutlineCache,uint32,Option[GlyphOutline]	proc cacheStore(c: OutlineCache; gid: uint32; v: Option[GlyphOutline])		95
+nim	`==`	harfnim/draw.html#==,DrawOp,DrawOp	proc `==`(a, b: DrawOp): bool		109
+nim	feed	harfnim/draw.html#feed,OutlineBuilder,DrawOp	proc feed(b: var OutlineBuilder; op: DrawOp)		123
+nim	finish	harfnim/draw.html#finish,OutlineBuilder	proc finish(b: var OutlineBuilder): GlyphOutline		154
+nim	collectInto	harfnim/draw.html#collectInto,OutlineBuilder,proc(proc(DrawOp))	proc collectInto(b: var OutlineBuilder;\n            emit: proc (cb: proc (op: DrawOp) {.closure.}): bool {.closure.}): bool		162
+nim	replayOutline	harfnim/draw.html#replayOutline,GlyphOutline,proc(DrawOp)	proc replayOutline(o: GlyphOutline; cb: proc (op: DrawOp) {.closure.})		173
+nim	outlineBounds	harfnim/draw.html#outlineBounds,GlyphOutline	proc outlineBounds(o: GlyphOutline): Option[tuple[xMin, yMin, xMax, yMax: int32]]		202
