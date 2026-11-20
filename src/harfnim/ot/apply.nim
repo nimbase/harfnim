@@ -939,6 +939,21 @@ proc applySinglePos(buf: var Buffer, sub: SinglePos, scale: Scale,
   buf.nextGlyph()
   true
 
+proc applyPairValues(
+    buf: var Buffer, second: int, sub: PairPos, v1, v2: ValueRecord,
+    scale: Scale, isHorizontal: bool, store: VarStore, coords: seq[float32]
+) =
+  let first = buf.idx
+  let appliedFirst = applyValueRecord(buf, first, v1, scale, isHorizontal, store, coords)
+  let appliedSecond = applyValueRecord(buf, second, v2, scale, isHorizontal, store, coords)
+  if sub.format2 != 0u16:
+    buf.unsafeToBreakRange(some(first), some(min(second + 2, buf.len)))
+    buf.idx = second + 1
+  else:
+    if appliedFirst or appliedSecond:
+      buf.unsafeToBreakRange(some(first), some(second + 1))
+    buf.idx = second
+
 proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
     scale: Scale, isHorizontal: bool, store: VarStore,
     coords: seq[float32]): bool =
@@ -960,12 +975,7 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
     for i, s in set.seconds:
       if s == second:
         let (v1, v2) = set.values[i]
-        discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal, store, coords)
-        discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal, store, coords)
-        if sub.format2 != 0u16:
-          buf.idx = secondIdx + 1
-        else:
-          buf.idx = secondIdx
+        applyPairValues(buf, secondIdx, sub, v1, v2, scale, isHorizontal, store, coords)
         return true
     # TODO: unsafe_to_concat marking on pair miss.
     false
@@ -978,12 +988,7 @@ proc applyPairPos(buf: var Buffer, sub: PairPos, props, mask: uint32,
     if recIdx < 0 or recIdx >= sub.matrix.len:
       return false
     let (v1, v2) = sub.matrix[recIdx]
-    discard applyValueRecord(buf, buf.idx, v1, scale, isHorizontal, store, coords)
-    discard applyValueRecord(buf, secondIdx, v2, scale, isHorizontal, store, coords)
-    if sub.format2 != 0u16:
-      buf.idx = secondIdx + 1
-    else:
-      buf.idx = secondIdx
+    applyPairValues(buf, secondIdx, sub, v1, v2, scale, isHorizontal, store, coords)
     true
   else:
     false

@@ -27,6 +27,23 @@ proc globalFeature*(t: Tag, value: uint32 = 1): Feature =
   ## Builds a feature covering the whole buffer.
   Feature(tag: t, value: value, start: GlobalStart, stop: GlobalEnd)
 
+proc withDefaultFeatures*(features: openArray[Feature]): seq[Feature] =
+  ## Adds the standard shaping defaults for tags absent from `features`.
+  ## Explicit settings, including disables, take precedence over defaults.
+  const defaults = [
+    "abvm", "blwm", "calt", "ccmp", "clig", "curs", "dist", "kern", "liga",
+    "locl", "mark", "mkmk", "rlig", "rclt",
+  ]
+  result = newSeqOfCap[Feature](features.len + defaults.len)
+  var mentioned = newSeqOfCap[Tag](features.len)
+  for feature in features:
+    result.add feature
+    mentioned.add feature.tag
+  for name in defaults:
+    let tag = tagFromStr(name)
+    if tag notin mentioned:
+      result.add globalFeature(tag)
+
 proc isGlobal*(f: Feature): bool =
   ## True when the feature covers the whole buffer.
   f.start == GlobalStart and f.stop == GlobalEnd

@@ -377,11 +377,19 @@ proc glyphVarData(heads: seq[seq[uint8]], sharedPts: seq[uint8],
   result.putU16(count)
   var headersLen = 0
   for h in heads:
-    headersLen += h.len
-  let dataOff = 4 + headersLen + sharedPts.len
+    headersLen += 2 + h.len
+  let dataOff = 4 + headersLen
   result.putU16(uint16(dataOff))
+  var first = 0
   for h in heads:
+    let ending = first + (if (h[0] and 0x20'u8) != 0: 3 else: 2)
+    var dataSize = 0
+    for i in first ..< ending:
+      dataSize += datas[i].len
+    result.putU16(uint16(dataSize))
     result.add(h)
+    first = ending
+  doAssert first == datas.len
   result.add(sharedPts)
   for d in datas:
     result.add(d)
@@ -395,22 +403,22 @@ proc buildGvar(axisCount: int, shared: seq[seq[float64]],
   result.putU16(0u16)
   result.putU16(uint16(axisCount))
   result.putU16(uint16(shared.len))
-  let sharedOff = 20
+  let sharedOff = 20 + (vardatas.len + 1) * 2
   result.putU32(uint32(sharedOff))
   result.putU16(uint16(vardatas.len))
   result.putU16(0u16) # short offsets
   let varDataOff = sharedOff + shared.len * axisCount * 2
   result.putU32(uint32(varDataOff))
-  for tup in shared:
-    for v in tup:
-      result.putF2dot14(v)
-  var cur = (vardatas.len + 1) * 2
+  var cur = 0
   for vd in vardatas:
     doAssert cur mod 2 == 0
     result.putU16(uint16(cur div 2))
     cur += vd.len
   doAssert cur mod 2 == 0
   result.putU16(uint16(cur div 2))
+  for tup in shared:
+    for v in tup:
+      result.putF2dot14(v)
   for vd in vardatas:
     result.add(vd)
 

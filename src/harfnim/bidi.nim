@@ -43,6 +43,11 @@ type
     runs*: seq[VisualRun]
     ## Visual runs covering `text` in order.
 
+  BidiLevels* = object
+    ## Resolved levels for a single paragraph in logical order.
+    baseLevel*: uint8
+    levels*: seq[uint8]
+
   BidiChar = object
     # One working code point with its resolved state.
     cp: uint32
@@ -306,19 +311,14 @@ proc resolveWeak(s: RunSeq, chars: var seq[BidiChar]) =
         chars[pos].cls = BidiON
       else:
         chars[pos].cls = chars[s.idx[k - 1]].cls
-  for k in 0 ..< s.idx.len:
-    let pos = s.idx[k]
-    if chars[pos].cls != BidiEN:
-      continue
-    var j = k - 1
-    while j >= 0:
-      let t = chars[s.idx[j]].cls
-      if t == BidiAL:
+  var strong = s.sos
+  for pos in s.idx:
+    case chars[pos].cls
+    of BidiAL, BidiR, BidiL: strong = chars[pos].cls
+    of BidiEN:
+      if strong == BidiAL:
         chars[pos].cls = BidiAN
-        break
-      if t == BidiR or t == BidiL:
-        break
-      dec j
+    else: discard
   for k in 0 ..< s.idx.len:
     if chars[s.idx[k]].cls == BidiAL:
       chars[s.idx[k]].cls = BidiR
@@ -352,19 +352,14 @@ proc resolveWeak(s: RunSeq, chars: var seq[BidiChar]) =
     let pos = s.idx[k]
     if chars[pos].cls in {BidiES, BidiET, BidiCS}:
       chars[pos].cls = BidiON
-  for k in 0 ..< s.idx.len:
-    let pos = s.idx[k]
-    if chars[pos].cls != BidiEN:
-      continue
-    var j = k - 1
-    while j >= 0:
-      let t = chars[s.idx[j]].cls
-      if t == BidiL:
+  strong = s.sos
+  for pos in s.idx:
+    case chars[pos].cls
+    of BidiR, BidiL: strong = chars[pos].cls
+    of BidiEN:
+      if strong == BidiL:
         chars[pos].cls = BidiL
-        break
-      if t == BidiR:
-        break
-      dec j
+    else: discard
 
 proc pairedClose(openCp: uint32): tuple[ok: bool, closeCp: uint32] =
   # Canonical closing bracket for an opening bracket.
@@ -628,19 +623,9 @@ proc buildVisual(chars: seq[BidiChar], srcLen: int): VisualText =
       level: cs[g.first].level, dir: dir))
   result.map.add(srcLen)
 
-proc visualRuns*(text: string, base: BaseDirection): VisualText =
-  ## Shapes one pre-split paragraph into visual runs in display order.
-  ## Callers split paragraphs and lines first; B and S handling past
-  ## the trailing L1 reset is out of scope. X9-removed codes never
-  ## reach the output, and odd-level runs carry L4 mirrors, so `text`
-  ## is shaping-ready while `map` keeps every byte traceable to its
-  ## logical source offset. Runs group maximal levels; attachables
-  ## (marks, ZWJ, variation selectors) starting a run merge into the
-  ## previous run only when no base follows them in that run, so marks
-  ## stay positioned on their bases. A paragraph-initial attachable
-  ## run stands alone. Each run shapes with an explicit direction,
-  ## bypassing segment guessing.
-  var chars = decodeBidiText(text)
+proc resolveParagraph(
+    chars: var seq[BidiChar], base: BaseDirection
+): tuple[baseLevel: int, kept: seq[BidiChar]] =
   let matches = matchIsolates(chars)
   let paraLevel =
     case base
@@ -654,4 +639,44 @@ proc visualRuns*(text: string, base: BaseDirection): VisualText =
     resolveNeutrals(s, kept)
   applyImplicit(kept)
   resetTrailing(kept, paraLevel)
+  (paraLevel, kept)
+
+proc bidiLevels*(codepoints: openArray[uint32], base = bdAuto): BidiLevels =
+  ## Resolves one pre-split paragraph without reordering or mirroring.
+  ## Characters excluded by UAX #9 rule X9 inherit the preceding
+  ## resolved level (or the paragraph level at the start).
+  var chars = newSeqOfCap[BidiChar](codepoints.len)
+  for index, cp in codepoints:
+    chars.add BidiChar(cp: cp, cls: bidiClassFor(cp), srcOff: index)
+  let (paraLevel, kept) = resolveParagraph(chars, base)
+  result.baseLevel = uint8(paraLevel)
+  result.levels = newSeq[uint8](codepoints.len)
+  var
+    index = 0
+    level = result.baseLevel
+  for c in kept:
+    while index < c.srcOff:
+      result.levels[index] = level
+      inc index
+    level = uint8(c.level)
+    result.levels[index] = level
+    inc index
+  while index < codepoints.len:
+    result.levels[index] = level
+    inc index
+
+proc visualRuns*(text: string, base: BaseDirection): VisualText =
+  ## Shapes one pre-split paragraph into visual runs in display order.
+  ## Callers split paragraphs and lines first; B and S handling past
+  ## the trailing L1 reset is out of scope. X9-removed codes never
+  ## reach the output, and odd-level runs carry L4 mirrors, so `text`
+  ## is shaping-ready while `map` keeps every byte traceable to its
+  ## logical source offset. Runs group maximal levels; attachables
+  ## (marks, ZWJ, variation selectors) starting a run merge into the
+  ## previous run only when no base follows them in that run, so marks
+  ## stay positioned on their bases. A paragraph-initial attachable
+  ## run stands alone. Each run shapes with an explicit direction,
+  ## bypassing segment guessing.
+  var chars = decodeBidiText(text)
+  let (_, kept) = resolveParagraph(chars, base)
   buildVisual(reorderVisual(kept), text.len)

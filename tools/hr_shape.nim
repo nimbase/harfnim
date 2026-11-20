@@ -227,25 +227,13 @@ if fontPath == "":
   usage(1)
 
 var feats: seq[Feature] = @[]
-var mentioned: seq[uint32] = @[]
 for part in featureParts:
   try:
-    let f = parseFeature(part)
-    mentioned.add(f.tag.toU32())
-    # Keep disabled features in the list: GSUB/GPOS skip zero values,
-    # but morx flag compilation needs explicit disables.
-    feats.add(f)
+    feats.add parseFeature(part)
   except ValueError:
     quit("invalid feature: " & part)
 
-# HarfBuzz enables this set unless the user mentions the tag; mirror
-# that so bare invocations match hb-shape output.
-const DefaultFeatures = ["abvm", "blwm", "calt", "ccmp", "clig", "curs",
-  "dist", "kern", "liga", "locl", "mark", "mkmk", "rlig", "rclt"]
-for t in DefaultFeatures:
-  let tag = tagFromStr(t)
-  if tag.toU32() notin mentioned:
-    feats.add(globalFeature(tag, 1))
+feats = withDefaultFeatures(feats)
 
 var sf: ShaperFont
 try:

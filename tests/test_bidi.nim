@@ -29,12 +29,21 @@ test "mixed paragraph splits runs":
   check v.runs[2].level == 0
   check v.runs[1].dir == dirRightToLeft
 
-test "european numbers rise in ltr":
+test "leading european numbers use the ltr start of run":
   let v = visualRuns("12 b", bdAuto)
   check v.text == "12 b"
-  check v.runs.len == 2
-  check v.runs[0].level == 2
-  check v.runs[1].level == 0
+  check v.runs.len == 1
+  check v.runs[0].level == 0
+
+test "logical levels retain source indices around formatting controls":
+  let resolved = bidiLevels([uint32('a'), 0x202B'u32, 0x05D1, 0x202C, uint32('c')])
+  check resolved.baseLevel == 0
+  check resolved.levels == @[0'u8, 0, 1, 1, 0]
+
+test "logical levels retain rtl base and ltr numbers in source order":
+  let resolved = bidiLevels([0x05D0'u32, uint32(' '), uint32('1'), uint32('2')])
+  check resolved.baseLevel == 1
+  check resolved.levels == @[1'u8, 1, 2, 2]
 
 test "numbers after letters stay with them":
   let v = visualRuns("a 12 b", bdAuto)

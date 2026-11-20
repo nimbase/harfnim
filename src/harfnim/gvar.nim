@@ -122,7 +122,7 @@ proc parseGvar*(bytes: seq[uint8], off, len: int): GvarTable =
   ## Parses the `gvar` header, shared tuples, and per-glyph offsets.
   ## Malformed headers yield `ok == false` (contained).
   result.ok = false
-  if off < 0 or len < 16 or off + len > bytes.len:
+  if off < 0 or len < 20 or off + len > bytes.len:
     return
   var c = Cursor(bytes: bytes, pos: off, limit: off + len)
   let major = c.u16()
@@ -149,24 +149,19 @@ proc parseGvar*(bytes: seq[uint8], off, len: int): GvarTable =
         uint16(bytes[base + a * 2 + 1]))) / 16384.0
     shared.add(tup)
   let stride = if longOffsets: 4 else: 2
-  if varDataOff < 0 or varDataOff + (glyphCount + 1) * stride > len:
+  let offsetsEnd = 20 + (glyphCount + 1) * stride
+  if varDataOff < offsetsEnd or varDataOff > len:
     return
   var offs = newSeq[int](glyphCount + 1)
   for i in 0 .. glyphCount:
+    var relative: int
     if longOffsets:
-      var cc = Cursor(bytes: bytes, pos: off + varDataOff + i * 4,
-        limit: off + len)
-      offs[i] = off + varDataOff + int(cc.u32())
-      if cc.failed:
-        return
+      relative = int(c.u32())
     else:
-      var cc = Cursor(bytes: bytes, pos: off + varDataOff + i * 2,
-        limit: off + len)
-      offs[i] = off + varDataOff + int(cc.u16()) * 2
-      if cc.failed:
-        return
-    if offs[i] < off + varDataOff or offs[i] > off + len:
+      relative = int(c.u16()) * 2
+    if c.failed or relative < 0 or relative > len - varDataOff:
       return
+    offs[i] = off + varDataOff + relative
   for i in 1 .. glyphCount:
     if offs[i] < offs[i - 1]:
       return
@@ -326,20 +321,22 @@ proc applyGvarDeltas*(ctx: GvarContext, gid, numPoints: int,
   let off1 = g.glyphOffsets[gid + 1]
   if off0 == off1:
     return true
-  if off0 + 4 > g.limit or off0 + 4 > g.bytes.len or off1 > g.limit:
+  if off0 + 4 > off1 or off1 > g.limit:
     return false
-  var hdr = Cursor(bytes: g.bytes, pos: off0, limit: g.limit)
+  var hdr = Cursor(bytes: g.bytes, pos: off0, limit: off1)
   let rawCount = hdr.u16()
   let dataRel = int(hdr.u16())
-  if hdr.failed:
+  if hdr.failed or dataRel < 4 or dataRel > off1 - off0:
     return false
+  hdr.limit = off0 + dataRel
   let sharedPts = (rawCount and GvarSharedPoints) != 0u16
   let tupleCount = int(rawCount and GvarCountMask)
   # Header sizes first (peaks live inline or in shared tuples).
   type TupHead = tuple[peak: seq[float64], start, finish: seq[float64],
-    priv: bool, index: int]
+    priv: bool, size: int]
   var heads = newSeq[TupHead](tupleCount)
   for t in 0 ..< tupleCount:
+    let size = int(hdr.u16())
     let ti = hdr.u16()
     if hdr.failed:
       return false
@@ -370,20 +367,26 @@ proc applyGvarDeltas*(ctx: GvarContext, gid, numPoints: int,
       for a in 0 ..< g.axisCount:
         start[a] = min(peak[a], 0.0)
         finish[a] = max(peak[a], 0.0)
-    heads[t] = (peak, start, finish, priv, index)
+    if hdr.failed:
+      return false
+    heads[t] = (peak, start, finish, priv, size)
+  var dataPos = off0 + dataRel
   var shared: seq[int] = @[]
   if sharedPts:
-    let (ok, pts) = parsePoints(hdr, numPoints)
+    var data = Cursor(bytes: g.bytes, pos: dataPos, limit: off1)
+    let (ok, pts) = parsePoints(data, numPoints)
     if not ok:
       return false
     shared = pts
-  var dataPos = off0 + dataRel
-  if dataPos < hdr.pos or dataPos > g.limit:
-    return false
+    dataPos = data.pos
   var acc = newSeq[float64](numPoints * 2)
   var touched = newSeq[bool](numPoints)
   for t in 0 ..< tupleCount:
-    var data = Cursor(bytes: g.bytes, pos: dataPos, limit: g.limit)
+    let next = dataPos + heads[t].size
+    if next > off1:
+      return false
+    var data = Cursor(bytes: g.bytes, pos: dataPos, limit: next)
+    dataPos = next
     var points: seq[int]
     if heads[t].priv:
       let (ok, pts) = parsePoints(data, numPoints)
@@ -404,7 +407,6 @@ proc applyGvarDeltas*(ctx: GvarContext, gid, numPoints: int,
     let (oky, dys) = parseDeltas(data, points.len)
     if not oky:
       return false
-    dataPos = data.pos
     if scalar == 0.0:
       continue
     for k, pt in points:
