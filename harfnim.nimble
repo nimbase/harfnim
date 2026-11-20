@@ -17,5 +17,5 @@ task examples, "Regenerate the SVG shaping guides in examples/out":
       "10_hangul", "11_greek", "12_khmer", "13_myanmar", "14_use",
       "15_japanese", "16_chinese"]:
     let bin = "/tmp/harfnim-ex-" & n
-    exec "clue build examples/ex" & n & ".nim --out:" & bin
+    exec "nim c --out:" & bin & " examples/ex" & n & ".nim"
     exec bin

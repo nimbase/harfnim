@@ -51,7 +51,7 @@ shape with the `findDemoFont` host font.
 Build and run each poster (output lands in `examples/out/`):
 
 ```sh
-clue build examples/ex01_anatomy.nim --out:/tmp/ex01 && /tmp/ex01
+nim c --out:/tmp/ex01 examples/ex01_anatomy.nim && /tmp/ex01
 ```
 
 Or regenerate all sixteen at once with the nimble task:
